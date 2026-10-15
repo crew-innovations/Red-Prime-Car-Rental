@@ -30,8 +30,12 @@ class AdminPanelProvider extends PanelProvider
             ->login()
             ->passwordReset()
             ->brandName('Red Prime CRM')
+            ->brandLogo(asset('images/logo-mark.png'))
+            ->brandLogoHeight('2.25rem')
+            ->favicon(asset('favicon.png'))
             ->colors([
-                'primary' => Color::Red,
+                'primary' => Color::hex('#d7141a'), // logo red
+                'warning' => Color::hex('#d4a62a'), // logo gold
                 'gray' => Color::Zinc,
             ])
             ->darkMode(true)
