@@ -8,7 +8,7 @@ in the CRM, and the public website reads them directly from the same database.
 
 ## Stack
 
-- PHP 8.3, Laravel 11, MySQL 8
+- PHP 8.2+ (8.3 on the server), Laravel 11, MySQL 8
 - Filament 3 (CRM admin panel at `/crm`)
 - spatie/laravel-permission (roles), spatie/laravel-medialibrary (images)
 - Blade + Tailwind for the public website (Milestone 3)
