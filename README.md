@@ -21,15 +21,19 @@ cp .env.example .env
 php artisan key:generate
 
 # create the MySQL database named in .env (DB_DATABASE), then:
-php artisan vendor:publish --provider="Spatie\Permission\PermissionServiceProvider"
-php artisan vendor:publish --provider="Spatie\MediaLibrary\MediaLibraryServiceProvider" --tag="medialibrary-migrations"
 php artisan migrate --seed
-php artisan storage:link
 
 php artisan serve
 ```
 
 Open http://localhost:8000/crm and log in with `ADMIN_EMAIL` / `ADMIN_PASSWORD` from `.env`.
+
+## Hosting on Hostinger (shared / hPanel)
+
+- Upload the whole project to the domain folder; the root `.htaccess` sends all traffic into `/public`
+  and keeps `.env`, `vendor`, `storage` etc. unreachable.
+- Images are stored in `public/uploads` (disk `uploads`), so no storage symlink is needed.
+- Set PHP 8.2+ in hPanel and fill the database details in `.env`.
 
 ## Milestones
 
