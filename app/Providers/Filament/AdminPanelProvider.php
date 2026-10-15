@@ -31,7 +31,8 @@ class AdminPanelProvider extends PanelProvider
             ->login()
             ->passwordReset()
             ->brandName('Red Prime CRM')
-            ->brandLogo(asset('images/logo-mark.png'))
+            ->brandLogo(asset('images/logo-mark-light.png'))      // light theme
+            ->darkModeBrandLogo(asset('images/logo-mark.png'))   // dark theme
             ->brandLogoHeight('2.25rem')
             ->favicon(asset('favicon.png'))
             ->colors([
