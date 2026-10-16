@@ -54,7 +54,7 @@ class CreateBooking extends CreateRecord
                 $data['end_at'] = ($lead->end_date ?? $lead->preferred_date)->copy()->setTime(10, 0)
                     ->addDays($lead->end_date ? 0 : 1)->toDateTimeString();
                 if ($service !== ServiceType::Car->value) {
-                    $data['end_at'] = Carbon::parse($data['start_at'])->addHours(4)->toDateTimeString();
+                    $data['end_at'] = Carbon::parse($data['start_at'])->addHours(\App\Support\Rules::defaultHours($service))->toDateTimeString();
                 }
             }
             $data['notes'] = $lead->message;

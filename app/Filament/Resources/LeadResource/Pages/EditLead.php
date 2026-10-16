@@ -29,7 +29,7 @@ class EditLead extends EditRecord
                 ->label('WhatsApp')
                 ->icon('heroicon-o-chat-bubble-left-right')
                 ->color('success')
-                ->url(Phone::whatsappUrl($lead->whatsapp ?: $lead->phone, "Hi {$lead->name}, this is RED PRIME RENTALS. "))
+                ->url(Phone::whatsappUrl($lead->whatsapp ?: $lead->phone, \App\Support\Options::message('msg_greeting', ['name' => $lead->name])))
                 ->openUrlInNewTab()
                 ->visible(filled($lead->whatsapp ?: $lead->phone)),
             Actions\Action::make('call')
@@ -76,7 +76,7 @@ class EditLead extends EditRecord
                     ->form([
                         Forms\Components\TextInput::make('lost_reason')
                             ->label('Reason')
-                            ->datalist(LeadResource::LOST_REASONS)
+                            ->datalist(\App\Support\Options::list('lost_reasons'))
                             ->required(),
                     ])
                     ->visible(fn (): bool => $this->getRecord()->stage !== Pipeline::LOST)

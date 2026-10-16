@@ -59,7 +59,7 @@ class BookingFlow
     public static function receive(Booking $booking, array $data): array
     {
         return DB::transaction(function () use ($booking, $data) {
-            $charges = collect(Booking::CHARGES)
+            $charges = collect(Options::charges())
                 ->map(fn ($meta, $key) => round((float) ($data['charges'][$key] ?? 0), 2))
                 ->filter(fn ($v) => $v > 0);
 
@@ -192,12 +192,11 @@ class BookingFlow
         return $over > 0 ? round($over * (float) $car->extra_km_charge, 2) : 0;
     }
 
-    /** Hours late compared with the booked return time (30 minutes grace). */
+    /** Hours late compared with the booked return time (grace period from Business settings). */
     public static function hoursLate(Booking $booking, Carbon|string|null $returnedAt): int
     {
-        $returnedAt = $returnedAt ? Carbon::parse($returnedAt) : now();
-        $late = $booking->end_at->diffInMinutes($returnedAt, false);
+        $late = Rules::minutesLate($booking, $returnedAt);
 
-        return $late > 30 ? (int) ceil($late / 60) : 0;
+        return $late ? (int) ceil($late / 60) : 0;
     }
 }

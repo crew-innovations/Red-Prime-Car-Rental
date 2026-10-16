@@ -56,7 +56,7 @@ class OutstandingPayments extends BaseWidget
                     ->color('success')
                     ->url(fn (Transaction $record): ?string => Phone::whatsappUrl(
                         $record->customer?->whatsapp ?: $record->customer?->phone,
-                        'Hi '.($record->customer?->name ?? '').', a friendly reminder from RED PRIME RENTALS about the payment of AED '.number_format((float) $record->amount).'. Thank you!'
+                        \App\Support\Options::message('msg_payment_reminder', ['name' => $record->customer?->name, 'amount' => number_format((float) $record->amount)])
                     ))
                     ->openUrlInNewTab()
                     ->visible(fn (Transaction $record): bool => filled($record->customer?->whatsapp ?: $record->customer?->phone)),

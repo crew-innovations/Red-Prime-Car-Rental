@@ -30,7 +30,7 @@ class DocumentUploadController extends Controller
 
         $uploaded = CustomerDocument::where('document_request_id', $request->id)
             ->get()
-            ->groupBy(fn (CustomerDocument $d) => $d->type->value);
+            ->groupBy('type');
 
         return $this->page('public.upload', [
             'request' => $request,

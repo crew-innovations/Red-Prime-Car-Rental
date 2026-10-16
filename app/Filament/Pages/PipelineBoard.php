@@ -152,7 +152,7 @@ class PipelineBoard extends Page
             ->form([
                 Forms\Components\TextInput::make('lost_reason')
                     ->label('Why was it lost?')
-                    ->datalist(LeadResource::LOST_REASONS)
+                    ->datalist(\App\Support\Options::list('lost_reasons'))
                     ->required(),
             ])
             ->authorize('manage-leads')

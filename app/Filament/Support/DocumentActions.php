@@ -3,7 +3,6 @@
 namespace App\Filament\Support;
 
 use App\Enums\DocumentStatus;
-use App\Enums\DocumentType;
 use App\Models\Booking;
 use App\Models\Customer;
 use App\Models\CustomerDocument;
@@ -37,14 +36,14 @@ class DocumentActions
                 $types = $b?->requiredDocumentTypes() ?: [];
 
                 return [
-                    'types' => $types ?: [DocumentType::Passport->value, DocumentType::DrivingLicence->value],
+                    'types' => $types,
                     'hours' => (int) Setting::read('upload_link_hours', 72),
                 ];
             })
             ->form([
                 Forms\Components\CheckboxList::make('types')
                     ->label('Documents to upload')
-                    ->options(DocumentType::requestable())
+                    ->options(fn (): array => \App\Support\Options::requestableDocumentTypes())
                     ->columns(2)
                     ->required(),
                 Forms\Components\TextInput::make('hours')
@@ -62,7 +61,7 @@ class DocumentActions
 
                 $request = DocumentRequest::issue($c, $data['types'], (int) $data['hours'], $booking()?->id);
                 $url = $request->url();
-                $message = 'Hi '.str($c->name)->before(' ').', please upload your documents for your RED PRIME RENTALS booking here: '.$url;
+                $message = \App\Support\Options::message('msg_upload', ['name' => $c->name, 'link' => $url]);
 
                 Notification::make()
                     ->title('Upload link ready')
@@ -84,7 +83,7 @@ class DocumentActions
     {
         return [
             Forms\Components\Select::make('type')
-                ->options(collect(DocumentType::cases())->mapWithKeys(fn ($t) => [$t->value => $t->getLabel()]))
+                ->options(fn (): array => \App\Support\Options::documentTypes())
                 ->required(),
             Forms\Components\DatePicker::make('expires_on')
                 ->label('Expiry date')

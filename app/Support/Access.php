@@ -11,7 +11,7 @@ use Illuminate\Support\Facades\Gate;
  */
 class Access
 {
-    /** ability => roles allowed */
+    /** ability => roles allowed by default (changeable under Business settings) */
     public const ABILITIES = [
         // Leads, customers, pipeline
         'manage-leads' => ['Admin', 'Manager', 'Sales', 'Staff'],
@@ -39,10 +39,46 @@ class Access
         'manage-team' => ['Admin'],
     ];
 
+    /** Plain-English names for the settings page. */
+    public const LABELS = [
+        'manage-leads' => 'Leads, customers and the pipeline',
+        'manage-bookings' => 'Create and edit bookings',
+        'operate-fleet' => 'Hand over, receive, mark cars / yachts ready',
+        'record-payments' => 'Record money received',
+        'manage-finance' => 'Refunds, deposits, edit / delete money records, expenses, accounts',
+        'review-documents' => 'Upload, request and approve customer documents',
+        'manage-quotations' => 'Create, send and convert quotations',
+        'manage-fleet' => 'Cars, yachts, trips, rates, website publishing, drivers',
+        'delete-records' => 'Delete leads, customers, bookings, quotations',
+        'override-availability' => 'Book / hand over a car that is in maintenance, not ready or missing documents',
+        'view-history' => 'See the change history of records',
+        'manage-team' => 'Team, roles and business settings',
+    ];
+
+    /** Roles that can be given abilities (Super Admin always has everything). */
+    public const ROLES = ['Admin', 'Manager', 'Sales', 'Operations', 'Finance', 'Staff'];
+
+    /** Roles allowed an ability: from Business settings, else the defaults above. */
+    public static function rolesFor(string $ability): array
+    {
+        $stored = \App\Models\Setting::read('role_abilities');
+        $roles = is_array($stored) && array_key_exists($ability, $stored)
+            ? (array) $stored[$ability]
+            : (self::ABILITIES[$ability] ?? []);
+
+        // Admin can never lock themselves out of the settings.
+        if ($ability === 'manage-team' && ! in_array('Admin', $roles, true)) {
+            $roles[] = 'Admin';
+        }
+
+        return $roles;
+    }
+
     public static function register(): void
     {
-        foreach (self::ABILITIES as $ability => $roles) {
-            Gate::define($ability, function (User $user) use ($roles) {
+        foreach (array_keys(self::ABILITIES) as $ability) {
+            Gate::define($ability, function (User $user) use ($ability) {
+                $roles = self::rolesFor($ability);
                 $userRoles = $user->getRoleNames();
 
                 return $userRoles->isEmpty()

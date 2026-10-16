@@ -48,23 +48,6 @@ class CarResource extends Resource
 
     protected static ?string $recordTitleAttribute = 'name';
 
-    public const TYPES = [
-        'Sedan' => 'Sedan',
-        'SUV' => 'SUV',
-        'Sports' => 'Sports',
-        'Supercar' => 'Supercar',
-        'Luxury' => 'Luxury',
-        'Convertible' => 'Convertible',
-        'Coupe' => 'Coupe',
-        'Hatchback' => 'Hatchback',
-        'Van' => 'Van / MPV',
-    ];
-
-    public const BRANDS = [
-        'Audi', 'Bentley', 'BMW', 'Cadillac', 'Chevrolet', 'Ferrari', 'Ford', 'GMC', 'Honda',
-        'Hyundai', 'Kia', 'Lamborghini', 'Land Rover', 'Lexus', 'Maserati', 'McLaren',
-        'Mercedes-Benz', 'Mitsubishi', 'Nissan', 'Porsche', 'Rolls-Royce', 'Tesla', 'Toyota',
-    ];
 
     public static function form(Form $form): Form
     {
@@ -124,7 +107,7 @@ class CarResource extends Resource
                             ->columnSpanFull(),
                         Forms\Components\TextInput::make('brand')
                             ->required()
-                            ->datalist(self::BRANDS)
+                            ->datalist(fn (): array => \App\Support\Options::list('car_brands'))
                             ->maxLength(100),
                         Forms\Components\TextInput::make('model')
                             ->required()
@@ -134,7 +117,7 @@ class CarResource extends Resource
                             ->minValue(1990)
                             ->maxValue((int) date('Y') + 1),
                         Forms\Components\Select::make('type')
-                            ->options(self::TYPES)
+                            ->options(fn (?Model $record): array => \App\Support\Options::choices('car_types', $record?->type))
                             ->native(false),
                         Forms\Components\TextInput::make('colour')
                             ->label('Exterior colour')
@@ -148,7 +131,7 @@ class CarResource extends Resource
                             ->suffix('km'),
                         Forms\Components\TextInput::make('branch')
                             ->label('Branch / location')
-                            ->datalist(['Dubai Marina', 'Downtown Dubai', 'Business Bay', 'JBR', 'Palm Jumeirah', 'Deira', 'Abu Dhabi'])
+                            ->datalist(fn (): array => \App\Support\Options::list('car_locations'))
                             ->maxLength(100),
                     ]),
 
@@ -546,7 +529,7 @@ class CarResource extends Resource
                     ->options(CarStatus::class)
                     ->multiple(),
                 Tables\Filters\SelectFilter::make('type')
-                    ->options(self::TYPES)
+                    ->options(fn (): array => \App\Support\Options::choices('car_types'))
                     ->multiple(),
                 \App\Filament\Support\ReadinessUi::filter(),
                 WebsitePublishing::filter(),

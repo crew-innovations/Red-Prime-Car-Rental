@@ -152,7 +152,7 @@ class TripResource extends Resource
                             ->placeholder('Dubai Marina, Palm Jumeirah, Atlantis')
                             ->maxLength(255),
                         Forms\Components\TextInput::make('departure_marina')
-                            ->datalist(YachtResource::MARINAS)
+                            ->datalist(fn (): array => \App\Support\Options::list('marinas'))
                             ->maxLength(100),
                         Forms\Components\TextInput::make('meeting_point')
                             ->placeholder('Pier 7, gate B')

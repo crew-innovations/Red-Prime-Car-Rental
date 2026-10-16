@@ -59,10 +59,12 @@ enum BookingStatus: string implements HasLabel, HasColor, HasIcon
         };
     }
 
-    /** Statuses that hold the car / yacht for those dates. */
+    /** Statuses that hold the car / yacht for those dates ("Pending payment" is a setting). */
     public static function blocking(): array
     {
-        return [self::PendingPayment, self::Confirmed, self::InProgress];
+        return \App\Support\Rules::pendingPaymentHolds()
+            ? [self::PendingPayment, self::Confirmed, self::InProgress]
+            : [self::Confirmed, self::InProgress];
     }
 
     /** Statuses where the customer owes the booking amount. */

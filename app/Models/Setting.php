@@ -32,11 +32,23 @@ class Setting extends Model
         'upload_link_hours' => 72,
         'doc_requirements' => [],       // booking kind => [document types]
         'doc_block_handover' => false,  // only blocks once requirements are set
+        // Bookings & returns (defaults = how the CRM worked before these were editable)
+        'pending_payment_holds' => true,
+        'booking_buffer_minutes' => 0,
+        'late_grace_minutes' => 30,
+        'late_charge_mode' => 'manual',
+        'late_charge_amount' => null,
+        'car_default_hours' => 24,
+        'yacht_default_hours' => 4,
+        'trip_default_minutes' => 120,
     ];
+
+    /** Per-request copy, so permission checks don't hit the cache every time. */
+    protected static ?array $memo = null;
 
     public static function values(): array
     {
-        return Cache::rememberForever('crm.settings', function () {
+        return static::$memo ??= Cache::rememberForever('crm.settings', function () {
             $stored = Schema::hasTable('settings')
                 ? static::query()->pluck('value', 'key')->all()
                 : [];
@@ -56,5 +68,6 @@ class Setting extends Model
             static::updateOrCreate(['key' => $key], ['value' => $value]);
         }
         Cache::forget('crm.settings');
+        static::$memo = null;
     }
 }

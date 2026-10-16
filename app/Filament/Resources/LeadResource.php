@@ -208,7 +208,7 @@ class LeadResource extends Resource
                                     ->content(fn (Get $get): HtmlString => self::stageProgress(Pipeline::tryFrom((string) $get('pipeline')), $get('stage'))),
                                 Forms\Components\TextInput::make('lost_reason')
                                     ->label('Why was it lost?')
-                                    ->datalist(self::LOST_REASONS)
+                                    ->datalist(fn (): array => \App\Support\Options::list('lost_reasons'))
                                     ->required(fn (Get $get): bool => $get('stage') === Pipeline::LOST)
                                     ->visible(fn (Get $get): bool => $get('stage') === Pipeline::LOST),
                                 Forms\Components\ToggleButtons::make('priority')
@@ -262,8 +262,6 @@ class LeadResource extends Resource
                     ]),
             ]);
     }
-
-    public const LOST_REASONS = ['Price too high', 'Car not available', 'Booked with competitor', 'No response', 'Changed plans', 'Not eligible (age / licence)'];
 
     /** Small step bar: "Step 4 of 11" with the won part highlighted. */
     public static function stageProgress(?Pipeline $pipeline, ?string $stage): HtmlString
@@ -396,7 +394,7 @@ class LeadResource extends Resource
                     ->tooltip('WhatsApp')
                     ->icon('heroicon-o-chat-bubble-left-right')
                     ->color('success')
-                    ->url(fn (Lead $record): ?string => Phone::whatsappUrl($record->whatsapp ?: $record->phone, "Hi {$record->name}, this is RED PRIME RENTALS. "))
+                    ->url(fn (Lead $record): ?string => Phone::whatsappUrl($record->whatsapp ?: $record->phone, \App\Support\Options::message('msg_greeting', ['name' => $record->name])))
                     ->openUrlInNewTab()
                     ->visible(fn (Lead $record): bool => filled($record->whatsapp ?: $record->phone)),
                 Tables\Actions\Action::make('call')
@@ -449,7 +447,7 @@ class LeadResource extends Resource
                         ->form([
                             Forms\Components\TextInput::make('lost_reason')
                                 ->label('Reason')
-                                ->datalist(self::LOST_REASONS)
+                                ->datalist(fn (): array => \App\Support\Options::list('lost_reasons'))
                                 ->required(),
                         ])
                         ->action(fn (Collection $records, array $data) => $records->each->update(['stage' => Pipeline::LOST, 'lost_reason' => $data['lost_reason']]))
@@ -498,7 +496,7 @@ class LeadResource extends Resource
             ->form([
                 Forms\Components\TextInput::make('lost_reason')
                     ->label('Reason')
-                    ->datalist(self::LOST_REASONS)
+                    ->datalist(fn (): array => \App\Support\Options::list('lost_reasons'))
                     ->required(),
             ])
             ->visible(fn (Lead $record): bool => $record->stage !== Pipeline::LOST)

@@ -47,7 +47,7 @@ class CreateQuotation extends CreateRecord
                 $data['start_at'] = $lead->preferred_date->copy()->setTime(10, 0)->toDateTimeString();
                 $data['end_at'] = $service === ServiceType::Car->value
                     ? ($lead->end_date ?? $lead->preferred_date)->copy()->setTime(10, 0)->addDays($lead->end_date ? 0 : 1)->toDateTimeString()
-                    : Carbon::parse($data['start_at'])->addHours(4)->toDateTimeString();
+                    : Carbon::parse($data['start_at'])->addHours(\App\Support\Rules::defaultHours($service))->toDateTimeString();
             }
         }
 

@@ -264,7 +264,7 @@ class BookingResource extends Resource
                         if ($date) {
                             $start = Carbon::parse($date->date->toDateString().' '.($date->start_time ?? $date->trip?->start_time ?? '09:00'));
                             $set('start_at', $start->toDateTimeString());
-                            $set('end_at', $start->copy()->addMinutes($date->trip?->duration_minutes ?: 120)->toDateTimeString());
+                            $set('end_at', $start->copy()->addMinutes($date->trip?->duration_minutes ?: \App\Support\Rules::tripMinutes())->toDateTimeString());
                             $set('pickup_location', $date->trip?->meeting_point ?: $date->trip?->departure_marina);
                         }
                     })
@@ -294,7 +294,7 @@ class BookingResource extends Resource
                     ->live(onBlur: true)
                     ->afterStateUpdated(function (Get $get, Set $set, ?string $state) use ($isCar) {
                         if ($state && ! $get('end_at')) {
-                            $set('end_at', Carbon::parse($state)->addHours($isCar($get) ? 24 : 4)->toDateTimeString());
+                            $set('end_at', Carbon::parse($state)->addHours(\App\Support\Rules::defaultHours($get('service_type')))->toDateTimeString());
                         }
                         self::recalculate($get, $set);
                     }),
@@ -338,12 +338,12 @@ class BookingResource extends Resource
                 Forms\Components\TextInput::make('pickup_location')
                     ->label(fn (Get $get): string => $isCar($get) ? 'Delivery / pick-up location' : 'Meeting point / marina')
                     ->placeholder(fn (Get $get): string => $isCar($get) ? 'Office, hotel, airport…' : 'Dubai Marina')
-                    ->datalist(['Office', 'Dubai International Airport (DXB)', 'Al Maktoum Airport (DWC)', 'Dubai Marina', 'Downtown Dubai', 'Palm Jumeirah'])
+                    ->datalist(fn (): array => \App\Support\Options::list('pickup_locations'))
                     ->maxLength(255),
                 Forms\Components\TextInput::make('return_location')
                     ->label('Return location')
                     ->placeholder('Same as pick-up')
-                    ->datalist(['Office', 'Dubai International Airport (DXB)', 'Al Maktoum Airport (DWC)'])
+                    ->datalist(fn (): array => \App\Support\Options::list('pickup_locations'))
                     ->maxLength(255)
                     ->visible($isCar),
                 Forms\Components\TextInput::make('guests')
@@ -554,7 +554,7 @@ class BookingResource extends Resource
                             .$line('Fuel', $fuel($record->delivery_fuel))
                             .$line('Notes', $record->delivery_notes);
                         if ($record->returned_at) {
-                            $charges = collect($record->charges ?? [])->map(fn ($v, $k) => (Booking::CHARGES[$k][0] ?? $k).' AED '.number_format((float) $v))->implode(', ');
+                            $charges = collect($record->charges ?? [])->map(fn ($v, $k) => \App\Support\Options::chargeLabel($k).' AED '.number_format((float) $v))->implode(', ');
                             $html .= '<div style="font-weight:600;margin:.6rem 0 .25rem">Back</div>'
                                 .$line('When', $record->returned_at->format('d M Y, H:i'))
                                 .$line('By', $record->receivedBy?->name)

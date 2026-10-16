@@ -101,10 +101,14 @@ class Transaction extends Model
 
     public static function categories(?string $type = null): array
     {
+        // Editable under Business settings; the constants above are the starting list.
+        $income = \App\Support\Options::categories('income', self::INCOME_CATEGORIES);
+        $expense = \App\Support\Options::categories('expense', self::EXPENSE_CATEGORIES);
+
         return match ($type) {
-            TransactionType::Income->value => self::INCOME_CATEGORIES,
-            TransactionType::Expense->value => self::EXPENSE_CATEGORIES,
-            default => self::INCOME_CATEGORIES + self::EXPENSE_CATEGORIES,
+            TransactionType::Income->value => $income,
+            TransactionType::Expense->value => $expense,
+            default => $income + $expense,
         };
     }
 

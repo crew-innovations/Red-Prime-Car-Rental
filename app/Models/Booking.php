@@ -21,7 +21,6 @@ use Illuminate\Validation\ValidationException;
 use App\Models\Concerns\Audited;
 use App\Support\Availability;
 use App\Support\Tax;
-use App\Enums\DocumentType;
 use Spatie\MediaLibrary\HasMedia;
 use Spatie\MediaLibrary\InteractsWithMedia;
 use Spatie\MediaLibrary\MediaCollections\Models\Media;
@@ -46,16 +45,6 @@ class Booking extends Model implements HasMedia
         'damaged' => 'Damaged',
     ];
 
-    /** Return charge lines: key => [label, transaction category]. */
-    public const CHARGES = [
-        'extra_km' => ['Extra km', 'extras'],
-        'fuel' => ['Fuel refill', 'extras'],
-        'late' => ['Late return', 'extras'],
-        'salik' => ['Salik & fines', 'fines_recovered'],
-        'damage' => ['Damage', 'damage'],
-        'cleaning' => ['Cleaning', 'extras'],
-        'other' => ['Other', 'other_income'],
-    ];
 
     /** Avoids loops while bookings and their transactions update each other. */
     protected static bool $syncing = false;
@@ -263,12 +252,12 @@ class Booking extends Model implements HasMedia
     public function documentChecklist(): array
     {
         $docs = $this->customer_id
-            ? CustomerDocument::where('customer_id', $this->customer_id)->latest()->get()->groupBy(fn ($d) => $d->type->value)
+            ? CustomerDocument::where('customer_id', $this->customer_id)->latest()->get()->groupBy('type')
             : collect();
         $on = $this->start_at ?? now();
 
         return collect($this->requiredDocumentTypes())->mapWithKeys(function ($type) use ($docs, $on) {
-            $label = DocumentType::tryFrom($type)?->getLabel() ?? $type;
+            $label = \App\Support\Options::documentLabel($type);
             $list = $docs->get($type, collect());
             $valid = $list->first(fn (CustomerDocument $d) => $d->isValidOn($on));
             $latest = $list->first();

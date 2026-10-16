@@ -51,6 +51,7 @@ class DocumentsRelationManager extends RelationManager
             ->recordTitleAttribute('type')
             ->columns([
                 Tables\Columns\TextColumn::make('type')
+                    ->formatStateUsing(fn (?string $state): string => \App\Support\Options::documentLabel($state))
                     ->badge()
                     ->color('gray')
                     ->description(fn (CustomerDocument $record): ?string => $record->original_name),
@@ -121,7 +122,7 @@ class DocumentsRelationManager extends RelationManager
                             ->required(),
                         Forms\Components\TextInput::make('note')
                             ->label('Reason')
-                            ->datalist(['Photo not clear', 'Document expired', 'Wrong document', 'Name does not match', 'Back side missing'])
+                            ->datalist(\App\Support\Options::list('doc_reject_reasons'))
                             ->required(),
                     ])
                     ->visible(fn (CustomerDocument $record): bool => in_array($record->status, [DocumentStatus::Received, DocumentStatus::Approved], true))

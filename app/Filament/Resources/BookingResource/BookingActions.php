@@ -150,7 +150,7 @@ class BookingActions
                     'return_fuel' => $record->delivery_fuel ?? 'full',
                     'return_condition' => 'good',
                     'after_return' => 'ready',
-                    'charges' => [],
+                    'charges' => array_filter(['late' => \App\Support\Rules::lateCharge($record, now())]),
                     'deduct_from_deposit' => false,
                     'refund_deposit' => false,
                     'payment_method' => PaymentMethod::Card->value,
@@ -163,7 +163,10 @@ class BookingActions
                         ->label($record->isCar() ? 'Returned at' : 'Ended at')
                         ->native(false)->seconds(false)->displayFormat('d M Y, H:i')->required()
                         ->live(onBlur: true)
-                        ->helperText(fn (Get $get): ?string => ($h = BookingFlow::hoursLate($record, $get('returned_at'))) ? "{$h} hour(s) late. Add a late charge below if your terms apply one." : 'On time'),
+                        ->afterStateUpdated(fn (Set $set, $state) => $set('charges.late', \App\Support\Rules::lateCharge($record, $state)))
+                        ->helperText(fn (Get $get): ?string => ($h = BookingFlow::hoursLate($record, $get('returned_at')))
+                            ? "{$h} hour(s) late.".(\App\Support\Rules::lateCharge($record, $get('returned_at')) ? ' Late charge filled in from your rule; you can change it.' : ' Add a late charge below if needed.')
+                            : 'On time'),
                     Forms\Components\TextInput::make('return_km')
                         ->label('Odometer')
                         ->numeric()->minValue($record->delivery_km ?? 0)->suffix('km')
@@ -196,11 +199,11 @@ class BookingActions
 
                 Forms\Components\Fieldset::make('Extra charges')
                     ->columns(4)
-                    ->schema(collect(Booking::CHARGES)->map(fn ($meta, $key) => Forms\Components\TextInput::make("charges.{$key}")
+                    ->schema(collect(\App\Support\Options::charges())->map(fn ($meta, $key) => Forms\Components\TextInput::make("charges.{$key}")
                         ->label($meta[0])
                         ->numeric()->minValue(0)->prefix('AED')
                         ->live(onBlur: true)
-                        ->visible($record->isCar() || ! in_array($key, ['extra_km', 'fuel'], true))
+                        ->visible($record->isCar() || ! $meta[2])
                     )->values()->all()),
 
                 Forms\Components\Section::make('Payment check')
@@ -385,7 +388,7 @@ class BookingActions
                     ->required(),
                 Forms\Components\TextInput::make('cancel_reason')
                     ->label('Reason')
-                    ->datalist(['Customer changed plans', 'Payment not received', 'Car not available', 'Weather', 'Booked by mistake'])
+                    ->datalist(\App\Support\Options::list('cancel_reasons'))
                     ->required(),
             ])
             ->modalDescription(fn (Booking $record): string => (float) $record->paid_amount > 0
@@ -406,9 +409,15 @@ class BookingActions
             ->color('success')
             ->url(fn (Booking $record): ?string => Phone::whatsappUrl(
                 $record->customer?->whatsapp ?: $record->customer?->phone,
-                'Hi '.($record->customer?->name ?? '').', your booking '.$record->reference.' with RED PRIME RENTALS: '
-                    .($record->bookable?->name ?? '').', '.$record->start_at->format('d M, H:i').' to '.$record->end_at->format('d M, H:i')
-                    .((float) $record->balance > 0 ? '. Balance due: AED '.number_format((float) $record->balance).'.' : '.')
+                \App\Support\Options::message('msg_booking', [
+                    'name' => $record->customer?->name,
+                    'reference' => $record->reference,
+                    'item' => $record->bookable?->name ?? '',
+                    'start' => $record->start_at->format('d M, H:i'),
+                    'end' => $record->end_at->format('d M, H:i'),
+                    'amount' => number_format((float) $record->balance),
+                    'balance_line' => (float) $record->balance > 0 ? ' Balance due: AED '.number_format((float) $record->balance).'.' : '',
+                ])
             ))
             ->openUrlInNewTab()
             ->visible(fn (Booking $record): bool => filled($record->customer?->whatsapp ?: $record->customer?->phone));

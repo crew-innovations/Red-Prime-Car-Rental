@@ -2,7 +2,6 @@
 
 namespace App\Models;
 
-use App\Enums\DocumentType;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -65,7 +64,7 @@ class DocumentRequest extends Model
     public function typeLabels(): array
     {
         return collect($this->types ?? [])
-            ->mapWithKeys(fn ($t) => [$t => DocumentType::tryFrom($t)?->getLabel() ?? $t])
+            ->mapWithKeys(fn ($t) => [$t => \App\Support\Options::documentLabel($t)])
             ->all();
     }
 

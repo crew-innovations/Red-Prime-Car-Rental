@@ -273,7 +273,7 @@ class CustomerResource extends Resource
                     ->tooltip('WhatsApp')
                     ->icon('heroicon-o-chat-bubble-left-right')
                     ->color('success')
-                    ->url(fn (Customer $record): ?string => Phone::whatsappUrl($record->whatsapp ?: $record->phone, "Hi {$record->name}, this is RED PRIME RENTALS. "))
+                    ->url(fn (Customer $record): ?string => Phone::whatsappUrl($record->whatsapp ?: $record->phone, \App\Support\Options::message('msg_greeting', ['name' => $record->name])))
                     ->openUrlInNewTab()
                     ->visible(fn (Customer $record): bool => filled($record->whatsapp ?: $record->phone)),
                 Tables\Actions\Action::make('call')

@@ -3,7 +3,6 @@
 namespace App\Models;
 
 use App\Enums\DocumentStatus;
-use App\Enums\DocumentType;
 use App\Models\Concerns\Audited;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -20,7 +19,6 @@ class CustomerDocument extends Model
     protected function casts(): array
     {
         return [
-            'type' => DocumentType::class,
             'status' => DocumentStatus::class,
             'expires_on' => 'date',
             'reviewed_at' => 'datetime',

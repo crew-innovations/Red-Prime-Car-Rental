@@ -155,7 +155,7 @@ class QuotationResource extends Resource
                                     if ($date) {
                                         $start = Carbon::parse($date->date->toDateString().' '.($date->start_time ?? $date->trip?->start_time ?? '09:00'));
                                         $set('start_at', $start->toDateTimeString());
-                                        $set('end_at', $start->copy()->addMinutes($date->trip?->duration_minutes ?: 120)->toDateTimeString());
+                                        $set('end_at', $start->copy()->addMinutes($date->trip?->duration_minutes ?: \App\Support\Rules::tripMinutes())->toDateTimeString());
                                     }
                                 })
                                 ->visible(fn (Get $get): bool => $get('service_type') === ServiceType::Trip->value),
@@ -172,7 +172,7 @@ class QuotationResource extends Resource
                                 ->live(onBlur: true)
                                 ->afterStateUpdated(function (Get $get, Set $set, ?string $state) use ($isCar) {
                                     if ($state && ! $get('end_at')) {
-                                        $set('end_at', Carbon::parse($state)->addHours($isCar($get) ? 24 : 4)->toDateTimeString());
+                                        $set('end_at', Carbon::parse($state)->addHours(\App\Support\Rules::defaultHours($get('service_type')))->toDateTimeString());
                                     }
                                     self::recalculate($get, $set);
                                 }),
@@ -231,7 +231,7 @@ class QuotationResource extends Resource
                                 ->label('Extras (delivery, add-ons, charges)')
                                 ->schema([
                                     Forms\Components\TextInput::make('label')->required()->maxLength(120)
-                                        ->datalist(['Delivery & pick-up', 'Child seat', 'Additional driver', 'Full insurance', 'Decoration', 'Catering']),
+                                        ->datalist(fn (): array => \App\Support\Options::list('quote_extras')),
                                     Forms\Components\TextInput::make('amount')->numeric()->minValue(0)->prefix('AED')->required(),
                                 ])
                                 ->columns(2)
@@ -422,7 +422,7 @@ class QuotationResource extends Resource
                 ->icon('heroicon-o-hand-thumb-down')
                 ->color('danger')
                 ->authorize('manage-quotations')
-                ->form([Forms\Components\TextInput::make('reason')->datalist(['Price too high', 'Booked elsewhere', 'Changed plans', 'No response'])->required()])
+                ->form([Forms\Components\TextInput::make('reason')->datalist(\App\Support\Options::list('quote_decline_reasons'))->required()])
                 ->modalWidth('md')
                 ->visible(fn (Quotation $record): bool => in_array($record->status, [QuotationStatus::Draft, QuotationStatus::Sent, QuotationStatus::Negotiation], true))
                 ->action(fn (Quotation $record, array $data) => $record->update(['status' => QuotationStatus::Rejected, 'rejected_at' => now(), 'rejection_reason' => $data['reason']])),
@@ -471,7 +471,7 @@ class QuotationResource extends Resource
                     $record->lead->advanceTo('quotation_sent');
                 }
 
-                $message = 'Hi '.str($record->customerName())->before(' ').', here is your quotation '.$record->number.' from RED PRIME RENTALS: '.$record->publicUrl();
+                $message = \App\Support\Options::message('msg_quote', ['name' => $record->customerName(), 'number' => $record->number, 'link' => $record->publicUrl(), 'amount' => number_format((float) $record->total, 2)]);
                 $wa = Phone::whatsappUrl($record->customerPhone(), $message);
 
                 Notification::make()

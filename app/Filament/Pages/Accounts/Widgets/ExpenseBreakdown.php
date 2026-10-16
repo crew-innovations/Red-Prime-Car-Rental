@@ -43,7 +43,7 @@ class ExpenseBreakdown extends ChartWidget
                 'backgroundColor' => ['#d7141a', '#d4a62a', '#3b82f6', '#22c55e', '#a855f7', '#f97316', '#14b8a6', '#ec4899', '#71717a', '#eab308', '#0ea5e9', '#84cc16', '#64748b'],
                 'borderWidth' => 0,
             ]],
-            'labels' => $rows->map(fn ($r) => Transaction::EXPENSE_CATEGORIES[$r->category] ?? $r->category)->all(),
+            'labels' => $rows->map(fn ($r) => Transaction::categories('expense')[$r->category] ?? $r->category)->all(),
         ];
     }
 

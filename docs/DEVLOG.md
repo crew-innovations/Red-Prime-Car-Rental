@@ -90,3 +90,38 @@ These are not assumed anywhere; they can be set in Business settings when decide
 - Whether "Pending payment" bookings should hold the car (currently they do).
 - Buffer time between bookings, and refund and cancellation thresholds.
 - Whether to delete the old public copies of booking photos after checking (`php artisan crm:secure-booking-files --remove-public-copies`).
+
+## 2026-10-16 (later) · Nothing hard-coded: business settings for everything
+
+Bilal: "dont do anything hardcoded we have to edit or change everything by ourselves". His answers to the decisions:
+- VAT, quote validity and the late-return rule: they decide them themselves, so each is a setting.
+- Documents: they ask for documents according to need, through a secure upload link.
+- Pending payment: it holds the car.
+
+**Settings › Business settings** now has seven tabs. Admin only by default; the permission itself is editable.
+
+| Tab | What can be changed |
+|---|---|
+| Company & messages | Company and bank details; every WhatsApp message template (greeting, quotation, document request, booking details, payment reminder) with `{first_name}`, `{company}`, `{link}`… placeholders |
+| Bookings & returns | Pending payment holds the car (on); gap between bookings (0 min); default booking length for cars (24 h) and yachts (4 h); default trip length (120 min); late grace (30 min); late-charge rule; return charge lines (rename and add; extra km, fuel and late cannot be removed) |
+| VAT & quotations | VAT on/off, rate, inclusive; default quote validity; standard terms; quote extras; decline reasons |
+| Documents | The document types themselves (add, rename, which ones the customer can upload); required types per booking type (none by default); block handover; link hours; rejection reasons |
+| Lists | Lost reasons, cancel reasons, pick-up places, car types, car brands, car locations, yacht types, yacht builders, marinas |
+| Money categories | Rename or add income and expense categories. Ones the CRM relies on come back if removed. |
+| Roles & permissions | Which role can do each of the 12 abilities. Super Admin always has everything, and Admin always keeps Business settings. |
+
+**Defaults:** the values in brackets above are the starting values, chosen so behaviour is unchanged until someone edits them.
+
+**Removed:** the hard-coded constants `LeadResource::LOST_REASONS`, `CarResource::BRANDS`/`TYPES`, `YachtResource::MARINAS`/`TYPES` and `Booking::CHARGES`, and every "RED PRIME RENTALS" text in messages. The values now come from `App\Support\Options` (lists, document types, charges, categories, messages) and `App\Support\Rules` (booking and return rules).
+
+**Safety:**
+- Document, charge and category keys never change when an item is renamed, so old records keep their names.
+- Removed items still show correctly on records that already use them.
+- Every save of the settings is written to the audit log, with the old and new values.
+
+**Tests run:**
+- `php -l` and the verify script on 30 changed files: OK.
+- `Options` unit tests (lists, templates, keys, charges, document types, categories, saved values kept): 16 of 16 passed.
+- `Rules` unit tests (grace, the four late-charge modes, with driver, yacht, defaults): 11 of 11 passed.
+
+**Still to test live:** saving the settings page and the effect on the forms, after deploy.

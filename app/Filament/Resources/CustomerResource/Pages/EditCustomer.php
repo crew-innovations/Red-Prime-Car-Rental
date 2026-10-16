@@ -26,7 +26,7 @@ class EditCustomer extends EditRecord
                 ->label('WhatsApp')
                 ->icon('heroicon-o-chat-bubble-left-right')
                 ->color('success')
-                ->url(Phone::whatsappUrl($customer->whatsapp ?: $customer->phone, "Hi {$customer->name}, this is RED PRIME RENTALS. "))
+                ->url(Phone::whatsappUrl($customer->whatsapp ?: $customer->phone, \App\Support\Options::message('msg_greeting', ['name' => $customer->name])))
                 ->openUrlInNewTab()
                 ->visible(filled($customer->whatsapp ?: $customer->phone)),
             Actions\Action::make('call')

@@ -24,9 +24,6 @@ use Illuminate\Support\Facades\DB;
  */
 class Availability
 {
-    /** Default trip length when a trip has no duration set (minutes). */
-    public const DEFAULT_TRIP_MINUTES = 120;
-
     /** Lock the asset row for the rest of the current transaction. */
     public static function lock(string $type, int $id): ?Model
     {
@@ -58,6 +55,7 @@ class Availability
 
         $start = Carbon::parse($start);
         $end = Carbon::parse($end);
+        $buffer = Rules::bufferMinutes(); // gap kept free between bookings (Business settings)
 
         self::lock($type, $id);
 
@@ -65,14 +63,14 @@ class Availability
             ->blocking()
             ->where('bookable_type', $type)
             ->where('bookable_id', $id)
-            ->where('start_at', '<', $end)
-            ->where('end_at', '>', $start)
+            ->where('start_at', '<', $end->copy()->addMinutes($buffer))
+            ->where('end_at', '>', $start->copy()->subMinutes($buffer))
             ->when($ignoreBookingId, fn (Builder $q) => $q->whereKeyNot($ignoreBookingId))
             ->orderBy('start_at')
             ->first();
 
         if ($clash) {
-            return 'Already booked for these dates: '.$clash->reference.' ('.$clash->start_at->format('d M H:i').' – '.$clash->end_at->format('d M H:i').').';
+            return ($buffer ? 'Already booked (including the '.$buffer.'-minute gap between bookings): ' : 'Already booked for these dates: ').$clash->reference.' ('.$clash->start_at->format('d M H:i').' – '.$clash->end_at->format('d M H:i').').';
         }
 
         if ($type === 'yacht' && ($departure = self::tripDepartureClash($id, $start, $end))) {
@@ -122,7 +120,7 @@ class Availability
         $time = $d->start_time ?? $d->trip?->start_time ?? '00:00';
         $from = Carbon::parse($d->date->toDateString().' '.$time);
 
-        return [$from, $from->copy()->addMinutes($d->trip?->duration_minutes ?: self::DEFAULT_TRIP_MINUTES)];
+        return [$from, $from->copy()->addMinutes($d->trip?->duration_minutes ?: Rules::tripMinutes())];
     }
 
     /** Car / yacht is in maintenance or switched off. */

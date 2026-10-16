@@ -45,19 +45,6 @@ class YachtResource extends Resource
 
     protected static ?string $recordTitleAttribute = 'name';
 
-    public const TYPES = [
-        'Motor Yacht' => 'Motor Yacht',
-        'Superyacht' => 'Superyacht',
-        'Sailing Yacht' => 'Sailing Yacht',
-        'Catamaran' => 'Catamaran',
-        'Speedboat' => 'Speedboat',
-        'Fishing Boat' => 'Fishing Boat',
-    ];
-
-    public const MARINAS = [
-        'Dubai Marina', 'Dubai Harbour', 'Bluewaters', 'Palm Jumeirah', 'Port Rashid',
-        'Dubai Creek Harbour', 'Jumeirah Fishing Harbour', 'Al Seef',
-    ];
 
     public static function form(Form $form): Form
     {
@@ -112,11 +99,11 @@ class YachtResource extends Resource
                             ->maxLength(255)
                             ->columnSpanFull(),
                         Forms\Components\Select::make('type')
-                            ->options(self::TYPES)
+                            ->options(fn (?Model $record): array => \App\Support\Options::choices('yacht_types', $record?->type))
                             ->native(false),
                         Forms\Components\TextInput::make('manufacturer')
                             ->label('Builder')
-                            ->datalist(['Azimut', 'Sunseeker', 'Princess', 'Ferretti', 'Majesty', 'Gulf Craft', 'Riva', 'Benetti', 'Lagoon'])
+                            ->datalist(fn (): array => \App\Support\Options::list('yacht_brands'))
                             ->maxLength(100),
                         Forms\Components\TextInput::make('model')
                             ->maxLength(100),
@@ -131,7 +118,7 @@ class YachtResource extends Resource
                             ->suffix('ft'),
                         Forms\Components\TextInput::make('marina')
                             ->label('Home marina')
-                            ->datalist(self::MARINAS)
+                            ->datalist(fn (): array => \App\Support\Options::list('marinas'))
                             ->maxLength(100),
                     ]),
 
@@ -409,7 +396,7 @@ class YachtResource extends Resource
                     ->options(YachtStatus::class)
                     ->multiple(),
                 Tables\Filters\SelectFilter::make('type')
-                    ->options(self::TYPES)
+                    ->options(fn (): array => \App\Support\Options::choices('yacht_types'))
                     ->multiple(),
                 \App\Filament\Support\ReadinessUi::filter(),
                 WebsitePublishing::filter(),
