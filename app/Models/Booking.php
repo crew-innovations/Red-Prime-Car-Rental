@@ -336,7 +336,7 @@ class Booking extends Model implements HasMedia
     }
 
     /** Price suggestion from the car / yacht / trip rates. Returns [rate_type, quantity, rate, amount]. */
-    public static function quote(?Model $item, ?string $start, ?string $end, ?string $driveMode = null, ?int $guests = null): ?array
+    public static function quote(?Model $item, $start, $end, ?string $driveMode = null, ?int $guests = null): ?array
     {
         if (! $item || ! $start) {
             return null;
