@@ -31,7 +31,7 @@ class BookingsRelationManager extends RelationManager
 
     public function isReadOnly(): bool
     {
-        return false;
+        return ! \App\Support\Access::allows('manage-bookings');
     }
 
     protected function createUrl(): string
@@ -61,6 +61,7 @@ class BookingsRelationManager extends RelationManager
                 Tables\Actions\Action::make('new')
                     ->label('New booking')
                     ->icon('heroicon-o-plus')
+                    ->authorize('manage-bookings')
                     ->url(fn (): string => $this->createUrl()),
             ])
             ->actions([

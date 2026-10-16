@@ -8,10 +8,13 @@ use App\Filament\Resources\CustomerResource;
 use App\Filament\Resources\LeadResource;
 use App\Models\Booking;
 use Filament\Actions;
+use App\Filament\Concerns\GuardsSave;
 use Filament\Resources\Pages\EditRecord;
 
 class EditBooking extends EditRecord
 {
+    use GuardsSave;
+
     protected static string $resource = BookingResource::class;
 
     public function getTitle(): string
@@ -27,6 +30,11 @@ class EditBooking extends EditRecord
         return collect([$b->customer?->name, $b->bookable?->name, $b->drive_mode?->getLabel(), $b->status?->getLabel()])->filter()->implode(' · ');
     }
 
+    protected function afterSave(): void
+    {
+        BookingResource::logOverride($this->getRecord(), $this->data);
+    }
+
     protected function getHeaderActions(): array
     {
         $after = fn () => $this->redirect(BookingResource::getUrl('edit', ['record' => $this->getRecord()]));
@@ -38,6 +46,12 @@ class EditBooking extends EditRecord
             BookingActions::refundDeposit(Actions\Action::class)->after($after),
             BookingActions::whatsapp(Actions\Action::class),
             Actions\ActionGroup::make([
+                \App\Filament\Support\DocumentActions::requestLink(Actions\Action::class, fn () => $this->getRecord()->customer, fn () => $this->getRecord()),
+                Actions\Action::make('quotation')
+                    ->label('Open quotation')
+                    ->icon('heroicon-o-document-text')
+                    ->visible(fn (): bool => (bool) $this->getRecord()->quotation_id)
+                    ->url(fn (): ?string => $this->getRecord()->quotation_id ? \App\Filament\Resources\QuotationResource::getUrl('edit', ['record' => $this->getRecord()->quotation_id]) : null),
                 Actions\Action::make('customer')
                     ->label('Open customer')
                     ->icon('heroicon-o-user')

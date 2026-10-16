@@ -3,6 +3,7 @@
 namespace App\Filament\Resources\CustomerResource\Pages;
 
 use App\Enums\CustomerType;
+use App\Enums\DocumentStatus;
 use App\Filament\Resources\CustomerResource;
 use App\Models\Customer;
 use Filament\Actions;
@@ -39,6 +40,11 @@ class ListCustomers extends ListRecords
                 ->badge(fn () => Customer::followUpDue()->count() ?: null)
                 ->badgeColor('danger')
                 ->modifyQueryUsing(fn (Builder $query) => $query->followUpDue()),
+            'documents' => Tab::make('Documents to review')
+                ->icon('heroicon-o-identification')
+                ->badge(fn () => Customer::whereHas('documents', fn (Builder $q) => $q->where('status', DocumentStatus::Received))->count() ?: null)
+                ->badgeColor('warning')
+                ->modifyQueryUsing(fn (Builder $query) => $query->whereHas('documents', fn (Builder $q) => $q->where('status', DocumentStatus::Received))),
         ];
     }
 }

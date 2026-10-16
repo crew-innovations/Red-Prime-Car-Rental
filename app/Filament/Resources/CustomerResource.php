@@ -8,6 +8,8 @@ use App\Filament\Resources\CustomerResource\RelationManagers;
 use App\Models\Customer;
 use App\Models\User;
 use App\Support\Phone;
+use App\Filament\Concerns\GuardedResource;
+use App\Support\Access;
 use Filament\Forms;
 use Filament\Forms\Form;
 use Filament\Forms\Get;
@@ -22,13 +24,25 @@ use Illuminate\Database\Eloquent\SoftDeletingScope;
 
 class CustomerResource extends Resource
 {
+    use GuardedResource;
+
+    protected static function manageAbility(): string
+    {
+        return 'manage-leads';
+    }
+
+    protected static function deleteAbility(): string
+    {
+        return 'delete-records';
+    }
+
     protected static ?string $model = Customer::class;
 
     protected static ?string $navigationIcon = 'heroicon-o-users';
 
     protected static ?string $navigationGroup = 'Sales';
 
-    protected static ?int $navigationSort = 4;
+    protected static ?int $navigationSort = 5;
 
     protected static ?string $recordTitleAttribute = 'name';
 
@@ -52,6 +66,7 @@ class CustomerResource extends Resource
     public static function form(Form $form): Form
     {
         return $form
+            ->disabled(fn (): bool => ! static::canModify())
             ->columns(3)
             ->schema([
                 Forms\Components\Group::make()
@@ -305,7 +320,11 @@ class CustomerResource extends Resource
         return [
             RelationManagers\LeadsRelationManager::class,
             \App\Filament\Resources\BookingResource\RelationManagers\BookingsRelationManager::class,
+            \App\Filament\Resources\QuotationResource\RelationManagers\QuotationsRelationManager::class,
+            RelationManagers\DocumentsRelationManager::class,
+            RelationManagers\DocumentRequestsRelationManager::class,
             \App\Filament\Resources\TransactionResource\RelationManagers\TransactionsRelationManager::class,
+            \App\Filament\RelationManagers\HistoryRelationManager::class,
         ];
     }
 

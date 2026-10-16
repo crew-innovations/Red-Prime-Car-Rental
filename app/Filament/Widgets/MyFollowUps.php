@@ -12,6 +12,11 @@ use Filament\Widgets\TableWidget as BaseWidget;
 /** Open leads due for follow-up today or earlier, for the logged-in salesperson. */
 class MyFollowUps extends BaseWidget
 {
+    public static function canView(): bool
+    {
+        return ! \App\Support\Access::isDriverOnly();
+    }
+
     protected static ?int $sort = 5;
 
     protected int|string|array $columnSpan = 1;

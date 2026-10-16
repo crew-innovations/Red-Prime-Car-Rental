@@ -8,6 +8,7 @@ use App\Enums\LeadStatus;
 use App\Enums\Pipeline;
 use App\Enums\ServiceType;
 use Illuminate\Database\Eloquent\Builder;
+use App\Models\Concerns\Audited;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -17,7 +18,7 @@ use Illuminate\Support\Facades\DB;
 
 class Lead extends Model
 {
-    use SoftDeletes;
+    use Audited, SoftDeletes;
 
     protected $guarded = ['id'];
 
@@ -87,6 +88,11 @@ class Lead extends Model
         return $this->hasMany(Booking::class);
     }
 
+    public function quotations(): HasMany
+    {
+        return $this->hasMany(Quotation::class);
+    }
+
     public function leadSource(): BelongsTo
     {
         return $this->belongsTo(LeadSource::class);
@@ -138,11 +144,8 @@ class Lead extends Model
         return DB::transaction(function () {
             $existing = ($this->phone || $this->whatsapp || $this->email)
                 ? Customer::query()->where(function ($q) {
-                    if ($this->phone) {
-                        $q->orWhere('phone', $this->phone)->orWhere('whatsapp', $this->phone);
-                    }
-                    if ($this->whatsapp) {
-                        $q->orWhere('phone', $this->whatsapp)->orWhere('whatsapp', $this->whatsapp);
+                    foreach (array_filter([$this->phone, $this->whatsapp]) as $number) {
+                        $q->orWhere(fn ($q) => \App\Support\Phone::whereMatches($q, ['phone', 'whatsapp'], $number));
                     }
                     if ($this->email) {
                         $q->orWhere('email', $this->email);

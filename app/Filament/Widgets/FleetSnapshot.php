@@ -16,6 +16,11 @@ use Filament\Widgets\StatsOverviewWidget\Stat;
 
 class FleetSnapshot extends StatsOverviewWidget
 {
+    public static function canView(): bool
+    {
+        return ! \App\Support\Access::isDriverOnly();
+    }
+
     protected static ?int $sort = 3;
 
     protected static ?string $pollingInterval = null;
@@ -30,9 +35,9 @@ class FleetSnapshot extends StatsOverviewWidget
     protected function getStats(): array
     {
         $cars = Car::count();
-        $carsFree = Car::where('status', CarStatus::Available)->count();
+        $carsFree = Car::where('status', CarStatus::Available)->where('readiness', 'ready')->count();
         $yachts = Yacht::count();
-        $yachtsFree = Yacht::where('status', YachtStatus::Available)->count();
+        $yachtsFree = Yacht::where('status', YachtStatus::Available)->where('readiness', 'ready')->count();
         $trips = Trip::where('status', TripStatus::Active)->count();
         $tripsDated = Trip::where('status', TripStatus::Active)->has('upcomingDates')->count();
         $docs = Car::documentsDueSoon()->count() + Yacht::documentsDueSoon()->count();

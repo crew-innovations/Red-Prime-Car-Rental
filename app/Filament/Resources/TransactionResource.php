@@ -10,6 +10,8 @@ use App\Models\Car;
 use App\Models\Transaction;
 use App\Models\Trip;
 use App\Models\Yacht;
+use App\Filament\Concerns\GuardedResource;
+use App\Support\Access;
 use Filament\Forms;
 use Filament\Forms\Components\MorphToSelect;
 use Filament\Forms\Form;
@@ -26,6 +28,28 @@ use Illuminate\Database\Eloquent\SoftDeletingScope;
 /** Accounts: revenue and expenses. */
 class TransactionResource extends Resource
 {
+    use GuardedResource;
+
+    protected static function manageAbility(): string
+    {
+        return 'manage-finance';
+    }
+
+    protected static function deleteAbility(): string
+    {
+        return 'manage-finance';
+    }
+
+    public static function canCreate(): bool
+    {
+        return Access::allows('record-payments');
+    }
+
+    public static function canViewAny(): bool
+    {
+        return Access::allows('record-payments');
+    }
+
     protected static ?string $model = Transaction::class;
 
     protected static ?string $navigationIcon = 'heroicon-o-banknotes';
@@ -38,7 +62,8 @@ class TransactionResource extends Resource
 
     public static function form(Form $form): Form
     {
-        return $form->columns(3)->schema(self::formSchema());
+        return $form
+            ->disabled(fn (): bool => ! static::canModify())->columns(3)->schema(self::formSchema());
     }
 
     /**
@@ -186,6 +211,7 @@ class TransactionResource extends Resource
                 Tables\Actions\BulkActionGroup::make([
                     Tables\Actions\BulkAction::make('markPaid')
                         ->label('Mark as paid')
+                        ->authorize('record-payments')
                         ->icon('heroicon-o-check-circle')
                         ->action(fn (Collection $records) => $records->each->update(['status' => PaymentStatus::Paid, 'amount_paid' => null]))
                         ->deselectRecordsAfterCompletion(),
@@ -256,6 +282,7 @@ class TransactionResource extends Resource
         return Tables\Actions\Action::make('markPaid')
             ->label('')
             ->tooltip('Mark as paid')
+            ->authorize('record-payments')
             ->icon('heroicon-o-check-circle')
             ->color('success')
             ->requiresConfirmation()

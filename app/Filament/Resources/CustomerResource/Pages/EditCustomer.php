@@ -7,10 +7,13 @@ use App\Filament\Resources\LeadResource;
 use App\Models\Customer;
 use App\Support\Phone;
 use Filament\Actions;
+use App\Filament\Concerns\GuardsSave;
 use Filament\Resources\Pages\EditRecord;
 
 class EditCustomer extends EditRecord
 {
+    use GuardsSave;
+
     protected static string $resource = CustomerResource::class;
 
     protected function getHeaderActions(): array

@@ -32,10 +32,13 @@ class WelcomeBanner extends Widget
         $newToday = Lead::whereDate('created_at', today())->count();
         $followUps = Lead::followUpDue()->where('assigned_to', auth()->id())->count();
         $newUnhandled = Lead::where('status', LeadStatus::New)->count();
-        $carsFree = Car::where('status', CarStatus::Available)->count();
+        $carsFree = Car::where('status', CarStatus::Available)->where('readiness', 'ready')->count();
         $docs = Car::documentsDueSoon()->count() + Yacht::documentsDueSoon()->count();
         $outToday = \App\Models\Booking::whereIn('status', [\App\Enums\BookingStatus::Confirmed, \App\Enums\BookingStatus::PendingPayment])->whereDate('start_at', today())->count();
         $backToday = \App\Models\Booking::where('status', \App\Enums\BookingStatus::InProgress)->where('end_at', '<=', now()->endOfDay())->count();
+        $docsToReview = \App\Models\CustomerDocument::where('status', \App\Enums\DocumentStatus::Received)->count();
+        $quotesWaiting = \App\Models\Quotation::where('status', \App\Enums\QuotationStatus::Accepted)->whereNull('booking_id')->count();
+        $notReady = Car::where('readiness', '!=', 'ready')->count() + Yacht::where('readiness', '!=', 'ready')->count();
         $revenue = Transaction::totals(Transaction::query()->betweenDates(now()->startOfMonth(), now()->endOfMonth()))['received'];
 
         return [
@@ -50,16 +53,20 @@ class WelcomeBanner extends Widget
                 ? "You have {$followUps} follow-up".($followUps > 1 ? 's' : '').' waiting. Let\'s close some deals today.'
                 : 'You are all caught up. Here is how Red Prime is doing today.',
             'chips' => array_values(array_filter([
-                ['label' => 'revenue this month', 'value' => 'AED '.number_format($revenue), 'alert' => false],
+                \App\Support\Access::allows('manage-finance') ? ['label' => 'revenue this month', 'value' => 'AED '.number_format($revenue), 'alert' => false] : null,
                 ['label' => 'new leads today', 'value' => $newToday, 'alert' => false],
                 ['label' => 'not contacted yet', 'value' => $newUnhandled, 'alert' => $newUnhandled > 0],
                 ['label' => 'cars available', 'value' => $carsFree, 'alert' => false],
                 $outToday ? ['label' => 'going out today', 'value' => $outToday, 'alert' => false] : null,
                 $backToday ? ['label' => 'due back today', 'value' => $backToday, 'alert' => true] : null,
+                $notReady ? ['label' => 'waiting for cleaning / inspection', 'value' => $notReady, 'alert' => true] : null,
+                $quotesWaiting ? ['label' => 'accepted quotes to book', 'value' => $quotesWaiting, 'alert' => true] : null,
+                $docsToReview ? ['label' => 'customer documents to review', 'value' => $docsToReview, 'alert' => true] : null,
                 $docs ? ['label' => 'documents due', 'value' => $docs, 'alert' => true] : null,
             ])),
             'actions' => [
                 ['label' => 'New lead', 'icon' => 'heroicon-m-plus', 'url' => LeadResource::getUrl('create'), 'primary' => true],
+                ['label' => 'New quotation', 'icon' => 'heroicon-m-document-text', 'url' => \App\Filament\Resources\QuotationResource::getUrl('create'), 'primary' => false],
                 ['label' => 'New booking', 'icon' => 'heroicon-m-calendar-days', 'url' => \App\Filament\Resources\BookingResource::getUrl('create'), 'primary' => false],
                 ['label' => 'Pipeline', 'icon' => 'heroicon-m-view-columns', 'url' => \App\Filament\Pages\PipelineBoard::getUrl(), 'primary' => false],
                 ['label' => 'Add car', 'icon' => 'heroicon-m-truck', 'url' => CarResource::getUrl('create'), 'primary' => false],

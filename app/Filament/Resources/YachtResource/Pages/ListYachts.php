@@ -3,6 +3,7 @@
 namespace App\Filament\Resources\YachtResource\Pages;
 
 use App\Enums\YachtStatus;
+use App\Enums\Readiness;
 use App\Filament\Resources\YachtResource;
 use App\Models\Yacht;
 use Filament\Actions;
@@ -33,9 +34,13 @@ class ListYachts extends ListRecords
         return [
             'all' => Tab::make('All'),
             'available' => Tab::make('Available')
-                ->badge(fn () => $count(YachtStatus::Available))
+                ->badge(fn () => Yacht::where('status', YachtStatus::Available)->where('readiness', Readiness::Ready)->count() ?: null)
                 ->badgeColor('success')
-                ->modifyQueryUsing(fn (Builder $query) => $query->where('status', YachtStatus::Available)),
+                ->modifyQueryUsing(fn (Builder $query) => $query->where('status', YachtStatus::Available)->where('readiness', Readiness::Ready)),
+            'attention' => Tab::make('Needs cleaning / inspection')
+                ->badge(fn () => Yacht::where('readiness', '!=', Readiness::Ready)->count() ?: null)
+                ->badgeColor('warning')
+                ->modifyQueryUsing(fn (Builder $query) => $query->where('readiness', '!=', Readiness::Ready)),
             'booked' => Tab::make('Booked')
                 ->modifyQueryUsing(fn (Builder $query) => $query->where('status', YachtStatus::Booked)),
             'maintenance' => Tab::make('Maintenance')

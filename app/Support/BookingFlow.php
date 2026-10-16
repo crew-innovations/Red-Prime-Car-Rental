@@ -5,6 +5,7 @@ namespace App\Support;
 use App\Enums\BookingStatus;
 use App\Enums\CarStatus;
 use App\Enums\PaymentStatus;
+use App\Enums\Readiness;
 use App\Enums\TransactionType;
 use App\Enums\YachtStatus;
 use App\Models\Booking;
@@ -68,6 +69,7 @@ class BookingFlow
                 'return_km' => $data['return_km'] ?? null,
                 'return_fuel' => $data['return_fuel'] ?? null,
                 'return_condition' => $data['return_condition'] ?? null,
+                'inspection_result' => $data['after_return'] ?? null,
                 'return_notes' => $data['return_notes'] ?? null,
                 'received_by' => auth()->id(),
                 'charges' => $charges->all() ?: null,
@@ -103,10 +105,26 @@ class BookingFlow
             if ($item instanceof Car && ! empty($data['return_km']) && (int) $data['return_km'] > (int) $item->mileage) {
                 $item->forceFill(['mileage' => (int) $data['return_km']])->saveQuietly();
             }
-            if (! empty($data['send_to_maintenance']) && ($item instanceof Car || $item instanceof Yacht)) {
-                $item->forceFill(['status' => $item instanceof Car ? CarStatus::Maintenance : YachtStatus::Maintenance])->saveQuietly();
-            } else {
-                $item?->refreshBookingStatus();
+            // Booking status, money and the car's readiness are separate: the car is
+            // only handed over again once it is marked ready.
+            if ($item instanceof Car || $item instanceof Yacht) {
+                $after = $data['after_return'] ?? 'ready';
+                $note = trim(($booking->reference ? $booking->reference.': ' : '').($data['return_notes'] ?? ''), ': ');
+
+                if ($after === 'maintenance') {
+                    $item->update([
+                        'status' => $item instanceof Car ? CarStatus::Maintenance : YachtStatus::Maintenance,
+                        'readiness' => Readiness::Inspection,
+                        'readiness_note' => mb_substr($note ?: 'Damaged on return', 0, 255),
+                    ]);
+                } else {
+                    $readiness = Readiness::tryFrom($after) ?? Readiness::Inspection;
+                    $item->update([
+                        'readiness' => $readiness,
+                        'readiness_note' => $readiness === Readiness::Ready ? null : mb_substr($note ?: 'After '.$booking->reference, 0, 255),
+                    ]);
+                    $item->refreshBookingStatus();
+                }
             }
 
             $booking->refresh();
@@ -116,7 +134,22 @@ class BookingFlow
         });
     }
 
-    public static function refundDeposit(Booking $booking, float $amount, ?string $method): void
+    /** Cleaning / inspection done: the car or yacht can be handed over again. */
+    public static function markReady(Car|Yacht $item, ?string $note = null): void
+    {
+        $fromMaintenance = in_array($item->status, [CarStatus::Maintenance, YachtStatus::Maintenance], true);
+        $item->update(array_filter([
+            'readiness' => Readiness::Ready,
+            'readiness_note' => null,
+            'status' => $fromMaintenance ? ($item instanceof Car ? CarStatus::Available : YachtStatus::Available) : null,
+        ], fn ($v, $k) => $k === 'readiness_note' || $v !== null, ARRAY_FILTER_USE_BOTH));
+        $item->refreshBookingStatus();
+        if ($note) {
+            \App\Models\AuditLog::note($item, 'ready', $note);
+        }
+    }
+
+        public static function refundDeposit(Booking $booking, float $amount, ?string $method): void
     {
         self::depositOut($booking, min($amount, $booking->depositHeld()), $method, 'Deposit refund · '.$booking->reference);
     }
@@ -141,7 +174,7 @@ class BookingFlow
     protected static function attachPhotos(Booking $booking, array $paths, string $collection): void
     {
         foreach (array_filter($paths) as $path) {
-            $booking->addMediaFromDisk($path, 'uploads')->toMediaCollection($collection);
+            $booking->addMediaFromDisk($path, 'private')->toMediaCollection($collection);
         }
     }
 

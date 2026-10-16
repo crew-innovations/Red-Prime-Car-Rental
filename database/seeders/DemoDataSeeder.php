@@ -145,5 +145,6 @@ class DemoDataSeeder extends Seeder
 
         $this->call(DemoAccountsSeeder::class);
         $this->call(DemoBookingsSeeder::class);
+        $this->call(DemoQuotationsSeeder::class);
     }
 }

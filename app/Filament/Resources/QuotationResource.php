@@ -1,0 +1,596 @@
+<?php
+
+namespace App\Filament\Resources;
+
+use App\Enums\BookingStatus;
+use App\Enums\DriveMode;
+use App\Enums\PaymentMethod;
+use App\Enums\QuotationStatus;
+use App\Enums\ServiceType;
+use App\Filament\Concerns\GuardedResource;
+use App\Filament\Resources\QuotationResource\Pages;
+use App\Models\AuditLog;
+use App\Models\Booking;
+use App\Models\Car;
+use App\Models\Quotation;
+use App\Models\Setting;
+use App\Models\TripDate;
+use App\Models\Yacht;
+use App\Support\Access;
+use App\Support\Phone;
+use App\Support\Tax;
+use Filament\Forms;
+use Filament\Forms\Form;
+use Filament\Forms\Get;
+use Filament\Forms\Set;
+use Filament\Notifications\Actions\Action as NotificationAction;
+use Filament\Notifications\Notification;
+use Filament\Resources\Resource;
+use Filament\Support\Enums\FontWeight;
+use Filament\Tables;
+use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\SoftDeletingScope;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\HtmlString;
+use Illuminate\Validation\ValidationException;
+
+/**
+ * Quotation Builder (Schedule A8). A quote is editable while Draft or in
+ * Negotiation; once sent the price is locked. Accepting a quote does not hold
+ * the car / yacht — converting it to a booking re-checks availability.
+ */
+class QuotationResource extends Resource
+{
+    use GuardedResource;
+
+    protected static ?string $model = Quotation::class;
+
+    protected static ?string $navigationIcon = 'heroicon-o-document-text';
+
+    protected static ?string $navigationGroup = 'Sales';
+
+    protected static ?int $navigationSort = 3;
+
+    protected static ?string $recordTitleAttribute = 'number';
+
+    protected static function manageAbility(): string
+    {
+        return 'manage-quotations';
+    }
+
+    protected static function deleteAbility(): string
+    {
+        return 'delete-records';
+    }
+
+    /** The price can only change while Draft or Negotiation. */
+    public static function isLocked(?Quotation $record): bool
+    {
+        return $record !== null && ! $record->status?->isEditable();
+    }
+
+    /* ------------------------------------------------------------------ */
+    /*  Form                                                              */
+    /* ------------------------------------------------------------------ */
+
+    public static function form(Form $form): Form
+    {
+        $isCar = fn (Get $get): bool => $get('service_type') === ServiceType::Car->value;
+
+        return $form
+            ->disabled(fn (?Quotation $record): bool => ! static::canModify() || static::isLocked($record))
+            ->columns(3)
+            ->schema([
+                Forms\Components\Group::make()->columnSpan(['lg' => 2])->schema([
+                    Forms\Components\Section::make('Customer & service')
+                        ->icon('heroicon-o-user')
+                        ->columns(2)
+                        ->schema([
+                            Forms\Components\Select::make('customer_id')
+                                ->label('Customer')
+                                ->relationship('customer', 'name')
+                                ->getOptionLabelFromRecordUsing(fn (Model $record): string => $record->name.($record->phone ? ' · '.$record->phone : ''))
+                                ->searchable(['name', 'phone', 'whatsapp', 'email', 'company_name'])
+                                ->preload()
+                                ->required(fn (Get $get): bool => blank($get('lead_id')))
+                                ->placeholder(fn (Get $get): string => filled($get('lead_id')) ? 'From the lead (profile created when converted)' : 'Select an option')
+                                ->createOptionForm([
+                                    Forms\Components\TextInput::make('name')->required()->maxLength(255),
+                                    Forms\Components\TextInput::make('phone')->tel()->required()->maxLength(30),
+                                    Forms\Components\TextInput::make('email')->email()->maxLength(255),
+                                ])
+                                ->columnSpanFull(),
+                            Forms\Components\Hidden::make('lead_id'),
+                            Forms\Components\ToggleButtons::make('service_type')
+                                ->label('Service')
+                                ->options([
+                                    ServiceType::Car->value => ServiceType::Car->getLabel(),
+                                    ServiceType::Yacht->value => ServiceType::Yacht->getLabel(),
+                                    ServiceType::Trip->value => ServiceType::Trip->getLabel(),
+                                ])
+                                ->default(ServiceType::Car->value)
+                                ->inline()
+                                ->required()
+                                ->live()
+                                ->afterStateUpdated(fn (Set $set) => $set('bookable_id', null))
+                                ->columnSpanFull(),
+                            Forms\Components\Select::make('bookable_id')
+                                ->label(fn (Get $get): string => match ($get('service_type')) {
+                                    ServiceType::Yacht->value => 'Yacht',
+                                    ServiceType::Trip->value => 'Yacht trip',
+                                    default => 'Car',
+                                })
+                                ->options(fn (Get $get): array => BookingResource::itemOptions($get('service_type')))
+                                ->searchable()
+                                ->required()
+                                ->live()
+                                ->afterStateUpdated(function (Get $get, Set $set) {
+                                    $item = BookingResource::findItem($get('service_type'), $get('bookable_id'));
+                                    if ($item instanceof Car) {
+                                        $set('drive_mode', $item->self_drive ? DriveMode::SelfDrive->value : DriveMode::WithDriver->value);
+                                    }
+                                    if (($item instanceof Car || $item instanceof Yacht) && $item->deposit) {
+                                        $set('security_deposit', (float) $item->deposit);
+                                    }
+                                    self::recalculate($get, $set);
+                                })
+                                ->columnSpanFull(),
+                            Forms\Components\ToggleButtons::make('drive_mode')
+                                ->label('Rental type')
+                                ->options(DriveMode::class)
+                                ->default(DriveMode::SelfDrive->value)
+                                ->inline()
+                                ->live()
+                                ->afterStateUpdated(fn (Get $get, Set $set) => self::recalculate($get, $set))
+                                ->visible($isCar),
+                            Forms\Components\Select::make('trip_date_id')
+                                ->label('Trip date')
+                                ->options(fn (Get $get): array => BookingResource::tripDateOptions($get('bookable_id')))
+                                ->live()
+                                ->afterStateUpdated(function (Get $get, Set $set) {
+                                    $date = TripDate::with('trip')->find($get('trip_date_id'));
+                                    if ($date) {
+                                        $start = Carbon::parse($date->date->toDateString().' '.($date->start_time ?? $date->trip?->start_time ?? '09:00'));
+                                        $set('start_at', $start->toDateTimeString());
+                                        $set('end_at', $start->copy()->addMinutes($date->trip?->duration_minutes ?: 120)->toDateTimeString());
+                                    }
+                                })
+                                ->visible(fn (Get $get): bool => $get('service_type') === ServiceType::Trip->value),
+                        ]),
+
+                    Forms\Components\Section::make('Dates')
+                        ->icon('heroicon-o-calendar')
+                        ->columns(2)
+                        ->schema([
+                            Forms\Components\DateTimePicker::make('start_at')
+                                ->label(fn (Get $get): string => $isCar($get) ? 'Pick-up' : 'Start')
+                                ->native(false)->seconds(false)->minutesStep(15)->displayFormat('D, d M Y · H:i')
+                                ->required()
+                                ->live(onBlur: true)
+                                ->afterStateUpdated(function (Get $get, Set $set, ?string $state) use ($isCar) {
+                                    if ($state && ! $get('end_at')) {
+                                        $set('end_at', Carbon::parse($state)->addHours($isCar($get) ? 24 : 4)->toDateTimeString());
+                                    }
+                                    self::recalculate($get, $set);
+                                }),
+                            Forms\Components\DateTimePicker::make('end_at')
+                                ->label(fn (Get $get): string => $isCar($get) ? 'Return' : 'End')
+                                ->native(false)->seconds(false)->minutesStep(15)->displayFormat('D, d M Y · H:i')
+                                ->required()
+                                ->after('start_at')
+                                ->live(onBlur: true)
+                                ->afterStateUpdated(fn (Get $get, Set $set) => self::recalculate($get, $set))
+                                ->helperText(function (Get $get): ?HtmlString {
+                                    $type = $get('service_type');
+                                    $text = BookingResource::durationText($get('start_at'), $get('end_at'));
+                                    if (in_array($type, ['car', 'yacht'], true) && $get('bookable_id') && $get('start_at') && $get('end_at')
+                                        && ($clash = \App\Support\Availability::assetConflict($type, (int) $get('bookable_id'), $get('start_at'), $get('end_at')))) {
+                                        $text .= '<br><span style="color:rgb(var(--warning-600))">Heads-up: '.e($clash).' A quote does not hold the car.</span>';
+                                    }
+
+                                    return $text ? new HtmlString($text) : null;
+                                }),
+                            Forms\Components\TextInput::make('guests')
+                                ->numeric()->minValue(1)
+                                ->live(onBlur: true)
+                                ->afterStateUpdated(fn (Get $get, Set $set) => self::recalculate($get, $set))
+                                ->visible(fn (Get $get): bool => ! $isCar($get)),
+                            Forms\Components\TextInput::make('pickup_location')
+                                ->label(fn (Get $get): string => $isCar($get) ? 'Delivery / pick-up' : 'Meeting point')
+                                ->maxLength(255),
+                        ]),
+
+                    Forms\Components\Section::make('Price')
+                        ->icon('heroicon-o-banknotes')
+                        ->columns(3)
+                        ->schema([
+                            Forms\Components\Hidden::make('rate_type'),
+                            Forms\Components\Hidden::make('quantity'),
+                            Forms\Components\Hidden::make('rate'),
+                            Forms\Components\TextInput::make('base_amount')
+                                ->label('Rental price')
+                                ->numeric()->minValue(0)->prefix('AED')->default(0)->required()
+                                ->live(onBlur: true)
+                                ->helperText(fn (Get $get): ?string => $get('rate') !== null && $get('quantity')
+                                    ? rtrim(rtrim(number_format((float) $get('quantity'), 2), '0'), '.').' × AED '.number_format((float) $get('rate')).' / '.Booking::rateLabel($get('rate_type'))
+                                    : null)
+                                ->suffixAction(Forms\Components\Actions\Action::make('recalculate')
+                                    ->icon('heroicon-m-arrow-path')
+                                    ->tooltip('Recalculate from rates')
+                                    ->action(fn (Get $get, Set $set) => self::recalculate($get, $set))),
+                            Forms\Components\TextInput::make('discount')
+                                ->numeric()->minValue(0)->prefix('AED')->default(0)
+                                ->live(onBlur: true),
+                            Forms\Components\TextInput::make('security_deposit')
+                                ->label('Security deposit')
+                                ->numeric()->minValue(0)->prefix('AED')->default(0),
+                            Forms\Components\Repeater::make('extras')
+                                ->label('Extras (delivery, add-ons, charges)')
+                                ->schema([
+                                    Forms\Components\TextInput::make('label')->required()->maxLength(120)
+                                        ->datalist(['Delivery & pick-up', 'Child seat', 'Additional driver', 'Full insurance', 'Decoration', 'Catering']),
+                                    Forms\Components\TextInput::make('amount')->numeric()->minValue(0)->prefix('AED')->required(),
+                                ])
+                                ->columns(2)
+                                ->defaultItems(0)
+                                ->addActionLabel('Add extra')
+                                ->live(onBlur: true)
+                                ->columnSpanFull(),
+                            Forms\Components\Hidden::make('tax_rate')->default(fn () => Tax::defaultRate()),
+                            Forms\Components\Hidden::make('tax_inclusive')->default(fn () => Tax::defaultInclusive()),
+                            Forms\Components\TextInput::make('advance_required')
+                                ->label('Advance to confirm')
+                                ->numeric()->minValue(0)->prefix('AED')
+                                ->helperText('Optional. Shown to the customer.'),
+                            Forms\Components\Placeholder::make('totals')
+                                ->label('Total')
+                                ->columnSpan(2)
+                                ->content(function (Get $get): HtmlString {
+                                    $extras = collect($get('extras') ?? [])->sum(fn ($l) => (float) ($l['amount'] ?? 0));
+                                    $net = (float) $get('base_amount') + $extras - (float) $get('discount');
+                                    $rate = $get('tax_rate') !== null && $get('tax_rate') !== '' ? (float) $get('tax_rate') : null;
+                                    [$tax, $total] = Tax::apply($net, $rate, (bool) $get('tax_inclusive'));
+                                    $vat = $rate ? '<div style="font-size:.85rem;opacity:.75">VAT '.rtrim(rtrim(number_format($rate, 2), '0'), '.').'%'.($get('tax_inclusive') ? ' included' : '').': AED '.number_format($tax, 2).'</div>' : '';
+
+                                    return new HtmlString('<span style="font-size:1.4rem;font-weight:700">AED '.number_format($total, 2).'</span>'.$vat);
+                                }),
+                        ]),
+
+                    Forms\Components\Section::make('Shown to the customer')
+                        ->icon('heroicon-o-chat-bubble-left-ellipsis')
+                        ->collapsible()
+                        ->schema([
+                            Forms\Components\Textarea::make('customer_notes')->label('Notes')->rows(3),
+                            Forms\Components\Textarea::make('terms')
+                                ->default(fn () => Setting::read('quote_terms'))
+                                ->rows(5),
+                        ]),
+                ]),
+
+                Forms\Components\Group::make()->columnSpan(['lg' => 1])->schema([
+                    Forms\Components\Section::make('Status')
+                        ->icon('heroicon-o-signal')
+                        ->schema([
+                            Forms\Components\Placeholder::make('status_view')
+                                ->hiddenLabel()
+                                ->content(fn (?Quotation $record): HtmlString => new HtmlString(self::statusHtml($record))),
+                            Forms\Components\DatePicker::make('valid_until')
+                                ->label('Valid until')
+                                ->native(false)->displayFormat('d M Y')
+                                ->minDate(fn (string $operation) => $operation === 'create' ? today() : null)
+                                ->default(fn () => ($days = (int) Setting::read('quote_valid_days')) ? today()->addDays($days) : null)
+                                ->required(),
+                        ]),
+                    Forms\Components\Section::make('Internal')
+                        ->icon('heroicon-o-lock-closed')
+                        ->schema([
+                            Forms\Components\Textarea::make('internal_notes')->hiddenLabel()->placeholder('Not shown to the customer')->rows(4),
+                        ]),
+                ]),
+            ]);
+    }
+
+    protected static function statusHtml(?Quotation $q): string
+    {
+        if (! $q) {
+            return 'New quotation (Draft). Save, then send it to the customer.';
+        }
+
+        $lines = ['<span style="font-weight:600;color:rgb(var(--'.$q->status->getColor().'-500))">'.$q->status->getLabel().'</span>'];
+        foreach ([
+            'Sent' => $q->sent_at, 'Opened by customer' => $q->viewed_at, 'Accepted' => $q->accepted_at,
+            'Rejected' => $q->rejected_at, 'Expired' => $q->expired_at,
+        ] as $label => $at) {
+            if ($at) {
+                $lines[] = '<span style="opacity:.75">'.$label.': '.$at->format('d M Y, H:i').'</span>';
+            }
+        }
+        if ($q->rejection_reason) {
+            $lines[] = '<span style="opacity:.75">Reason: '.e($q->rejection_reason).'</span>';
+        }
+        if ($q->booking) {
+            $lines[] = '<a style="color:rgb(var(--primary-500));font-weight:600" href="'.e(BookingResource::getUrl('edit', ['record' => $q->booking_id])).'">Booking '.e($q->booking->reference).' →</a>';
+        }
+        if (static::isLocked($q) && ! $q->booking_id) {
+            $lines[] = '<span style="font-size:.8rem;opacity:.7">Price locked. Use "Revise" to change it.</span>';
+        }
+
+        return implode('<br>', $lines);
+    }
+
+    public static function recalculate(Get $get, Set $set): void
+    {
+        $quote = Booking::quote(
+            BookingResource::findItem($get('service_type'), $get('bookable_id')),
+            $get('start_at'), $get('end_at'), $get('drive_mode'), (int) $get('guests'),
+        );
+        if ($quote) {
+            [$type, $qty, $rate, $amount] = $quote;
+            $set('rate_type', $type);
+            $set('quantity', $qty);
+            $set('rate', $rate);
+            $set('base_amount', $amount);
+        }
+    }
+
+    /* ------------------------------------------------------------------ */
+    /*  Table                                                             */
+    /* ------------------------------------------------------------------ */
+
+    public static function table(Table $table): Table
+    {
+        return $table
+            ->columns([
+                Tables\Columns\TextColumn::make('number')
+                    ->label('Quote')
+                    ->searchable()
+                    ->sortable()
+                    ->weight(FontWeight::SemiBold)
+                    ->description(fn (Quotation $record): ?string => $record->customerName()),
+                Tables\Columns\TextColumn::make('bookable.name')
+                    ->label('Car / yacht / trip')
+                    ->placeholder('-')
+                    ->description(fn (Quotation $record): ?string => $record->start_at ? $record->start_at->format('d M').' → '.$record->end_at?->format('d M') : null),
+                Tables\Columns\TextColumn::make('total')
+                    ->money('AED')
+                    ->alignEnd()
+                    ->sortable(),
+                Tables\Columns\TextColumn::make('status')
+                    ->badge()
+                    ->description(fn (Quotation $record): ?string => $record->viewed_at && $record->status === QuotationStatus::Sent ? 'Opened '.$record->viewed_at->diffForHumans() : null),
+                Tables\Columns\TextColumn::make('valid_until')
+                    ->label('Valid until')
+                    ->date('d M Y')
+                    ->sortable()
+                    ->color(fn (Quotation $record): ?string => $record->valid_until?->isPast() && $record->status->isEditable() ? 'danger' : null),
+                Tables\Columns\TextColumn::make('creator.name')->label('By')->toggleable(isToggledHiddenByDefault: true),
+                Tables\Columns\TextColumn::make('created_at')->label('Created')->since()->sortable()->toggleable(),
+            ])
+            ->modifyQueryUsing(fn (Builder $query) => $query->with(['customer', 'lead', 'bookable', 'creator']))
+            ->defaultSort('created_at', 'desc')
+            ->filters([
+                Tables\Filters\SelectFilter::make('status')->options(QuotationStatus::class)->multiple(),
+                Tables\Filters\SelectFilter::make('service_type')->label('Service')->options([
+                    ServiceType::Car->value => 'Car rental', ServiceType::Yacht->value => 'Yacht rental', ServiceType::Trip->value => 'Yacht trip',
+                ]),
+                Tables\Filters\TrashedFilter::make(),
+            ])
+            ->actions([
+                Tables\Actions\EditAction::make()->iconButton(),
+                Tables\Actions\ActionGroup::make([
+                    ...self::workflowActions(Tables\Actions\Action::class),
+                    Tables\Actions\DeleteAction::make(),
+                    Tables\Actions\RestoreAction::make(),
+                ]),
+            ])
+            ->emptyStateIcon('heroicon-o-document-text')
+            ->emptyStateHeading('No quotations yet')
+            ->emptyStateDescription('Create one here, or from a lead with "Create quotation".');
+    }
+
+    /* ------------------------------------------------------------------ */
+    /*  Workflow actions (shared by table rows and the edit page)        */
+    /* ------------------------------------------------------------------ */
+
+    public static function workflowActions(string $class): array
+    {
+        return [
+            self::sendAction($class),
+            $class::make('revise')
+                ->label('Revise (negotiation)')
+                ->icon('heroicon-o-pencil-square')
+                ->color('warning')
+                ->authorize('manage-quotations')
+                ->requiresConfirmation()
+                ->modalDescription('Unlocks the price so you can change it. The change is recorded in the history. Send it again afterwards.')
+                ->visible(fn (Quotation $record): bool => $record->status === QuotationStatus::Sent)
+                ->action(fn (Quotation $record) => $record->update(['status' => QuotationStatus::Negotiation])),
+            $class::make('accept')
+                ->label('Customer accepted')
+                ->icon('heroicon-o-hand-thumb-up')
+                ->color('success')
+                ->authorize('manage-quotations')
+                ->requiresConfirmation()
+                ->modalDescription('Locks the agreed price. This does not book the car / yacht yet: convert it to a booking next.')
+                ->visible(fn (Quotation $record): bool => in_array($record->status, [QuotationStatus::Sent, QuotationStatus::Negotiation], true))
+                ->action(fn (Quotation $record) => $record->update(['status' => QuotationStatus::Accepted, 'accepted_at' => now()])),
+            $class::make('reject')
+                ->label('Customer declined')
+                ->icon('heroicon-o-hand-thumb-down')
+                ->color('danger')
+                ->authorize('manage-quotations')
+                ->form([Forms\Components\TextInput::make('reason')->datalist(['Price too high', 'Booked elsewhere', 'Changed plans', 'No response'])->required()])
+                ->modalWidth('md')
+                ->visible(fn (Quotation $record): bool => in_array($record->status, [QuotationStatus::Draft, QuotationStatus::Sent, QuotationStatus::Negotiation], true))
+                ->action(fn (Quotation $record, array $data) => $record->update(['status' => QuotationStatus::Rejected, 'rejected_at' => now(), 'rejection_reason' => $data['reason']])),
+            self::convertAction($class),
+            $class::make('duplicate')
+                ->label('Duplicate as new draft')
+                ->icon('heroicon-o-document-duplicate')
+                ->color('gray')
+                ->authorize('manage-quotations')
+                ->action(function (Quotation $record, $livewire) {
+                    $copy = $record->replicate(['number', 'status', 'booking_id', 'public_token', 'sent_at', 'viewed_at', 'accepted_at', 'rejected_at', 'rejection_reason', 'expired_at', 'created_by']);
+                    $copy->status = QuotationStatus::Draft;
+                    $copy->valid_until = ($days = (int) Setting::read('quote_valid_days')) ? today()->addDays($days) : null;
+                    $copy->save();
+                    $livewire->redirect(self::getUrl('edit', ['record' => $copy]));
+                }),
+            $class::make('preview')
+                ->label('Open customer page')
+                ->icon('heroicon-o-arrow-top-right-on-square')
+                ->color('gray')
+                ->visible(fn (Quotation $record): bool => (bool) $record->sent_at)
+                ->url(fn (Quotation $record): string => $record->publicUrl(), shouldOpenInNewTab: true),
+        ];
+    }
+
+    public static function sendAction(string $class)
+    {
+        return $class::make('send')
+            ->label(fn (Quotation $record): string => $record->sent_at ? 'Send again' : 'Send to customer')
+            ->icon('heroicon-o-paper-airplane')
+            ->color('primary')
+            ->authorize('manage-quotations')
+            ->visible(fn (Quotation $record): bool => in_array($record->status, [QuotationStatus::Draft, QuotationStatus::Sent, QuotationStatus::Negotiation], true))
+            ->requiresConfirmation()
+            ->modalHeading('Send quotation')
+            ->modalDescription(fn (Quotation $record): string => 'The price will be locked at AED '.number_format((float) $record->total, 2).'. You will get a WhatsApp message with the link to send.')
+            ->action(function (Quotation $record) {
+                if ($record->valid_until && $record->valid_until->isPast() && ! $record->valid_until->isToday()) {
+                    Notification::make()->title('This quotation has expired. Change "Valid until" first.')->danger()->send();
+
+                    return;
+                }
+
+                $record->update(['status' => QuotationStatus::Sent, 'sent_at' => $record->sent_at ?? now()]);
+                if ($record->lead && $record->lead->pipeline) {
+                    $record->lead->advanceTo('quotation_sent');
+                }
+
+                $message = 'Hi '.str($record->customerName())->before(' ').', here is your quotation '.$record->number.' from RED PRIME RENTALS: '.$record->publicUrl();
+                $wa = Phone::whatsappUrl($record->customerPhone(), $message);
+
+                Notification::make()
+                    ->title('Quotation ready to send')
+                    ->body($wa ? 'Tap the button to open WhatsApp with the message ready. Link: '.$record->publicUrl() : 'No phone number on file. Copy the link: '.$record->publicUrl())
+                    ->success()
+                    ->persistent()
+                    ->actions(array_filter([
+                        $wa ? NotificationAction::make('wa')->label('Send on WhatsApp')->button()->url($wa, shouldOpenInNewTab: true) : null,
+                        NotificationAction::make('open')->label('Open quotation')->url($record->publicUrl(), shouldOpenInNewTab: true),
+                    ]))
+                    ->send();
+            });
+    }
+
+    /** Accepted quote → booking at the agreed price, after re-checking availability. */
+    public static function convertAction(string $class)
+    {
+        return $class::make('convert')
+            ->label('Convert to booking')
+            ->icon('heroicon-o-calendar-days')
+            ->color('success')
+            ->authorize('manage-bookings')
+            ->visible(fn (Quotation $record): bool => $record->status === QuotationStatus::Accepted && ! $record->booking_id)
+            ->modalWidth('lg')
+            ->modalDescription(fn (Quotation $record): string => 'Creates the booking at the agreed AED '.number_format((float) $record->total, 2).'. Availability is checked again now.')
+            ->form([
+                Forms\Components\ToggleButtons::make('status')
+                    ->options([BookingStatus::Confirmed->value => 'Confirmed', BookingStatus::PendingPayment->value => 'Pending payment'])
+                    ->colors([BookingStatus::Confirmed->value => 'success', BookingStatus::PendingPayment->value => 'warning'])
+                    ->default(BookingStatus::Confirmed->value)
+                    ->inline()
+                    ->required(),
+                Forms\Components\TextInput::make('advance')->label('Advance received now')->numeric()->minValue(0)->prefix('AED'),
+                Forms\Components\Select::make('method')->label('Paid by')->options(PaymentMethod::class)->default(PaymentMethod::Card->value)->native(false),
+            ])
+            ->action(function (Quotation $record, array $data, $livewire) {
+                try {
+                    $booking = DB::transaction(function () use ($record, $data) {
+                        $customerId = $record->customer_id ?? $record->lead?->convertToCustomer()->id;
+
+                        $booking = Booking::create([
+                            'status' => $data['status'],
+                            'customer_id' => $customerId,
+                            'lead_id' => $record->lead_id,
+                            'quotation_id' => $record->id,
+                            'service_type' => $record->service_type,
+                            'bookable_type' => $record->bookable_type,
+                            'bookable_id' => $record->bookable_id,
+                            'trip_date_id' => $record->trip_date_id,
+                            'drive_mode' => $record->drive_mode,
+                            'start_at' => $record->start_at,
+                            'end_at' => $record->end_at,
+                            'guests' => $record->guests,
+                            'pickup_location' => $record->pickup_location,
+                            'rate_type' => $record->rate_type,
+                            'quantity' => $record->quantity,
+                            'rate' => $record->rate,
+                            'base_amount' => $record->base_amount,
+                            'extras_amount' => $record->extras_amount,
+                            'discount' => $record->discount,
+                            'tax_rate' => $record->tax_rate,
+                            'tax_inclusive' => $record->tax_inclusive,
+                            'security_deposit' => $record->security_deposit,
+                            'notes' => trim('From quotation '.$record->number."\n".($record->internal_notes ?? '')),
+                        ]);
+
+                        $record->update(['booking_id' => $booking->id, 'customer_id' => $customerId]);
+
+                        if (($advance = (float) ($data['advance'] ?? 0)) > 0) {
+                            $booking->recordPayment($advance, $data['method'] ?? null, null, 'Advance · '.$booking->reference);
+                        }
+
+                        return $booking;
+                    });
+                } catch (ValidationException $e) {
+                    Notification::make()
+                        ->title('Not available any more')
+                        ->body(collect($e->errors())->flatten()->first().' The quotation stays accepted at the agreed price; change the dates on a revised quote or pick another car.')
+                        ->danger()->persistent()->send();
+
+                    return;
+                }
+
+                Notification::make()->title('Booking '.$booking->reference.' created at the agreed price')->success()->send();
+                $livewire->redirect(BookingResource::getUrl('edit', ['record' => $booking]));
+            });
+    }
+
+    public static function getRelations(): array
+    {
+        return [
+            \App\Filament\RelationManagers\HistoryRelationManager::class,
+        ];
+    }
+
+    public static function getPages(): array
+    {
+        return [
+            'index' => Pages\ListQuotations::route('/'),
+            'create' => Pages\CreateQuotation::route('/create'),
+            'edit' => Pages\EditQuotation::route('/{record}/edit'),
+        ];
+    }
+
+    public static function getEloquentQuery(): Builder
+    {
+        return parent::getEloquentQuery()->withoutGlobalScopes([SoftDeletingScope::class]);
+    }
+
+    public static function getNavigationBadge(): ?string
+    {
+        $count = static::getModel()::where('status', QuotationStatus::Sent)->count();
+
+        return $count ? (string) $count : null;
+    }
+
+    public static function getNavigationBadgeTooltip(): ?string
+    {
+        return 'Sent, waiting for the customer';
+    }
+}

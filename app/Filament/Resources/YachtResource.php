@@ -7,6 +7,8 @@ use App\Filament\Concerns\FleetFields;
 use App\Filament\Concerns\WebsitePublishing;
 use App\Filament\Resources\YachtResource\Pages;
 use App\Models\Yacht;
+use App\Filament\Concerns\GuardedResource;
+use App\Support\Access;
 use Filament\Forms;
 use Filament\Forms\Form;
 use Filament\Forms\Get;
@@ -21,6 +23,18 @@ use Illuminate\Database\Eloquent\SoftDeletingScope;
 
 class YachtResource extends Resource
 {
+    use GuardedResource;
+
+    protected static function manageAbility(): string
+    {
+        return 'manage-fleet';
+    }
+
+    protected static function deleteAbility(): string
+    {
+        return 'manage-fleet';
+    }
+
     protected static ?string $model = Yacht::class;
 
     protected static ?string $navigationIcon = 'heroicon-o-lifebuoy';
@@ -48,6 +62,7 @@ class YachtResource extends Resource
     public static function form(Form $form): Form
     {
         return $form
+            ->disabled(fn (): bool => ! static::canModify())
             ->columns(3)
             ->schema([
                 Forms\Components\Tabs::make('yacht')
@@ -349,9 +364,11 @@ class YachtResource extends Resource
                     ->sortable()
                     ->toggleable(isToggledHiddenByDefault: true),
                 Tables\Columns\SelectColumn::make('status')
+                    ->disabled(fn (): bool => ! static::canModify())
                     ->options(YachtStatus::class)
                     ->selectablePlaceholder(false)
                     ->sortable(),
+                \App\Filament\Support\ReadinessUi::column(),
                 Tables\Columns\TextColumn::make('booking')
                     ->label('Next booking')
                     ->state(fn (Yacht $record): ?string => ($b = once(fn () => $record->nextBooking()))
@@ -394,6 +411,7 @@ class YachtResource extends Resource
                 Tables\Filters\SelectFilter::make('type')
                     ->options(self::TYPES)
                     ->multiple(),
+                \App\Filament\Support\ReadinessUi::filter(),
                 WebsitePublishing::filter(),
                 Tables\Filters\TernaryFilter::make('is_featured')->label('Featured'),
                 Tables\Filters\SelectFilter::make('ownership')
@@ -403,6 +421,7 @@ class YachtResource extends Resource
             ])
             ->actions([
                 Tables\Actions\EditAction::make()->iconButton(),
+                \App\Filament\Support\ReadinessUi::markReady(Tables\Actions\Action::class)->button()->size('sm'),
                 Tables\Actions\ActionGroup::make([
                     WebsitePublishing::tableAction(),
                     Tables\Actions\ReplicateAction::make()
@@ -449,6 +468,7 @@ class YachtResource extends Resource
         return [
             \App\Filament\Resources\BookingResource\RelationManagers\BookingsRelationManager::class,
             \App\Filament\Resources\TransactionResource\RelationManagers\TransactionsRelationManager::class,
+            \App\Filament\RelationManagers\HistoryRelationManager::class,
         ];
     }
 

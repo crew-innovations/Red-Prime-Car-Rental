@@ -15,6 +15,8 @@ use App\Models\Trip;
 use App\Models\User;
 use App\Models\Yacht;
 use App\Support\Phone;
+use App\Filament\Concerns\GuardedResource;
+use App\Support\Access;
 use Filament\Forms;
 use Filament\Forms\Components\MorphToSelect;
 use Filament\Forms\Form;
@@ -33,6 +35,18 @@ use Illuminate\Support\HtmlString;
 
 class LeadResource extends Resource
 {
+    use GuardedResource;
+
+    protected static function manageAbility(): string
+    {
+        return 'manage-leads';
+    }
+
+    protected static function deleteAbility(): string
+    {
+        return 'delete-records';
+    }
+
     protected static ?string $model = Lead::class;
 
     protected static ?string $navigationIcon = 'heroicon-o-inbox-arrow-down';
@@ -46,6 +60,7 @@ class LeadResource extends Resource
     public static function form(Form $form): Form
     {
         return $form
+            ->disabled(fn (): bool => ! static::canModify())
             ->columns(3)
             ->schema([
                 Forms\Components\Group::make()
@@ -281,14 +296,19 @@ class LeadResource extends Resource
             return null;
         }
 
-        $customer = Customer::where('phone', $value)->orWhere('whatsapp', $value)->orWhere('email', $value)->first();
+        $isEmail = str_contains($value, '@');
+        $match = fn (Builder $q) => $isEmail
+            ? $q->where('email', $value)
+            : Phone::whereMatches($q, ['phone', 'whatsapp'], $value);
+
+        $customer = Customer::query()->where($match)->first();
         if ($customer) {
             return "Existing customer: {$customer->name}";
         }
 
         $lead = Lead::open()
             ->when($record, fn (Builder $q) => $q->whereKeyNot($record->getKey()))
-            ->where(fn (Builder $q) => $q->where('phone', $value)->orWhere('whatsapp', $value)->orWhere('email', $value))
+            ->where($match)
             ->first();
 
         return $lead ? "Already an open lead: {$lead->name}" : null;
@@ -388,8 +408,15 @@ class LeadResource extends Resource
                     ->visible(fn (Lead $record): bool => filled($record->phone)),
                 Tables\Actions\EditAction::make()->iconButton(),
                 Tables\Actions\ActionGroup::make([
+                    Tables\Actions\Action::make('quote')
+                        ->label('Create quotation')
+                        ->authorize('manage-quotations')
+                        ->icon('heroicon-o-document-text')
+                        ->url(fn (Lead $record): string => QuotationResource::getUrl('create', ['lead' => $record->id]))
+                        ->visible(fn (Lead $record): bool => $record->stage !== Pipeline::LOST && ! $record->trashed()),
                     Tables\Actions\Action::make('book')
                         ->label('Create booking')
+                        ->authorize('manage-bookings')
                         ->icon('heroicon-o-calendar-days')
                         ->color('success')
                         ->url(fn (Lead $record): string => BookingResource::getUrl('create', ['lead' => $record->id]))
@@ -403,6 +430,7 @@ class LeadResource extends Resource
             ->bulkActions([
                 Tables\Actions\BulkActionGroup::make([
                     Tables\Actions\BulkAction::make('assign')
+                        ->authorize('manage-leads')
                         ->label('Assign to salesperson')
                         ->icon('heroicon-o-user-plus')
                         ->form([
@@ -414,6 +442,7 @@ class LeadResource extends Resource
                         ->action(fn (Collection $records, array $data) => $records->each->update(['assigned_to' => $data['assigned_to']]))
                         ->deselectRecordsAfterCompletion(),
                     Tables\Actions\BulkAction::make('markLost')
+                        ->authorize('manage-leads')
                         ->label('Mark as lost')
                         ->icon('heroicon-o-x-circle')
                         ->color('danger')
@@ -437,6 +466,7 @@ class LeadResource extends Resource
     {
         return Tables\Actions\Action::make('convert')
             ->label('Create customer profile')
+            ->authorize('manage-leads')
             ->icon('heroicon-o-user-plus')
             ->color('success')
             ->requiresConfirmation()
@@ -462,6 +492,7 @@ class LeadResource extends Resource
     {
         return Tables\Actions\Action::make('lost')
             ->label('Mark as lost')
+            ->authorize('manage-leads')
             ->icon('heroicon-o-x-circle')
             ->color('danger')
             ->form([
@@ -477,8 +508,10 @@ class LeadResource extends Resource
     public static function getRelations(): array
     {
         return [
-            \App\Filament\Resources\BookingResource\RelationManagers\BookingsRelationManager::class,
             RelationManagers\ActivitiesRelationManager::class,
+            \App\Filament\Resources\QuotationResource\RelationManagers\QuotationsRelationManager::class,
+            \App\Filament\Resources\BookingResource\RelationManagers\BookingsRelationManager::class,
+            \App\Filament\RelationManagers\HistoryRelationManager::class,
         ];
     }
 

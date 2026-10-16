@@ -17,13 +17,18 @@ use Illuminate\Database\Eloquent\Relations\MorphTo;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Carbon;
+use Illuminate\Validation\ValidationException;
+use App\Models\Concerns\Audited;
+use App\Support\Availability;
+use App\Support\Tax;
+use App\Enums\DocumentType;
 use Spatie\MediaLibrary\HasMedia;
 use Spatie\MediaLibrary\InteractsWithMedia;
 use Spatie\MediaLibrary\MediaCollections\Models\Media;
 
 class Booking extends Model implements HasMedia
 {
-    use InteractsWithMedia, SoftDeletes;
+    use Audited, InteractsWithMedia, SoftDeletes;
 
     protected $guarded = ['id'];
 
@@ -72,6 +77,9 @@ class Booking extends Model implements HasMedia
             'base_amount' => 'decimal:2',
             'extras_amount' => 'decimal:2',
             'discount' => 'decimal:2',
+            'tax_rate' => 'decimal:2',
+            'tax_inclusive' => 'boolean',
+            'tax_amount' => 'decimal:2',
             'total' => 'decimal:2',
             'security_deposit' => 'decimal:2',
             'extra_charges' => 'decimal:2',
@@ -97,8 +105,14 @@ class Booking extends Model implements HasMedia
             if ($booking->drive_mode !== DriveMode::WithDriver) {
                 $booking->driver_id = null;
             }
-            $booking->total = max(0, round((float) $booking->base_amount + (float) $booking->extras_amount - (float) $booking->discount, 2));
+            [$booking->tax_amount, $booking->total] = Tax::apply(
+                (float) $booking->base_amount + (float) $booking->extras_amount - (float) $booking->discount,
+                $booking->tax_rate !== null ? (float) $booking->tax_rate : null,
+                (bool) $booking->tax_inclusive,
+            );
             $booking->assigned_to ??= auth()->id();
+
+            $booking->guardAvailability();
         });
 
         static::created(function (Booking $booking) {
@@ -125,11 +139,42 @@ class Booking extends Model implements HasMedia
         static::restored(fn (Booking $booking) => $booking->syncBalance());
     }
 
+    /**
+     * Server-side safety net for every save (forms, actions, imports): a car /
+     * yacht can't be held twice for the same time, and a trip date can't take
+     * more guests than it has seats. Runs inside the save transaction, with the
+     * car / yacht / trip-date row locked.
+     */
+    public function guardAvailability(): void
+    {
+        $relevant = ! $this->exists || $this->isDirty(['status', 'start_at', 'end_at', 'bookable_type', 'bookable_id', 'trip_date_id', 'guests']);
+        if (! $relevant) {
+            return;
+        }
+
+        $type = $this->service_type?->value;
+
+        if (Availability::holds($this->status) && in_array($type, ['car', 'yacht'], true) && $this->bookable_id) {
+            if ($message = Availability::assetConflict($type, (int) $this->bookable_id, $this->start_at, $this->end_at, $this->getKey())) {
+                throw ValidationException::withMessages(['data.end_at' => $message]);
+            }
+        }
+
+        if ($type === 'trip' && $this->trip_date_id && in_array($this->status, BookingStatus::billable(), true)) {
+            $date = TripDate::with('trip')->find($this->trip_date_id);
+            $left = $date ? Availability::seatsLeft($date, $this->getKey()) : null;
+            if ($left !== null && (int) $this->guests > $left) {
+                throw ValidationException::withMessages(['data.guests' => "Only {$left} seat(s) left on this date."]);
+            }
+        }
+    }
+
+    /** Documents and handover / return photos are private (staff-only signed links). */
     public function registerMediaCollections(): void
     {
-        $this->addMediaCollection('delivery');
-        $this->addMediaCollection('return');
-        $this->addMediaCollection('documents');
+        $this->addMediaCollection('delivery')->useDisk('private');
+        $this->addMediaCollection('return')->useDisk('private');
+        $this->addMediaCollection('documents')->useDisk('private');
     }
 
     public function registerMediaConversions(?Media $media = null): void
@@ -184,23 +229,76 @@ class Booking extends Model implements HasMedia
         return $this->hasMany(Transaction::class);
     }
 
+    public function quotation(): BelongsTo
+    {
+        return $this->belongsTo(Quotation::class);
+    }
+
+    /** Which document checklist applies: self_drive, with_driver, yacht, trip (+ corporate). */
+    public function documentKinds(): array
+    {
+        $kinds = [match ($this->service_type) {
+            ServiceType::Yacht => 'yacht',
+            ServiceType::Trip => 'trip',
+            default => $this->drive_mode === DriveMode::WithDriver ? 'with_driver' : 'self_drive',
+        }];
+        if ($this->customer && $this->customer->type !== \App\Enums\CustomerType::Individual) {
+            $kinds[] = 'corporate';
+        }
+
+        return $kinds;
+    }
+
+    /** Document types required for this booking (from Settings). */
+    public function requiredDocumentTypes(): array
+    {
+        $rules = (array) Setting::read('doc_requirements', []);
+
+        return collect($this->documentKinds())
+            ->flatMap(fn ($kind) => (array) ($rules[$kind] ?? []))
+            ->unique()->values()->all();
+    }
+
+    /** Checklist: type => [label, status text, ok]. */
+    public function documentChecklist(): array
+    {
+        $docs = $this->customer_id
+            ? CustomerDocument::where('customer_id', $this->customer_id)->latest()->get()->groupBy(fn ($d) => $d->type->value)
+            : collect();
+        $on = $this->start_at ?? now();
+
+        return collect($this->requiredDocumentTypes())->mapWithKeys(function ($type) use ($docs, $on) {
+            $label = DocumentType::tryFrom($type)?->getLabel() ?? $type;
+            $list = $docs->get($type, collect());
+            $valid = $list->first(fn (CustomerDocument $d) => $d->isValidOn($on));
+            $latest = $list->first();
+
+            $text = match (true) {
+                (bool) $valid => 'Approved',
+                ! $latest => 'Missing',
+                $latest->status === \App\Enums\DocumentStatus::Approved => 'Expired',
+                default => $latest->status->getLabel(),
+            };
+
+            return [$type => [$label, $text, (bool) $valid]];
+        })->all();
+    }
+
+    /** Required documents still missing, but only when Settings says to block the handover. */
+    public function missingDocuments(): array
+    {
+        if (! Setting::read('doc_block_handover')) {
+            return [];
+        }
+
+        return collect($this->documentChecklist())->reject(fn ($row) => $row[2])->map(fn ($row) => $row[0].' ('.strtolower($row[1]).')')->values()->all();
+    }
+
     /* ---------- Scopes ---------- */
 
     public function scopeBlocking(Builder $query): Builder
     {
         return $query->whereIn('status', BookingStatus::blocking());
-    }
-
-    /** Bookings for the same car / yacht that overlap the given time. */
-    public static function overlapping(string $type, int $id, Carbon|string $start, Carbon|string $end, ?int $ignoreId = null): Builder
-    {
-        return static::query()
-            ->blocking()
-            ->where('bookable_type', $type)
-            ->where('bookable_id', $id)
-            ->where('start_at', '<', $end)
-            ->where('end_at', '>', $start)
-            ->when($ignoreId, fn (Builder $q) => $q->whereKeyNot($ignoreId));
     }
 
     /* ---------- Helpers ---------- */
@@ -241,9 +339,25 @@ class Booking extends Model implements HasMedia
     /** Record money received for this booking. */
     public function recordPayment(float $amount, ?string $method, ?string $category = null, ?string $description = null, ?string $reference = null): Transaction
     {
+        $category ??= $this->revenueCategory();
+
+        // A double click or a retried request must not record the same money twice.
+        $duplicate = $this->transactions()
+            ->where('type', TransactionType::Income)
+            ->where('is_balance', false)
+            ->where('category', $category)
+            ->where('amount', round($amount, 2))
+            ->where('method', $method)
+            ->where('user_id', auth()->id())
+            ->where('created_at', '>=', now()->subSeconds(30))
+            ->first();
+        if ($duplicate) {
+            return $duplicate;
+        }
+
         return $this->transactions()->create([
             'type' => TransactionType::Income,
-            'category' => $category ?? $this->revenueCategory(),
+            'category' => $category,
             'date' => today(),
             'amount' => $amount,
             'status' => PaymentStatus::Paid,

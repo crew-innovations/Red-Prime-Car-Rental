@@ -4,6 +4,7 @@ namespace App\Filament\Resources;
 
 use App\Filament\Resources\LeadSourceResource\Pages;
 use App\Models\LeadSource;
+use App\Filament\Concerns\GuardedResource;
 use Filament\Forms;
 use Filament\Forms\Form;
 use Filament\Resources\Resource;
@@ -13,6 +14,23 @@ use Illuminate\Support\Str;
 
 class LeadSourceResource extends Resource
 {
+    use GuardedResource;
+
+    protected static function manageAbility(): string
+    {
+        return 'manage-fleet';
+    }
+
+    protected static function deleteAbility(): string
+    {
+        return 'manage-fleet';
+    }
+
+    public static function canEdit(\Illuminate\Database\Eloquent\Model $record): bool
+    {
+        return static::canModify();
+    }
+
     protected static ?string $model = LeadSource::class;
 
     protected static ?string $navigationIcon = 'heroicon-o-megaphone';
@@ -51,7 +69,7 @@ class LeadSourceResource extends Resource
                 Tables\Columns\TextColumn::make('slug')->label('Code')->color('gray'),
                 Tables\Columns\TextColumn::make('leads_count')->counts('leads')->label('Leads')->badge()->sortable(),
                 Tables\Columns\TextColumn::make('customers_count')->counts('customers')->label('Customers')->badge()->color('success')->sortable(),
-                Tables\Columns\ToggleColumn::make('is_active')->label('Active'),
+                Tables\Columns\ToggleColumn::make('is_active')->label('Active')->disabled(fn (): bool => ! static::canModify()),
             ])
             ->defaultSort('sort_order')
             ->reorderable('sort_order')

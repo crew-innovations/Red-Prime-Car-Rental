@@ -13,6 +13,11 @@ use Filament\Widgets\Widget;
 /** Cars and yachts by status as bars, plus documents needing attention. */
 class FleetStatus extends Widget
 {
+    public static function canView(): bool
+    {
+        return ! \App\Support\Access::isDriverOnly();
+    }
+
     protected static string $view = 'filament.widgets.fleet-status';
 
     protected static ?int $sort = 4;

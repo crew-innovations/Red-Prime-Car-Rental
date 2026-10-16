@@ -3,6 +3,8 @@
 namespace App\Models;
 
 use App\Enums\CarStatus;
+use App\Enums\Readiness;
+use App\Models\Concerns\Audited;
 use App\Models\Concerns\HasExpiringDocuments;
 use App\Models\Concerns\PublishesToWebsite;
 use Illuminate\Database\Eloquent\Model;
@@ -15,7 +17,7 @@ use Spatie\MediaLibrary\MediaCollections\Models\Media;
 
 class Car extends Model implements HasMedia
 {
-    use HasExpiringDocuments, InteractsWithMedia, PublishesToWebsite, SoftDeletes;
+    use Audited, HasExpiringDocuments, InteractsWithMedia, PublishesToWebsite, SoftDeletes;
 
     public const CATEGORY = Category::CARS;
 
@@ -25,6 +27,7 @@ class Car extends Model implements HasMedia
     {
         return [
             'status' => CarStatus::class,
+            'readiness' => Readiness::class,
             'features' => 'array',
             'specifications' => 'array',
             'daily_price' => 'decimal:2',
@@ -78,6 +81,17 @@ class Car extends Model implements HasMedia
     public function transactions(): MorphMany
     {
         return $this->morphMany(Transaction::class, 'related');
+    }
+
+    /** Drivers who normally drive this car (default assignment, not a booking). */
+    public function drivers(): \Illuminate\Database\Eloquent\Relations\BelongsToMany
+    {
+        return $this->belongsToMany(User::class, 'car_driver')->withTimestamps();
+    }
+
+    public function isReady(): bool
+    {
+        return ($this->readiness ?? Readiness::Ready) === Readiness::Ready;
     }
 
     public function bookings(): MorphMany

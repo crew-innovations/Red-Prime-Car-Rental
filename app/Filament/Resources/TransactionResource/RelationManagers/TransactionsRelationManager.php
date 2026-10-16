@@ -94,6 +94,22 @@ class TransactionsRelationManager extends RelationManager
 
     public function isReadOnly(): bool
     {
-        return false;
+        return ! \App\Support\Access::allows('record-payments');
+    }
+
+    /** Anyone who records payments can add one; changing or deleting money records is for finance. */
+    protected function canEdit(Model $record): bool
+    {
+        return \App\Support\Access::allows('manage-finance') && ! $record->is_balance;
+    }
+
+    protected function canDelete(Model $record): bool
+    {
+        return \App\Support\Access::allows('manage-finance') && ! $record->is_balance;
+    }
+
+    protected function canDeleteAny(): bool
+    {
+        return \App\Support\Access::allows('manage-finance');
     }
 }

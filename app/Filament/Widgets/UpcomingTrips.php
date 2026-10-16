@@ -9,6 +9,11 @@ use Filament\Widgets\Widget;
 
 class UpcomingTrips extends Widget
 {
+    public static function canView(): bool
+    {
+        return ! \App\Support\Access::isDriverOnly();
+    }
+
     protected static string $view = 'filament.widgets.upcoming-trips';
 
     protected static ?int $sort = 6;

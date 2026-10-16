@@ -39,6 +39,11 @@ class PipelineBoard extends Page
     /** Won / final stages only show leads moved there in the last 30 days. */
     protected const RECENT_DAYS = 30;
 
+    public static function canAccess(): bool
+    {
+        return ! \App\Support\Access::isDriverOnly();
+    }
+
     public function mount(): void
     {
         if (! Pipeline::tryFrom($this->pipeline)) {
@@ -100,6 +105,12 @@ class PipelineBoard extends Page
 
     public function moveLead(int $id, string $stage): void
     {
+        if (! \App\Support\Access::allows('manage-leads')) {
+            Notification::make()->title('You can view the pipeline but not move leads.')->warning()->send();
+
+            return;
+        }
+
         $lead = Lead::find($id);
         $pipeline = $this->getPipeline();
 
@@ -144,6 +155,7 @@ class PipelineBoard extends Page
                     ->datalist(LeadResource::LOST_REASONS)
                     ->required(),
             ])
+            ->authorize('manage-leads')
             ->action(function (array $data, array $arguments): void {
                 Lead::find($arguments['lead'] ?? null)?->update(['stage' => Pipeline::LOST, 'lost_reason' => $data['lost_reason']]);
 

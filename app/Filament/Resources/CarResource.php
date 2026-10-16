@@ -8,6 +8,8 @@ use App\Filament\Concerns\WebsitePublishing;
 use App\Filament\Resources\CarResource\Pages;
 use App\Filament\Resources\CarResource\RelationManagers;
 use App\Models\Car;
+use App\Filament\Concerns\GuardedResource;
+use App\Support\Access;
 use Filament\Forms;
 use Filament\Forms\Form;
 use Filament\Forms\Get;
@@ -22,6 +24,18 @@ use Illuminate\Database\Eloquent\SoftDeletingScope;
 
 class CarResource extends Resource
 {
+    use GuardedResource;
+
+    protected static function manageAbility(): string
+    {
+        return 'manage-fleet';
+    }
+
+    protected static function deleteAbility(): string
+    {
+        return 'manage-fleet';
+    }
+
     protected static ?string $model = Car::class;
 
     protected static ?string $navigationIcon = 'heroicon-o-truck';
@@ -55,6 +69,7 @@ class CarResource extends Resource
     public static function form(Form $form): Form
     {
         return $form
+            ->disabled(fn (): bool => ! static::canModify())
             ->columns(3)
             ->schema([
                 Forms\Components\Tabs::make('car')
@@ -272,6 +287,14 @@ class CarResource extends Resource
                             ->maxValue(24)
                             ->suffix('hrs')
                             ->placeholder('10'),
+                        Forms\Components\Select::make('drivers')
+                            ->label('Usual drivers')
+                            ->relationship('drivers', 'name', fn (Builder $query) => $query->role('Driver'))
+                            ->multiple()
+                            ->preload()
+                            ->searchable()
+                            ->helperText('Suggested first on bookings with a driver. Add drivers under Fleet › Drivers.')
+                            ->columnSpanFull(),
                     ]),
 
                 Forms\Components\Fieldset::make('Rental rules')
@@ -459,9 +482,11 @@ class CarResource extends Resource
                     ->sortable()
                     ->toggleable(isToggledHiddenByDefault: true),
                 Tables\Columns\SelectColumn::make('status')
+                    ->disabled(fn (): bool => ! static::canModify())
                     ->options(CarStatus::class)
                     ->selectablePlaceholder(false)
                     ->sortable(),
+                \App\Filament\Support\ReadinessUi::column(),
                 Tables\Columns\TextColumn::make('booking')
                     ->label('Booking')
                     ->state(fn (Car $record): ?string => self::bookingState($record))
@@ -523,6 +548,7 @@ class CarResource extends Resource
                 Tables\Filters\SelectFilter::make('type')
                     ->options(self::TYPES)
                     ->multiple(),
+                \App\Filament\Support\ReadinessUi::filter(),
                 WebsitePublishing::filter(),
                 Tables\Filters\TernaryFilter::make('is_featured')->label('Featured'),
                 Tables\Filters\SelectFilter::make('ownership')
@@ -532,6 +558,7 @@ class CarResource extends Resource
             ])
             ->actions([
                 Tables\Actions\EditAction::make()->iconButton(),
+                \App\Filament\Support\ReadinessUi::markReady(Tables\Actions\Action::class)->button()->size('sm'),
                 Tables\Actions\ActionGroup::make([
                     WebsitePublishing::tableAction(),
                     Tables\Actions\ReplicateAction::make()
@@ -604,6 +631,7 @@ class CarResource extends Resource
             \App\Filament\Resources\BookingResource\RelationManagers\BookingsRelationManager::class,
             RelationManagers\MaintenancesRelationManager::class,
             \App\Filament\Resources\TransactionResource\RelationManagers\TransactionsRelationManager::class,
+            \App\Filament\RelationManagers\HistoryRelationManager::class,
         ];
     }
 

@@ -14,10 +14,22 @@ class User extends Authenticatable implements FilamentUser
     /** @use HasFactory<\Database\Factories\UserFactory> */
     use HasFactory, HasRoles, Notifiable;
 
+    /** Cars this driver normally drives. */
+    public function assignedCars(): \Illuminate\Database\Eloquent\Relations\BelongsToMany
+    {
+        return $this->belongsToMany(Car::class, 'car_driver')->withTimestamps();
+    }
+
+    public function driverBookings(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(Booking::class, 'driver_id');
+    }
+
     protected $fillable = [
         'name',
         'email',
         'phone',
+        'notes',
         'password',
         'is_active',
     ];

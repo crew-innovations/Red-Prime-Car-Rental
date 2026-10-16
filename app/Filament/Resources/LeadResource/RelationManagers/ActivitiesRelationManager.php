@@ -105,6 +105,6 @@ class ActivitiesRelationManager extends RelationManager
 
     public function isReadOnly(): bool
     {
-        return false;
+        return ! \App\Support\Access::allows('manage-leads');
     }
 }

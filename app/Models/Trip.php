@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Enums\TripStatus;
 use App\Models\Concerns\PublishesToWebsite;
+use App\Models\Concerns\Audited;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -15,7 +16,7 @@ use Spatie\MediaLibrary\MediaCollections\Models\Media;
 
 class Trip extends Model implements HasMedia
 {
-    use InteractsWithMedia, PublishesToWebsite, SoftDeletes;
+    use Audited, InteractsWithMedia, PublishesToWebsite, SoftDeletes;
 
     public const CATEGORY = Category::YACHT_TRIPS;
 

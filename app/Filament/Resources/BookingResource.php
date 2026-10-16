@@ -16,7 +16,10 @@ use App\Models\Car;
 use App\Models\Trip;
 use App\Models\TripDate;
 use App\Models\Yacht;
+use App\Support\Availability;
 use Closure;
+use App\Filament\Concerns\GuardedResource;
+use App\Support\Access;
 use Filament\Forms;
 use Filament\Forms\Form;
 use Filament\Forms\Get;
@@ -34,13 +37,31 @@ use Illuminate\Support\HtmlString;
 /** Booking Management (Schedule A7) with delivery and return (A10). */
 class BookingResource extends Resource
 {
+    use GuardedResource;
+
+    protected static function manageAbility(): string
+    {
+        return 'manage-bookings';
+    }
+
+    protected static function deleteAbility(): string
+    {
+        return 'delete-records';
+    }
+
+    /** Drivers can open the bookings they drive (read-only). */
+    public static function canViewAny(): bool
+    {
+        return true;
+    }
+
     protected static ?string $model = Booking::class;
 
     protected static ?string $navigationIcon = 'heroicon-o-calendar-days';
 
     protected static ?string $navigationGroup = 'Sales';
 
-    protected static ?int $navigationSort = 3;
+    protected static ?int $navigationSort = 4;
 
     protected static ?string $recordTitleAttribute = 'reference';
 
@@ -51,6 +72,7 @@ class BookingResource extends Resource
     public static function form(Form $form): Form
     {
         return $form
+            ->disabled(fn (): bool => ! static::canModify())
             ->columns(3)
             ->schema([
                 Forms\Components\Group::make()
@@ -67,6 +89,7 @@ class BookingResource extends Resource
                         self::statusSection(),
                         self::paymentSection(),
                         self::operationsSection(),
+                        self::documentsSection(),
                         Forms\Components\Section::make('Team & notes')
                             ->icon('heroicon-o-user-group')
                             ->schema([
@@ -81,6 +104,46 @@ class BookingResource extends Resource
                                     ->rows(3),
                             ]),
                     ]),
+            ]);
+    }
+
+    /** A manager booked a car / yacht that is in maintenance or unavailable: keep a record. */
+    public static function logOverride(Booking $booking, array $data): void
+    {
+        if (empty($data['override_availability']) || ! in_array($booking->service_type?->value, ['car', 'yacht'], true)) {
+            return;
+        }
+        if ($message = Availability::restriction($booking->service_type->value, (int) $booking->bookable_id)) {
+            \App\Models\AuditLog::note($booking, 'override', 'Booked anyway: '.$message);
+        }
+    }
+
+    /** Required documents for this booking (rules from Business settings). */
+    protected static function documentsSection(): Forms\Components\Section
+    {
+        return Forms\Components\Section::make('Documents')
+            ->icon('heroicon-o-identification')
+            ->visibleOn('edit')
+            ->collapsible()
+            ->schema([
+                Forms\Components\Placeholder::make('documents_checklist')
+                    ->hiddenLabel()
+                    ->content(function (?Booking $record): HtmlString {
+                        if (! $record) {
+                            return new HtmlString('');
+                        }
+                        $rows = $record->documentChecklist();
+                        if (! $rows) {
+                            return new HtmlString('<span style="opacity:.7">No required documents set for this type of booking. Set them in Settings › Business settings.</span>');
+                        }
+
+                        $html = collect($rows)->map(fn ($row) => '<div style="display:flex;justify-content:space-between;gap:.5rem"><span>'.e($row[0]).'</span><span style="font-weight:600;color:rgb(var(--'.($row[2] ? 'success' : ($row[1] === 'Missing' ? 'danger' : 'warning')).'-500))">'.e($row[1]).'</span></div>')->implode('');
+                        if (\App\Models\Setting::read('doc_block_handover') && collect($rows)->contains(fn ($r) => ! $r[2])) {
+                            $html .= '<div style="margin-top:.5rem;font-size:.8rem;opacity:.75">Handover is blocked until these are approved (a manager can override).</div>';
+                        }
+
+                        return new HtmlString($html.'<div style="margin-top:.5rem;font-size:.8rem;opacity:.7">Upload, review or request files on the customer page › Documents.</div>');
+                    }),
             ]);
     }
 
@@ -142,6 +205,7 @@ class BookingResource extends Resource
                         $item = self::findItem($get('service_type'), $get('bookable_id'));
                         if ($item instanceof Car) {
                             $set('drive_mode', $item->self_drive ? DriveMode::SelfDrive->value : DriveMode::WithDriver->value);
+                            self::suggestDriver($get, $set);
                         }
                         if (($item instanceof Car || $item instanceof Yacht) && $item->deposit) {
                             $set('security_deposit', (float) $item->deposit);
@@ -167,23 +231,23 @@ class BookingResource extends Resource
                         );
                     })
                     ->live()
-                    ->afterStateUpdated(fn (Get $get, Set $set) => self::recalculate($get, $set))
+                    ->afterStateUpdated(function (Get $get, Set $set) {
+                        self::recalculate($get, $set);
+                        self::suggestDriver($get, $set);
+                    })
                     ->visible(fn (Get $get): bool => $get('service_type') === ServiceType::Car->value),
 
                 Forms\Components\Select::make('driver_id')
                     ->label('Driver')
-                    ->options(fn (): array => BookingActions::driverOptions())
+                    ->options(fn (Get $get): array => BookingActions::driverOptions($get('bookable_id') ? (int) $get('bookable_id') : null))
                     ->searchable()
                     ->placeholder('Assign later')
-                    ->helperText(fn (): ?string => BookingActions::driverOptions() ? null : 'Add drivers in Settings › Team with the "Driver" role.')
+                    ->helperText(fn (Get $get): ?string => BookingActions::driverOptions() ? self::driverHint($get) : 'Add drivers under Fleet › Drivers.')
                     ->rules([fn (Get $get, ?Booking $record): Closure => function (string $attribute, $value, Closure $fail) use ($get, $record) {
                         if (! $value || ! $get('start_at') || ! $get('end_at') || ! in_array($get('status'), array_map(fn ($s) => $s->value, BookingStatus::blocking()), true)) {
                             return;
                         }
-                        $clash = Booking::query()->blocking()->where('driver_id', $value)
-                            ->where('start_at', '<', $get('end_at'))->where('end_at', '>', $get('start_at'))
-                            ->when($record, fn (Builder $q) => $q->whereKeyNot($record->getKey()))
-                            ->first();
+                        $clash = Availability::driverConflict((int) $value, $get('start_at'), $get('end_at'), $record?->getKey());
                         if ($clash) {
                             $fail("This driver is already on {$clash->reference} (".$clash->start_at->format('d M H:i').' – '.$clash->end_at->format('d M H:i').').');
                         }
@@ -251,11 +315,26 @@ class BookingResource extends Resource
                             || ! in_array($get('status'), array_map(fn ($s) => $s->value, BookingStatus::blocking()), true)) {
                             return;
                         }
-                        $clash = Booking::overlapping($type, (int) $get('bookable_id'), $get('start_at'), $value, $record?->getKey())->first();
-                        if ($clash) {
-                            $fail('Already booked for these dates: '.$clash->reference.' ('.$clash->start_at->format('d M H:i').' – '.$clash->end_at->format('d M H:i').').');
+                        // Runs inside the save transaction with the car / yacht row locked.
+                        if ($message = Availability::assetConflict($type, (int) $get('bookable_id'), $get('start_at'), $value, $record?->getKey())) {
+                            $fail($message);
+
+                            return;
+                        }
+                        $unchanged = $record && (int) $record->bookable_id === (int) $get('bookable_id')
+                            && $record->start_at?->equalTo(Carbon::parse($get('start_at'))) && $record->end_at?->equalTo(Carbon::parse($value));
+                        if (! $unchanged && ($message = Availability::restriction($type, (int) $get('bookable_id'))) && ! ($get('override_availability') && Access::allows('override-availability'))) {
+                            $fail($message.(Access::allows('override-availability') ? ' Tick "Book anyway" to override.' : ' A manager can override this.'));
                         }
                     }]),
+                Forms\Components\Toggle::make('override_availability')
+                    ->label('Book anyway (manager override, recorded in history)')
+                    ->dehydrated(false)
+                    ->columnSpanFull()
+                    ->visible(fn (Get $get): bool => Access::allows('override-availability')
+                        && in_array($get('service_type'), [ServiceType::Car->value, ServiceType::Yacht->value], true)
+                        && $get('bookable_id')
+                        && Availability::restriction($get('service_type'), (int) $get('bookable_id')) !== null),
                 Forms\Components\TextInput::make('pickup_location')
                     ->label(fn (Get $get): string => $isCar($get) ? 'Delivery / pick-up location' : 'Meeting point / marina')
                     ->placeholder(fn (Get $get): string => $isCar($get) ? 'Office, hotel, airport…' : 'Dubai Marina')
@@ -275,8 +354,7 @@ class BookingResource extends Resource
                     ->afterStateUpdated(fn (Get $get, Set $set) => self::recalculate($get, $set))
                     ->rules([fn (Get $get, ?Booking $record): Closure => function (string $attribute, $value, Closure $fail) use ($get, $record) {
                         if ($get('service_type') === ServiceType::Trip->value && ($date = TripDate::with('trip')->find($get('trip_date_id')))) {
-                            $seats = $date->available_slots ?? $date->trip?->guest_capacity;
-                            $left = $seats === null ? null : $seats - $date->bookedGuests($record?->getKey());
+                            $left = Availability::seatsLeft($date, $record?->getKey()); // locks the date row
                             if ($left !== null && (int) $value > $left) {
                                 $fail("Only {$left} seat(s) left on this date.");
                             }
@@ -293,10 +371,14 @@ class BookingResource extends Resource
     {
         return Forms\Components\Section::make('Price')
             ->icon('heroicon-o-banknotes')
-            ->description('Worked out from the rates. You can change any amount.')
+            ->description(fn (?Booking $record): string => $record?->quotation
+                ? 'Agreed in quotation '.$record->quotation->number.' at AED '.number_format((float) $record->quotation->total, 2).'. Any change is recorded in the history.'
+                : 'Worked out from the rates. You can change any amount.')
             ->columns(3)
             ->schema([
                 Forms\Components\Hidden::make('rate_type'),
+                Forms\Components\Hidden::make('tax_rate')->default(fn () => \App\Support\Tax::defaultRate()),
+                Forms\Components\Hidden::make('tax_inclusive')->default(fn () => \App\Support\Tax::defaultInclusive()),
                 Forms\Components\Hidden::make('quantity'),
                 Forms\Components\Hidden::make('rate'),
                 Forms\Components\TextInput::make('base_amount')
@@ -331,8 +413,14 @@ class BookingResource extends Resource
                     ->live(onBlur: true),
                 Forms\Components\Placeholder::make('total_preview')
                     ->label('Total')
-                    ->content(fn (Get $get): HtmlString => new HtmlString('<span style="font-size:1.4rem;font-weight:700">AED '
-                        .number_format(max(0, (float) $get('base_amount') + (float) $get('extras_amount') - (float) $get('discount')), 2).'</span>')),
+                    ->content(function (Get $get): HtmlString {
+                        $net = (float) $get('base_amount') + (float) $get('extras_amount') - (float) $get('discount');
+                        $rate = filled($get('tax_rate')) ? (float) $get('tax_rate') : null;
+                        [$tax, $total] = \App\Support\Tax::apply($net, $rate, (bool) $get('tax_inclusive'));
+                        $vat = $rate ? '<div style="font-size:.85rem;opacity:.75">VAT '.rtrim(rtrim(number_format($rate, 2), '0'), '.').'%'.($get('tax_inclusive') ? ' included' : '').': AED '.number_format($tax, 2).'</div>' : '';
+
+                        return new HtmlString('<span style="font-size:1.4rem;font-weight:700">AED '.number_format($total, 2).'</span>'.$vat);
+                    }),
                 Forms\Components\TextInput::make('security_deposit')
                     ->label('Security deposit')
                     ->helperText('Refundable, collected at handover.')
@@ -371,15 +459,15 @@ class BookingResource extends Resource
             ->schema([
                 Forms\Components\SpatieMediaLibraryFileUpload::make('delivery_photos')
                     ->label('At handover')
-                    ->collection('delivery')
+                    ->collection('delivery')->disk('private')->visibility('private')
                     ->image()->multiple()->panelLayout('grid')->openable()->downloadable(),
                 Forms\Components\SpatieMediaLibraryFileUpload::make('return_photos')
                     ->label('At return')
-                    ->collection('return')
+                    ->collection('return')->disk('private')->visibility('private')
                     ->image()->multiple()->panelLayout('grid')->openable()->downloadable(),
                 Forms\Components\SpatieMediaLibraryFileUpload::make('documents')
-                    ->label('Agreement, ID, licence')
-                    ->collection('documents')
+                    ->label('Signed agreement & other files')
+                    ->collection('documents')->disk('private')->visibility('private')
                     ->multiple()->openable()->downloadable()
                     ->acceptedFileTypes(['image/*', 'application/pdf']),
             ]);
@@ -560,6 +648,35 @@ class BookingResource extends Resource
             ->all();
     }
 
+    /** Pick the car's usual driver when the booking is with driver and no driver is chosen yet. */
+    public static function suggestDriver(Get $get, Set $set): void
+    {
+        if ($get('service_type') !== ServiceType::Car->value || $get('drive_mode') !== DriveMode::WithDriver->value || $get('driver_id')) {
+            return;
+        }
+
+        $car = Car::find($get('bookable_id'));
+        if (! $car) {
+            return;
+        }
+
+        foreach ($car->drivers()->where('is_active', true)->get() as $driver) {
+            if (! $get('start_at') || ! Availability::driverConflict($driver->id, $get('start_at'), $get('end_at') ?: $get('start_at'))) {
+                $set('driver_id', $driver->id);
+
+                return;
+            }
+        }
+    }
+
+    protected static function driverHint(Get $get): ?string
+    {
+        $car = $get('bookable_id') ? Car::find($get('bookable_id')) : null;
+        $usual = $car?->drivers()->pluck('name')->implode(', ');
+
+        return $usual ? 'Usual driver(s) for this car: '.$usual.'. You can pick anyone.' : null;
+    }
+
     public static function recalculate(Get $get, Set $set): void
     {
         $quote = Booking::quote(
@@ -701,6 +818,7 @@ class BookingResource extends Resource
     {
         return [
             \App\Filament\Resources\TransactionResource\RelationManagers\TransactionsRelationManager::class,
+            \App\Filament\RelationManagers\HistoryRelationManager::class,
         ];
     }
 
@@ -722,7 +840,9 @@ class BookingResource extends Resource
 
     public static function getEloquentQuery(): Builder
     {
-        return parent::getEloquentQuery()->withoutGlobalScopes([SoftDeletingScope::class]);
+        return parent::getEloquentQuery()
+            ->withoutGlobalScopes([SoftDeletingScope::class])
+            ->when(Access::isDriverOnly(), fn (Builder $q) => $q->where('driver_id', auth()->id()));
     }
 
     public static function getGloballySearchableAttributes(): array

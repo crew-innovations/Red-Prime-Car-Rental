@@ -47,6 +47,16 @@ return [
             'report' => false,
         ],
 
+        // Customer documents and handover / return photos. Outside /public; files are
+        // only served to logged-in staff through short-lived signed links.
+        'private' => [
+            'driver' => 'local',
+            'root' => storage_path('app/documents'),
+            'visibility' => 'private',
+            'throw' => false,
+            'report' => false,
+        ],
+
         // Public images (cars, yachts, trips). Lives inside /public so it works on
         // shared hosting without a storage symlink.
         'uploads' => [

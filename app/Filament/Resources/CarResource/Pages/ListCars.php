@@ -3,6 +3,7 @@
 namespace App\Filament\Resources\CarResource\Pages;
 
 use App\Enums\CarStatus;
+use App\Enums\Readiness;
 use App\Filament\Resources\CarResource;
 use App\Models\Car;
 use Filament\Actions;
@@ -35,9 +36,13 @@ class ListCars extends ListRecords
         return [
             'all' => Tab::make('All'),
             'available' => Tab::make('Available')
-                ->badge($count(CarStatus::Available))
+                ->badge(Car::where('status', CarStatus::Available)->where('readiness', Readiness::Ready)->count())
                 ->badgeColor('success')
-                ->modifyQueryUsing(fn (Builder $query) => $query->where('status', CarStatus::Available)),
+                ->modifyQueryUsing(fn (Builder $query) => $query->where('status', CarStatus::Available)->where('readiness', Readiness::Ready)),
+            'attention' => Tab::make('Needs cleaning / inspection')
+                ->badge(fn () => Car::where('readiness', '!=', Readiness::Ready)->count() ?: null)
+                ->badgeColor('warning')
+                ->modifyQueryUsing(fn (Builder $query) => $query->where('readiness', '!=', Readiness::Ready)),
             'rented' => Tab::make('Rented / Reserved')
                 ->modifyQueryUsing(fn (Builder $query) => $query->whereIn('status', [CarStatus::Rented, CarStatus::Reserved])),
             'maintenance' => Tab::make('Maintenance')

@@ -31,6 +31,7 @@ class AdminPanelProvider extends PanelProvider
             ->default()
             ->id('admin')
             ->path('crm')
+            ->databaseTransactions()
             ->login()
             ->passwordReset()
             ->brandName('Red Prime CRM')

@@ -10,10 +10,13 @@ use App\Support\Phone;
 use Filament\Actions;
 use Filament\Forms;
 use Filament\Notifications\Notification;
+use App\Filament\Concerns\GuardsSave;
 use Filament\Resources\Pages\EditRecord;
 
 class EditLead extends EditRecord
 {
+    use GuardsSave;
+
     protected static string $resource = LeadResource::class;
 
     protected function getHeaderActions(): array
@@ -35,14 +38,23 @@ class EditLead extends EditRecord
                 ->color('info')
                 ->url(Phone::telUrl($lead->phone))
                 ->visible(filled($lead->phone)),
+            Actions\Action::make('quote')
+                ->label('Create quotation')
+                ->authorize('manage-quotations')
+                ->icon('heroicon-o-document-text')
+                ->color('gray')
+                ->url(fn (): string => \App\Filament\Resources\QuotationResource::getUrl('create', ['lead' => $this->getRecord()->id]))
+                ->visible(fn (): bool => $this->getRecord()->stage !== Pipeline::LOST),
             Actions\Action::make('book')
                 ->label('Create booking')
+                ->authorize('manage-bookings')
                 ->icon('heroicon-o-calendar-days')
                 ->color('primary')
                 ->url(fn (): string => BookingResource::getUrl('create', ['lead' => $this->getRecord()->id]))
                 ->visible(fn (): bool => $this->getRecord()->pipeline !== Pipeline::B2b && $this->getRecord()->stage !== Pipeline::LOST),
             Actions\Action::make('convert')
                 ->label('Create customer profile')
+                ->authorize('manage-leads')
                 ->icon('heroicon-o-user-plus')
                 ->color('gray')
                 ->requiresConfirmation()
@@ -58,6 +70,7 @@ class EditLead extends EditRecord
             Actions\ActionGroup::make([
                 Actions\Action::make('lost')
                     ->label('Mark as lost')
+                    ->authorize('manage-leads')
                     ->icon('heroicon-o-x-circle')
                     ->color('danger')
                     ->form([

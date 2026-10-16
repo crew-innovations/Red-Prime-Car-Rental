@@ -7,6 +7,7 @@ use App\Models\Car;
 use App\Models\Category;
 use App\Models\Trip;
 use App\Models\Yacht;
+use App\Filament\Concerns\GuardedResource;
 use Filament\Forms;
 use Filament\Forms\Form;
 use Filament\Notifications\Notification;
@@ -21,6 +22,23 @@ use Filament\Tables\Table;
  */
 class CategoryResource extends Resource
 {
+    use GuardedResource;
+
+    protected static function manageAbility(): string
+    {
+        return 'manage-fleet';
+    }
+
+    protected static function deleteAbility(): string
+    {
+        return 'manage-fleet';
+    }
+
+    public static function canEdit(\Illuminate\Database\Eloquent\Model $record): bool
+    {
+        return static::canModify();
+    }
+
     protected static ?string $model = Category::class;
 
     protected static ?string $navigationIcon = 'heroicon-o-squares-2x2';
@@ -68,6 +86,7 @@ class CategoryResource extends Resource
                     ->state(fn (Category $record): string => $count($record, true).' published of '.$count($record)),
                 Tables\Columns\ToggleColumn::make('is_enabled')
                     ->label('Visible on website')
+                    ->disabled(fn (): bool => ! static::canModify())
                     ->afterStateUpdated(fn (Category $record, bool $state) => Notification::make()
                         ->title($state ? "{$record->name} is now visible on the website" : "{$record->name} is hidden from the website")
                         ->body($state ? null : 'Nothing was deleted. Switch it back on at any time.')

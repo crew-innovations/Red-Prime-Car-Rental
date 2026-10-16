@@ -10,6 +10,9 @@ use App\Models\Car;
 use App\Models\User;
 use App\Support\BookingFlow;
 use App\Support\Phone;
+use App\Models\AuditLog;
+use App\Support\Access;
+use App\Support\Availability;
 use Filament\Forms;
 use Filament\Forms\Get;
 use Filament\Forms\Set;
@@ -38,6 +41,7 @@ class BookingActions
             ->modalDescription(fn (Booking $record): string => $record->customer?->name.' · '.$record->start_at->format('d M, H:i').' → '.$record->end_at->format('d M, H:i'))
             ->modalSubmitActionLabel(fn (Booking $record): string => $record->isCar() ? 'Hand over' : 'Start')
             ->modalWidth('3xl')
+            ->authorize('operate-fleet')
             ->visible(fn (Booking $record): bool => in_array($record->status, [BookingStatus::Confirmed, BookingStatus::PendingPayment], true) && ! $record->trashed())
             ->fillForm(fn (Booking $record): array => [
                 'delivered_at' => now(),
@@ -50,6 +54,14 @@ class BookingActions
                 'payment_method' => PaymentMethod::Card->value,
             ])
             ->form(fn (Booking $record): array => [
+                Forms\Components\Placeholder::make('blockers')
+                    ->hiddenLabel()
+                    ->content(fn (): HtmlString => new HtmlString('<div style="padding:.6rem .8rem;border-radius:.6rem;background:rgba(var(--danger-500),.1);color:rgb(var(--danger-600));font-size:.875rem">'
+                        .collect(self::handoverBlockers($record))->map(fn ($m) => '⚠ '.e($m))->implode('<br>').'</div>'))
+                    ->visible(fn (): bool => self::handoverBlockers($record) !== []),
+                Forms\Components\Toggle::make('override')
+                    ->label('Hand over anyway (manager override, recorded in history)')
+                    ->visible(fn (): bool => self::handoverBlockers($record) !== [] && Access::allows('override-availability')),
                 Forms\Components\Grid::make(3)->schema([
                     Forms\Components\DateTimePicker::make('delivered_at')
                         ->label($record->isCar() ? 'Handed over at' : 'Started at')
@@ -91,7 +103,7 @@ class BookingActions
                     ]),
                 Forms\Components\FileUpload::make('photos')
                     ->label('Photos (condition at handover)')
-                    ->disk('uploads')->directory('booking-uploads')
+                    ->disk('private')->directory('tmp')->visibility('private')
                     ->image()->multiple()->maxFiles(12)->maxSize(8192)
                     ->panelLayout('grid'),
                 Forms\Components\Textarea::make('delivery_notes')
@@ -99,7 +111,16 @@ class BookingActions
                     ->placeholder('Existing scratches, items handed over, etc.')
                     ->rows(2),
             ])
-            ->action(function (Booking $record, array $data): void {
+            ->action(function (Booking $record, array $data, $action): void {
+                $blockers = self::handoverBlockers($record);
+                if ($blockers !== []) {
+                    if (empty($data['override']) || ! Access::allows('override-availability')) {
+                        Notification::make()->title('Cannot hand over yet')->body(implode(' ', $blockers))->danger()->persistent()->send();
+                        $action->halt();
+                    }
+                    AuditLog::note($record, 'override', 'Handed over despite: '.implode(' ', $blockers));
+                }
+
                 BookingFlow::deliver($record, $data);
 
                 Notification::make()
@@ -121,20 +142,17 @@ class BookingActions
             ->modalDescription(fn (Booking $record): string => $record->customer?->name.' · due back '.$record->end_at->format('d M, H:i'))
             ->modalSubmitActionLabel(fn (Booking $record): string => $record->isCar() ? 'Complete return' : 'Complete charter')
             ->modalWidth('4xl')
+            ->authorize('operate-fleet')
             ->visible(fn (Booking $record): bool => $record->status === BookingStatus::InProgress && ! $record->trashed())
             ->fillForm(function (Booking $record): array {
-                $late = BookingFlow::hoursLate($record, now());
-
                 return [
                     'returned_at' => now(),
                     'return_fuel' => $record->delivery_fuel ?? 'full',
                     'return_condition' => 'good',
-                    'charges' => [
-                        'late' => $late && $record->bookable instanceof Car && $record->bookable->hourly_price ? round($late * (float) $record->bookable->hourly_price, 2) : null,
-                    ],
-                    'deduct_from_deposit' => true,
+                    'after_return' => 'ready',
+                    'charges' => [],
+                    'deduct_from_deposit' => false,
                     'refund_deposit' => false,
-                    'send_to_maintenance' => false,
                     'payment_method' => PaymentMethod::Card->value,
                     'refund_method' => PaymentMethod::Card->value,
                 ];
@@ -145,7 +163,7 @@ class BookingActions
                         ->label($record->isCar() ? 'Returned at' : 'Ended at')
                         ->native(false)->seconds(false)->displayFormat('d M Y, H:i')->required()
                         ->live(onBlur: true)
-                        ->helperText(fn (Get $get): ?string => ($h = BookingFlow::hoursLate($record, $get('returned_at'))) ? "{$h} hour(s) late" : 'On time'),
+                        ->helperText(fn (Get $get): ?string => ($h = BookingFlow::hoursLate($record, $get('returned_at'))) ? "{$h} hour(s) late. Add a late charge below if your terms apply one." : 'On time'),
                     Forms\Components\TextInput::make('return_km')
                         ->label('Odometer')
                         ->numeric()->minValue($record->delivery_km ?? 0)->suffix('km')
@@ -168,7 +186,11 @@ class BookingActions
                         ->colors(['good' => 'success', 'minor' => 'warning', 'damaged' => 'danger'])
                         ->inline()
                         ->live()
-                        ->afterStateUpdated(fn (Set $set, ?string $state) => $set('send_to_maintenance', $state === 'damaged'))
+                        ->afterStateUpdated(fn (Set $set, ?string $state) => $set('after_return', match ($state) {
+                            'damaged' => 'maintenance',
+                            'minor' => 'inspection',
+                            default => 'ready',
+                        }))
                         ->columnSpanFull(),
                 ]),
 
@@ -219,12 +241,16 @@ class BookingActions
                             ->options(PaymentMethod::class)->native(false),
                         Forms\Components\Toggle::make('deduct_from_deposit')
                             ->label('Take what is still owed from the deposit')
-                            ->visible($record->depositHeld() > 0),
+                            ->visible($record->depositHeld() > 0 && Access::allows('manage-finance')),
                         Forms\Components\Toggle::make('refund_deposit')
                             ->label('Refund the rest of the deposit now')
                             ->helperText('Leave off to hold it for Salik / fines and refund later.')
                             ->live()
-                            ->visible($record->depositHeld() > 0),
+                            ->visible($record->depositHeld() > 0 && Access::allows('manage-finance')),
+                        Forms\Components\Placeholder::make('deposit_note')
+                            ->hiddenLabel()
+                            ->content('The deposit stays held. Finance can deduct or refund it from the booking.')
+                            ->visible($record->depositHeld() > 0 && ! Access::allows('manage-finance')),
                         Forms\Components\Select::make('refund_method')
                             ->label('Refund by')
                             ->options(PaymentMethod::class)->native(false)
@@ -233,24 +259,36 @@ class BookingActions
 
                 Forms\Components\FileUpload::make('photos')
                     ->label('Photos (condition at return)')
-                    ->disk('uploads')->directory('booking-uploads')
+                    ->disk('private')->directory('tmp')->visibility('private')
                     ->image()->multiple()->maxFiles(12)->maxSize(8192)
                     ->panelLayout('grid'),
                 Forms\Components\Textarea::make('return_notes')
                     ->label('Return notes')
                     ->rows(2),
-                Forms\Components\Toggle::make('send_to_maintenance')
-                    ->label($record->isCar() ? 'Send the car to maintenance (not available for booking)' : 'Send the yacht to maintenance')
-                    ->helperText('Otherwise it becomes available for new bookings right away.')
+                Forms\Components\ToggleButtons::make('after_return')
+                    ->label($record->isCar() ? 'After this return, the car is' : 'After this charter, the yacht is')
+                    ->options([
+                        'ready' => 'Checked and ready',
+                        'cleaning' => 'Needs cleaning',
+                        'inspection' => 'Needs inspection',
+                        'maintenance' => 'Damaged: send to maintenance',
+                    ])
+                    ->colors(['ready' => 'success', 'cleaning' => 'warning', 'inspection' => 'warning', 'maintenance' => 'danger'])
+                    ->inline()
+                    ->required()
+                    ->helperText('It can be booked again, but it can only be handed over once it is marked ready.')
                     ->visible($record->isCar() || $record->bookable_type === 'yacht'),
             ])
             ->action(function (Booking $record, array $data): void {
                 $result = BookingFlow::receive($record, $data);
 
                 $lines = [];
-                $lines[] = ! empty($data['send_to_maintenance'])
-                    ? 'Sent to maintenance.'
-                    : (($record->bookable?->name ?? 'Item').' is available for booking again.');
+                $lines[] = match ($data['after_return'] ?? 'ready') {
+                    'maintenance' => 'Sent to maintenance.',
+                    'cleaning' => 'Marked "Needs cleaning". Mark it ready before the next handover.',
+                    'inspection' => 'Marked "Needs inspection". Mark it ready before the next handover.',
+                    default => ($record->bookable?->name ?? 'Item').' is ready for the next booking.',
+                };
                 $lines[] = $result['balance'] > 0
                     ? self::aed($result['balance']).' still to collect (added to Accounts › To collect).'
                     : 'Payment cleared.';
@@ -274,6 +312,7 @@ class BookingActions
     {
         return $class::make('payment')
             ->label('Record payment')
+            ->authorize('record-payments')
             ->icon('heroicon-o-banknotes')
             ->color('success')
             ->modalWidth('lg')
@@ -306,6 +345,7 @@ class BookingActions
     {
         return $class::make('refundDeposit')
             ->label('Refund deposit')
+            ->authorize('manage-finance')
             ->icon('heroicon-o-arrow-uturn-left')
             ->color('gray')
             ->modalWidth('lg')
@@ -330,6 +370,7 @@ class BookingActions
     {
         return $class::make('cancel')
             ->label('Cancel booking')
+            ->authorize('manage-bookings')
             ->icon('heroicon-o-x-circle')
             ->color('danger')
             ->modalWidth('lg')
@@ -373,11 +414,31 @@ class BookingActions
             ->visible(fn (Booking $record): bool => filled($record->customer?->whatsapp ?: $record->customer?->phone));
     }
 
-    /** Active users with the Driver role. */
-    public static function driverOptions(): array
+    /** Reasons a booking can't be handed over right now (empty = fine). */
+    public static function handoverBlockers(Booking $record): array
     {
+        $blockers = [];
+        if ($record->bookable_type && $record->bookable_id && ($msg = Availability::restriction($record->bookable_type, (int) $record->bookable_id))) {
+            $blockers[] = $msg;
+        }
+        if ($msg = Availability::notReady($record->bookable)) {
+            $blockers[] = $msg;
+        }
+        foreach ($record->missingDocuments() as $label) {
+            $blockers[] = 'Missing approved document: '.$label.'.';
+        }
+
+        return $blockers;
+    }
+
+    /** Active users with the Driver role. */
+    public static function driverOptions(?int $carId = null): array
+    {
+        $usual = $carId ? Car::find($carId)?->drivers()->pluck('users.id')->all() ?? [] : [];
+
         return User::role('Driver')->where('is_active', true)->orderBy('name')->get()
-            ->mapWithKeys(fn (User $u) => [$u->id => $u->name.($u->phone ? ' · '.$u->phone : '')])
+            ->sortBy(fn (User $u) => in_array($u->id, $usual, true) ? 0 : 1, SORT_REGULAR)
+            ->mapWithKeys(fn (User $u) => [$u->id => $u->name.(in_array($u->id, $usual, true) ? ' ★ usual driver' : '').($u->phone ? ' · '.$u->phone : '')])
             ->all();
     }
 }

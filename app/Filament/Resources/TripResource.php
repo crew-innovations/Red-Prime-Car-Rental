@@ -9,6 +9,8 @@ use App\Filament\Resources\TripResource\Pages;
 use App\Filament\Resources\TripResource\RelationManagers;
 use App\Models\Category;
 use App\Models\Trip;
+use App\Filament\Concerns\GuardedResource;
+use App\Support\Access;
 use Filament\Forms;
 use Filament\Forms\Form;
 use Filament\Forms\Get;
@@ -22,6 +24,18 @@ use Illuminate\Database\Eloquent\SoftDeletingScope;
 
 class TripResource extends Resource
 {
+    use GuardedResource;
+
+    protected static function manageAbility(): string
+    {
+        return 'manage-fleet';
+    }
+
+    protected static function deleteAbility(): string
+    {
+        return 'manage-fleet';
+    }
+
     protected static ?string $model = Trip::class;
 
     protected static ?string $navigationIcon = 'heroicon-o-sun';
@@ -59,6 +73,7 @@ class TripResource extends Resource
     public static function form(Form $form): Form
     {
         return $form
+            ->disabled(fn (): bool => ! static::canModify())
             ->columns(3)
             ->schema([
                 Forms\Components\Tabs::make('trip')

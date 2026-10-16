@@ -3,6 +3,8 @@
 namespace App\Models;
 
 use App\Enums\YachtStatus;
+use App\Enums\Readiness;
+use App\Models\Concerns\Audited;
 use App\Models\Concerns\HasExpiringDocuments;
 use App\Models\Concerns\PublishesToWebsite;
 use Illuminate\Database\Eloquent\Model;
@@ -15,7 +17,7 @@ use Spatie\MediaLibrary\MediaCollections\Models\Media;
 
 class Yacht extends Model implements HasMedia
 {
-    use HasExpiringDocuments, InteractsWithMedia, PublishesToWebsite, SoftDeletes;
+    use Audited, HasExpiringDocuments, InteractsWithMedia, PublishesToWebsite, SoftDeletes;
 
     public const CATEGORY = Category::YACHTS;
 
@@ -25,6 +27,7 @@ class Yacht extends Model implements HasMedia
     {
         return [
             'status' => YachtStatus::class,
+            'readiness' => Readiness::class,
             'amenities' => 'array',
             'specifications' => 'array',
             'additional_charges' => 'array',
@@ -73,6 +76,11 @@ class Yacht extends Model implements HasMedia
     public function transactions(): MorphMany
     {
         return $this->morphMany(Transaction::class, 'related');
+    }
+
+    public function isReady(): bool
+    {
+        return ($this->readiness ?? Readiness::Ready) === Readiness::Ready;
     }
 
     public function bookings(): MorphMany

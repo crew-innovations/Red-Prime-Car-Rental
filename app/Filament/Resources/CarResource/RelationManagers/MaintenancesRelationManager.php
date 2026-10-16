@@ -70,4 +70,9 @@ class MaintenancesRelationManager extends RelationManager
             ->emptyStateHeading('No maintenance recorded')
             ->emptyStateDescription('Log services, repairs and costs for this car.');
     }
+
+    public function isReadOnly(): bool
+    {
+        return ! \App\Support\Access::allows('operate-fleet');
+    }
 }

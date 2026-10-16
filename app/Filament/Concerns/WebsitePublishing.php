@@ -63,6 +63,7 @@ class WebsitePublishing
         return Tables\Columns\ToggleColumn::make('is_published')
             ->label('Website')
             ->sortable()
+            ->disabled(fn (): bool => ! \App\Support\Access::allows('manage-fleet'))
             ->afterStateUpdated(fn (Model $record, bool $state) => Notification::make()
                 ->title($state ? 'Now visible on the website' : 'Hidden from the website')
                 ->success()

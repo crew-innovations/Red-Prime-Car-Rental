@@ -21,6 +21,11 @@ class AccountsOverview extends Dashboard
 
     protected static ?int $navigationSort = 1;
 
+    public static function canAccess(): bool
+    {
+        return \App\Support\Access::allows('manage-finance');
+    }
+
     public function getWidgets(): array
     {
         return [

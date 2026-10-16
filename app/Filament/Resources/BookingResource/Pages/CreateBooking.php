@@ -100,6 +100,7 @@ class CreateBooking extends CreateRecord
         /** @var Booking $booking */
         $booking = $this->getRecord();
         $advance = (float) ($this->data['advance_amount'] ?? 0);
+        BookingResource::logOverride($booking, $this->data);
 
         if ($advance > 0) {
             $booking->recordPayment($advance, $this->data['advance_method'] ?? null, null, 'Advance · '.$booking->reference);

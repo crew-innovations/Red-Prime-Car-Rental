@@ -78,4 +78,5 @@ Packagist is blocked here, so the app cannot run locally. Before every commit:
 
 - Milestone 1 modules are complete: cars, yachts, trips, customers, leads.
 - Also built early, at the client side's request: bookings, handover and return, accounts, pipelines and the dashboard. These are Milestone 2 modules.
-- **Next step:** waiting for approval of Phase 1 in `docs/CRM-Audit-and-Plan.md` (security and integrity fixes), and for answers to decisions H-1 to H-12.
+- Audit fixes plus quotations, documents, readiness, drivers and history were built on 2026-10-16. See `docs/DEVLOG.md`, including the live test checklist and the open decisions.
+- **Earlier note:** waiting for approval of Phase 1 in `docs/CRM-Audit-and-Plan.md` (security and integrity fixes), and for answers to decisions H-1 to H-12.

@@ -35,6 +35,7 @@ class UserResource extends Resource
         'Operations' => 'Fleet, bookings and deliveries',
         'Finance' => 'Payments and reports',
         'Staff' => 'Limited day-to-day access',
+        'Driver' => 'Sees only their own bookings (handover / return)',
     ];
 
     public static function canViewAny(): bool

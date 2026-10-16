@@ -8,6 +8,11 @@ use Filament\Widgets\ChartWidget;
 
 class LeadsTrend extends ChartWidget
 {
+    public static function canView(): bool
+    {
+        return ! \App\Support\Access::isDriverOnly();
+    }
+
     protected static ?int $sort = 1;
 
     protected static ?string $heading = 'Leads trend';

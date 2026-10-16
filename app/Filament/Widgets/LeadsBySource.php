@@ -7,6 +7,11 @@ use Filament\Widgets\ChartWidget;
 
 class LeadsBySource extends ChartWidget
 {
+    public static function canView(): bool
+    {
+        return ! \App\Support\Access::isDriverOnly();
+    }
+
     protected static ?int $sort = 2;
 
     protected static ?string $heading = 'Leads by source';

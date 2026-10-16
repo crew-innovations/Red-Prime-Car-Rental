@@ -67,8 +67,14 @@ class DatesRelationManager extends RelationManager
                 Tables\Columns\TextColumn::make('available_slots')
                     ->label('Seats')
                     ->placeholder('-'),
+                Tables\Columns\TextColumn::make('booked')
+                    ->label('Booked')
+                    ->state(fn (TripDate $record): int => $record->bookedGuests())
+                    ->badge()
+                    ->color(fn (TripDate $record, int $state): string => $record->available_slots && $state >= $record->available_slots ? 'danger' : 'gray'),
                 Tables\Columns\ToggleColumn::make('is_available')
-                    ->label('Open'),
+                    ->label('Open')
+                    ->disabled(fn (): bool => $this->isReadOnly()),
             ])
             ->defaultSort('date')
             ->filters([
@@ -81,6 +87,7 @@ class DatesRelationManager extends RelationManager
             ->headerActions([
                 Tables\Actions\Action::make('addRange')
                     ->label('Add several dates')
+                    ->authorize('manage-fleet')
                     ->icon('heroicon-o-calendar')
                     ->color('gray')
                     ->modalWidth('lg')
@@ -135,6 +142,18 @@ class DatesRelationManager extends RelationManager
                             $added++;
                         }
 
+                        $clashes = $trip->dates()->with('trip')->where('date', '>=', today())->get()
+                            ->filter(fn (TripDate $d) => \App\Support\Availability::charterClashForDeparture($d))
+                            ->map(fn (TripDate $d) => $d->date->format('d M'));
+                        if ($clashes->isNotEmpty()) {
+                            Notification::make()
+                                ->title('The yacht is already chartered on some trip dates')
+                                ->body($clashes->implode(', ').'. Close those dates or move the charter.')
+                                ->warning()
+                                ->persistent()
+                                ->send();
+                        }
+
                         Notification::make()
                             ->title($added ? "{$added} dates added" : 'No new dates to add')
                             ->body($added ? null : 'Those dates already exist or none matched the chosen days.')
@@ -164,5 +183,10 @@ class DatesRelationManager extends RelationManager
             ])
             ->emptyStateHeading('No dates yet')
             ->emptyStateDescription('Use "Add several dates" to create a whole month in one go.');
+    }
+
+    public function isReadOnly(): bool
+    {
+        return ! \App\Support\Access::allows('manage-fleet');
     }
 }
