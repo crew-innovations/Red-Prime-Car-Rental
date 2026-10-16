@@ -522,6 +522,7 @@ class CarResource extends Resource
     {
         return [
             RelationManagers\MaintenancesRelationManager::class,
+            \App\Filament\Resources\TransactionResource\RelationManagers\TransactionsRelationManager::class,
         ];
     }
 

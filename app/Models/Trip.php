@@ -63,6 +63,11 @@ class Trip extends Model implements HasMedia
         return $this->dates()->where('date', '>=', today())->where('is_available', true);
     }
 
+    public function transactions(): MorphMany
+    {
+        return $this->morphMany(Transaction::class, 'related');
+    }
+
     public function leads(): MorphMany
     {
         return $this->morphMany(Lead::class, 'interested_in');

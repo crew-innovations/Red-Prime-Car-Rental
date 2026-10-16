@@ -435,6 +435,13 @@ class YachtResource extends Resource
             ]);
     }
 
+    public static function getRelations(): array
+    {
+        return [
+            \App\Filament\Resources\TransactionResource\RelationManagers\TransactionsRelationManager::class,
+        ];
+    }
+
     public static function getWidgets(): array
     {
         return [

@@ -144,3 +144,13 @@ a.rp-stat:hover { transform: translateY(-2px); box-shadow: 0 12px 24px -12px rgb
     .rp-banner-title { font-size: 1.35rem; }
     .rp-banner-logo { display: none; }
 }
+
+/* ---------- Accounts ---------- */
+.rp-rank {
+    flex: none; width: 1.8rem; height: 1.8rem; border-radius: .55rem; display: grid; place-items: center;
+    font-size: .8rem; font-weight: 700; color: rgb(var(--rp-gold)); background: rgba(var(--rp-gold), .14);
+}
+.rp-money { font-weight: 700; font-size: .95rem; color: rgb(var(--success-500)); }
+.rp-money.is-negative { color: rgb(var(--danger-500)); }
+.rp-meter { height: .3rem; border-radius: 999px; background: rgba(var(--gray-500), .15); margin: .5rem 0 0 2.55rem; overflow: hidden; }
+.rp-meter i { display: block; height: 100%; border-radius: 999px; background: linear-gradient(90deg, rgb(var(--rp-red)), rgb(var(--rp-gold))); }

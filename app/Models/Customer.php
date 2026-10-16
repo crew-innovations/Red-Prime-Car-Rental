@@ -45,5 +45,16 @@ class Customer extends Model
         return $query->whereNotNull('next_follow_up_at')->where('next_follow_up_at', '<=', now());
     }
 
-    // bookings(), quotations(), payments(), documents() arrive in Milestone 2.
+    public function transactions(): HasMany
+    {
+        return $this->hasMany(Transaction::class);
+    }
+
+    /** Revenue received from this customer (paid and partially paid income, excluding deposits). */
+    public function totalSpend(): float
+    {
+        return Transaction::totals($this->transactions()->getQuery())['received'];
+    }
+
+    // bookings(), quotations() and documents() arrive in Milestone 2.
 }

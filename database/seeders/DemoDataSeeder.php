@@ -130,5 +130,7 @@ class DemoDataSeeder extends Seeder
                 ]);
             }
         }
+
+        $this->call(DemoAccountsSeeder::class);
     }
 }

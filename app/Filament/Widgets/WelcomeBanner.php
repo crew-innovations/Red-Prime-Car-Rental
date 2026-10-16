@@ -10,6 +10,7 @@ use App\Filament\Resources\TripResource;
 use App\Filament\Resources\YachtResource;
 use App\Models\Car;
 use App\Models\Lead;
+use App\Models\Transaction;
 use App\Models\Yacht;
 use Filament\Widgets\Widget;
 
@@ -33,6 +34,7 @@ class WelcomeBanner extends Widget
         $newUnhandled = Lead::where('status', LeadStatus::New)->count();
         $carsFree = Car::where('status', CarStatus::Available)->count();
         $docs = Car::documentsDueSoon()->count() + Yacht::documentsDueSoon()->count();
+        $revenue = Transaction::totals(Transaction::query()->betweenDates(now()->startOfMonth(), now()->endOfMonth()))['received'];
 
         return [
             'greeting' => match (true) {
@@ -46,6 +48,7 @@ class WelcomeBanner extends Widget
                 ? "You have {$followUps} follow-up".($followUps > 1 ? 's' : '').' waiting. Let\'s close some deals today.'
                 : 'You are all caught up. Here is how Red Prime is doing today.',
             'chips' => array_values(array_filter([
+                ['label' => 'revenue this month', 'value' => 'AED '.number_format($revenue), 'alert' => false],
                 ['label' => 'new leads today', 'value' => $newToday, 'alert' => false],
                 ['label' => 'not contacted yet', 'value' => $newUnhandled, 'alert' => $newUnhandled > 0],
                 ['label' => 'cars available', 'value' => $carsFree, 'alert' => false],

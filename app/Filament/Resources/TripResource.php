@@ -383,6 +383,7 @@ class TripResource extends Resource
     {
         return [
             RelationManagers\DatesRelationManager::class,
+            \App\Filament\Resources\TransactionResource\RelationManagers\TransactionsRelationManager::class,
         ];
     }
 

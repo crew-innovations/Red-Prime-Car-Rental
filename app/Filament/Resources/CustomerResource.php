@@ -124,7 +124,7 @@ class CustomerResource extends Resource
 
                         Forms\Components\Placeholder::make('m2_note')
                             ->hiddenLabel()
-                            ->content('Bookings, quotations, payments and ID documents for this customer are added in Milestone 2.'),
+                            ->content('Bookings, quotations and ID documents for this customer are added in Milestone 2. Payments are in the Accounts tab below.'),
                     ]),
 
                 Forms\Components\Group::make()
@@ -175,6 +175,16 @@ class CustomerResource extends Resource
                                     ->label('Enquiries')
                                     ->inlineLabel()
                                     ->content(fn (?Customer $record): string => (string) ($record?->leads()->count() ?? 0)),
+                                Forms\Components\Placeholder::make('total_spend')
+                                    ->label('Total spend')
+                                    ->inlineLabel()
+                                    ->content(fn (?Customer $record): string => 'AED '.number_format($record?->totalSpend() ?? 0)),
+                                Forms\Components\Placeholder::make('last_payment')
+                                    ->label('Last payment')
+                                    ->inlineLabel()
+                                    ->content(fn (?Customer $record): string => $record?->transactions()->income()->latest('date')->value('date')
+                                        ? \Illuminate\Support\Carbon::parse($record->transactions()->income()->latest('date')->value('date'))->format('d M Y')
+                                        : '-'),
                             ]),
                     ]),
             ]);
@@ -294,6 +304,7 @@ class CustomerResource extends Resource
     {
         return [
             RelationManagers\LeadsRelationManager::class,
+            \App\Filament\Resources\TransactionResource\RelationManagers\TransactionsRelationManager::class,
         ];
     }
 

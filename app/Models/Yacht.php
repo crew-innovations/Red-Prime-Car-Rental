@@ -70,6 +70,11 @@ class Yacht extends Model implements HasMedia
         return $this->hasMany(Trip::class);
     }
 
+    public function transactions(): MorphMany
+    {
+        return $this->morphMany(Transaction::class, 'related');
+    }
+
     public function leads(): MorphMany
     {
         return $this->morphMany(Lead::class, 'interested_in');
