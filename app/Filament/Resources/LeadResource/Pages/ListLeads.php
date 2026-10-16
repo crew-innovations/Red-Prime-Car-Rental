@@ -38,25 +38,25 @@ class ListLeads extends ListRecords
         return [
             'open' => Tab::make('Open')
                 ->icon('heroicon-o-inbox')
-                ->modifyQueryUsing(fn (Builder $q) => $q->open()),
+                ->modifyQueryUsing(fn (Builder $query) => $query->open()),
             'new' => Tab::make('New')
                 ->badge(fn () => Lead::where('status', LeadStatus::New)->count() ?: null)
                 ->badgeColor('info')
-                ->modifyQueryUsing(fn (Builder $q) => $q->where('status', LeadStatus::New)),
+                ->modifyQueryUsing(fn (Builder $query) => $query->where('status', LeadStatus::New)),
             'mine' => Tab::make('My leads')
                 ->icon('heroicon-o-user')
-                ->modifyQueryUsing(fn (Builder $q) => $q->open()->where('assigned_to', auth()->id())),
+                ->modifyQueryUsing(fn (Builder $query) => $query->open()->where('assigned_to', auth()->id())),
             'follow_up' => Tab::make('Follow-up due')
                 ->icon('heroicon-o-clock')
                 ->badge(fn () => Lead::followUpDue()->count() ?: null)
                 ->badgeColor('danger')
-                ->modifyQueryUsing(fn (Builder $q) => $q->followUpDue()),
+                ->modifyQueryUsing(fn (Builder $query) => $query->followUpDue()),
             'unassigned' => Tab::make('Unassigned')
-                ->modifyQueryUsing(fn (Builder $q) => $q->open()->whereNull('assigned_to')),
+                ->modifyQueryUsing(fn (Builder $query) => $query->open()->whereNull('assigned_to')),
             'converted' => Tab::make('Converted')
-                ->modifyQueryUsing(fn (Builder $q) => $q->where('status', LeadStatus::Converted)),
+                ->modifyQueryUsing(fn (Builder $query) => $query->where('status', LeadStatus::Converted)),
             'lost' => Tab::make('Lost')
-                ->modifyQueryUsing(fn (Builder $q) => $q->where('status', LeadStatus::Lost)),
+                ->modifyQueryUsing(fn (Builder $query) => $query->where('status', LeadStatus::Lost)),
             'all' => Tab::make('All'),
         ];
     }

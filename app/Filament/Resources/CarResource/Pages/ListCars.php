@@ -37,20 +37,20 @@ class ListCars extends ListRecords
             'available' => Tab::make('Available')
                 ->badge($count(CarStatus::Available))
                 ->badgeColor('success')
-                ->modifyQueryUsing(fn (Builder $q) => $q->where('status', CarStatus::Available)),
+                ->modifyQueryUsing(fn (Builder $query) => $query->where('status', CarStatus::Available)),
             'rented' => Tab::make('Rented / Reserved')
-                ->modifyQueryUsing(fn (Builder $q) => $q->whereIn('status', [CarStatus::Rented, CarStatus::Reserved])),
+                ->modifyQueryUsing(fn (Builder $query) => $query->whereIn('status', [CarStatus::Rented, CarStatus::Reserved])),
             'maintenance' => Tab::make('Maintenance')
                 ->badge(fn () => $count(CarStatus::Maintenance) ?: null)
                 ->badgeColor('danger')
-                ->modifyQueryUsing(fn (Builder $q) => $q->where('status', CarStatus::Maintenance)),
+                ->modifyQueryUsing(fn (Builder $query) => $query->where('status', CarStatus::Maintenance)),
             'documents' => Tab::make('Documents due')
                 ->icon('heroicon-o-exclamation-triangle')
                 ->badge(fn () => Car::documentsDueSoon()->count() ?: null)
                 ->badgeColor('danger')
-                ->modifyQueryUsing(fn (Builder $q) => $q->documentsDueSoon()),
+                ->modifyQueryUsing(fn (Builder $query) => $query->documentsDueSoon()),
             'hidden' => Tab::make('Hidden from website')
-                ->modifyQueryUsing(fn (Builder $q) => $q->where('is_published', false)),
+                ->modifyQueryUsing(fn (Builder $query) => $query->where('is_published', false)),
         ];
     }
 }

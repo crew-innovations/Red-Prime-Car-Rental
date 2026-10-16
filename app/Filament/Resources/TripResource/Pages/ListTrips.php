@@ -47,14 +47,14 @@ class ListTrips extends ListRecords
         return [
             'all' => Tab::make('All'),
             'active' => Tab::make('Active')
-                ->modifyQueryUsing(fn (Builder $q) => $q->where('status', TripStatus::Active)),
+                ->modifyQueryUsing(fn (Builder $query) => $query->where('status', TripStatus::Active)),
             'no_dates' => Tab::make('No upcoming dates')
                 ->icon('heroicon-o-calendar')
-                ->modifyQueryUsing(fn (Builder $q) => $q->where('status', TripStatus::Active)->doesntHave('upcomingDates')),
+                ->modifyQueryUsing(fn (Builder $query) => $query->where('status', TripStatus::Active)->doesntHave('upcomingDates')),
             'paused' => Tab::make('Paused')
-                ->modifyQueryUsing(fn (Builder $q) => $q->where('status', TripStatus::Paused)),
+                ->modifyQueryUsing(fn (Builder $query) => $query->where('status', TripStatus::Paused)),
             'hidden' => Tab::make('Hidden from website')
-                ->modifyQueryUsing(fn (Builder $q) => $q->where('is_published', false)),
+                ->modifyQueryUsing(fn (Builder $query) => $query->where('is_published', false)),
         ];
     }
 }

@@ -29,16 +29,16 @@ class ListCustomers extends ListRecords
                 ->icon('heroicon-o-star')
                 ->badge(fn () => Customer::where('is_vip', true)->count() ?: null)
                 ->badgeColor('warning')
-                ->modifyQueryUsing(fn (Builder $q) => $q->where('is_vip', true)),
+                ->modifyQueryUsing(fn (Builder $query) => $query->where('is_vip', true)),
             'corporate' => Tab::make('Corporate & agencies')
-                ->modifyQueryUsing(fn (Builder $q) => $q->whereIn('type', [CustomerType::Corporate, CustomerType::Agency])),
+                ->modifyQueryUsing(fn (Builder $query) => $query->whereIn('type', [CustomerType::Corporate, CustomerType::Agency])),
             'mine' => Tab::make('My customers')
-                ->modifyQueryUsing(fn (Builder $q) => $q->where('assigned_to', auth()->id())),
+                ->modifyQueryUsing(fn (Builder $query) => $query->where('assigned_to', auth()->id())),
             'follow_up' => Tab::make('Follow-up due')
                 ->icon('heroicon-o-clock')
                 ->badge(fn () => Customer::followUpDue()->count() ?: null)
                 ->badgeColor('danger')
-                ->modifyQueryUsing(fn (Builder $q) => $q->followUpDue()),
+                ->modifyQueryUsing(fn (Builder $query) => $query->followUpDue()),
         ];
     }
 }

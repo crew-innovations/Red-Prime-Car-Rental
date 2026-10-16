@@ -35,20 +35,20 @@ class ListYachts extends ListRecords
             'available' => Tab::make('Available')
                 ->badge(fn () => $count(YachtStatus::Available))
                 ->badgeColor('success')
-                ->modifyQueryUsing(fn (Builder $q) => $q->where('status', YachtStatus::Available)),
+                ->modifyQueryUsing(fn (Builder $query) => $query->where('status', YachtStatus::Available)),
             'booked' => Tab::make('Booked')
-                ->modifyQueryUsing(fn (Builder $q) => $q->where('status', YachtStatus::Booked)),
+                ->modifyQueryUsing(fn (Builder $query) => $query->where('status', YachtStatus::Booked)),
             'maintenance' => Tab::make('Maintenance')
                 ->badge(fn () => $count(YachtStatus::Maintenance))
                 ->badgeColor('danger')
-                ->modifyQueryUsing(fn (Builder $q) => $q->where('status', YachtStatus::Maintenance)),
+                ->modifyQueryUsing(fn (Builder $query) => $query->where('status', YachtStatus::Maintenance)),
             'documents' => Tab::make('Documents due')
                 ->icon('heroicon-o-exclamation-triangle')
                 ->badge(fn () => Yacht::documentsDueSoon()->count() ?: null)
                 ->badgeColor('danger')
-                ->modifyQueryUsing(fn (Builder $q) => $q->documentsDueSoon()),
+                ->modifyQueryUsing(fn (Builder $query) => $query->documentsDueSoon()),
             'hidden' => Tab::make('Hidden from website')
-                ->modifyQueryUsing(fn (Builder $q) => $q->where('is_published', false)),
+                ->modifyQueryUsing(fn (Builder $query) => $query->where('is_published', false)),
         ];
     }
 }
