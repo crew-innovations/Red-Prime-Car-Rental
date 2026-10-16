@@ -54,7 +54,12 @@ class DatesRelationManager extends RelationManager
             ->columns([
                 Tables\Columns\TextColumn::make('date')
                     ->date('D, d M Y')
-                    ->description(fn (TripDate $record): ?string => $record->date->isPast() ? 'Past' : $record->date->diffForHumans())
+                    ->description(fn (TripDate $record): string => match (true) {
+                        $record->date->isToday() => 'Today',
+                        $record->date->isPast() => 'Past',
+                        $record->date->isTomorrow() => 'Tomorrow',
+                        default => 'In '.(int) today()->diffInDays($record->date).' days',
+                    })
                     ->sortable(),
                 Tables\Columns\TextColumn::make('start_time')
                     ->label('Starts')
