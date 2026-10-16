@@ -3,7 +3,7 @@
 namespace App\Models;
 
 use App\Enums\ActivityType;
-use App\Enums\LeadStatus;
+use App\Enums\Pipeline;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
@@ -22,7 +22,7 @@ class LeadActivity extends Model
             $activity->user_id ??= auth()->id();
         });
 
-        // Any real contact moves a new lead to "Contacted" and stamps the time.
+        // Any real contact stamps the time and moves a new lead on to "Contacted".
         static::created(function (LeadActivity $activity) {
             if ($activity->type === ActivityType::Note || ! $activity->lead) {
                 return;
@@ -31,8 +31,9 @@ class LeadActivity extends Model
             $lead = $activity->lead;
             $lead->last_contacted_at = $activity->created_at;
 
-            if ($lead->status === LeadStatus::New) {
-                $lead->status = LeadStatus::Contacted;
+            // Car pipeline has its own "Contacted" stage; others just show as contacted.
+            if ($lead->stage === 'new' && $lead->pipeline === Pipeline::Car) {
+                $lead->stage = 'contacted';
             }
 
             $lead->save();

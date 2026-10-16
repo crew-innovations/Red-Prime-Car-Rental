@@ -28,7 +28,7 @@ class CustomerResource extends Resource
 
     protected static ?string $navigationGroup = 'Sales';
 
-    protected static ?int $navigationSort = 2;
+    protected static ?int $navigationSort = 4;
 
     protected static ?string $recordTitleAttribute = 'name';
 
@@ -124,7 +124,7 @@ class CustomerResource extends Resource
 
                         Forms\Components\Placeholder::make('m2_note')
                             ->hiddenLabel()
-                            ->content('Bookings, quotations and ID documents for this customer are added in Milestone 2. Payments are in the Accounts tab below.'),
+                            ->content('Bookings and payments are in the tabs below. Quotations and ID documents are added in Milestone 2.'),
                     ]),
 
                 Forms\Components\Group::make()
@@ -304,6 +304,7 @@ class CustomerResource extends Resource
     {
         return [
             RelationManagers\LeadsRelationManager::class,
+            \App\Filament\Resources\BookingResource\RelationManagers\BookingsRelationManager::class,
             \App\Filament\Resources\TransactionResource\RelationManagers\TransactionsRelationManager::class,
         ];
     }

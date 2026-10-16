@@ -26,6 +26,7 @@ class Transaction extends Model
         'extras' => 'Add-ons & extras',
         'deposit' => 'Security deposit held',
         'fines_recovered' => 'Fines / Salik recovered',
+        'damage' => 'Damage charges',
         'other_income' => 'Other income',
     ];
 
@@ -60,6 +61,7 @@ class Transaction extends Model
             'due_date' => 'date',
             'amount' => 'decimal:2',
             'amount_paid' => 'decimal:2',
+            'is_balance' => 'boolean',
         ];
     }
 
@@ -67,7 +69,33 @@ class Transaction extends Model
     {
         static::creating(function (Transaction $t) {
             $t->user_id ??= auth()->id();
+
+            // Payments added on a booking inherit its customer and car / yacht / trip.
+            if ($t->booking_id && ($booking = Booking::find($t->booking_id))) {
+                $t->customer_id ??= $booking->customer_id;
+                $t->related_type ??= $booking->bookable_type;
+                $t->related_id ??= $booking->bookable_id;
+            }
         });
+
+        // The system "balance due" row becomes a normal payment once it is paid.
+        static::updating(function (Transaction $t) {
+            if ($t->is_balance && $t->status === PaymentStatus::Paid) {
+                $t->is_balance = false;
+                $t->date = today();
+                $t->description = 'Payment · '.($t->booking?->reference ?? 'booking');
+            }
+        });
+
+        $sync = fn (Transaction $t) => $t->booking_id ? $t->booking()->first()?->syncBalance() : null;
+        static::saved($sync);
+        static::deleted($sync);
+        static::restored($sync);
+    }
+
+    public function booking(): BelongsTo
+    {
+        return $this->belongsTo(Booking::class);
     }
 
     public static function categories(?string $type = null): array

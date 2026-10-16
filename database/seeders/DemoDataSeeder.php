@@ -6,7 +6,7 @@ use App\Enums\ActivityType;
 use App\Enums\CarStatus;
 use App\Enums\CustomerType;
 use App\Enums\LeadPriority;
-use App\Enums\LeadStatus;
+use App\Enums\Pipeline;
 use App\Enums\ServiceType;
 use App\Enums\TripStatus;
 use App\Enums\YachtStatus;
@@ -103,27 +103,39 @@ class DemoDataSeeder extends Seeder
             'lead_source_id' => $source('instagram'), 'assigned_to' => $sales->id,
         ]);
 
+        $car = fn (string $brand) => Car::where('brand', $brand)->first();
+
+        // [name, phone, source, service, item, pipeline, stage, priority, follow-up in days, budget, company]
         $leads = [
-            ['Olga Petrova', '+971559876543', 'instagram', ServiceType::Car, Car::where('brand', 'Lamborghini')->first(), LeadStatus::New, LeadPriority::Hot, 0],
-            ['James Carter', '+447700900123', 'website', ServiceType::Yacht, $yacht, LeadStatus::Contacted, LeadPriority::Warm, -1],
-            ['Priya Sharma', '+971521234567', 'whatsapp', ServiceType::Trip, $trip, LeadStatus::Qualified, LeadPriority::Hot, 1],
-            ['Mohammed Khan', '+971567654321', 'google-ads-search', ServiceType::Car, Car::where('brand', 'Ferrari')->first(), LeadStatus::Lost, LeadPriority::Cold, null],
-            ['Ahmed Al Mansoori', '+971501112233', 'instagram', ServiceType::Car, Car::where('brand', 'Rolls-Royce')->first(), LeadStatus::Converted, LeadPriority::Warm, null],
+            ['Olga Petrova', '+971559876543', 'instagram', ServiceType::Car, $car('Lamborghini'), Pipeline::Car, 'new', LeadPriority::Hot, 0, 10500, null],
+            ['Daniel Novak', '+420777123456', 'tiktok', ServiceType::Car, $car('Ferrari'), Pipeline::Car, 'contacted', LeadPriority::Warm, 1, 9800, null],
+            ['Sara Haddad', '+971585551212', 'website', ServiceType::Car, $car('Porsche'), Pipeline::Car, 'car_selected', LeadPriority::Warm, 2, 6600, null],
+            ['Luca Romano', '+393401234567', 'google-ads-search', ServiceType::Car, $car('Mercedes-Benz'), Pipeline::Car, 'quotation_sent', LeadPriority::Hot, -1, 8250, null],
+            ['Fatima Zahra', '+971506667788', 'whatsapp', ServiceType::Car, $car('Land Rover'), Pipeline::Car, 'documents_received', LeadPriority::Warm, 1, 4800, null],
+            ['Mohammed Khan', '+971567654321', 'google-ads-search', ServiceType::Car, $car('Ferrari'), Pipeline::Car, Pipeline::LOST, LeadPriority::Cold, null, null, null],
+            ['Ahmed Al Mansoori', '+971501112233', 'instagram', ServiceType::Car, $car('Rolls-Royce'), Pipeline::Car, 'vehicle_delivered', LeadPriority::Warm, null, 17400, null],
+            ['James Carter', '+447700900123', 'website', ServiceType::Yacht, $yacht, Pipeline::Yacht, 'requirements_confirmed', LeadPriority::Warm, -1, 6000, null],
+            ['Elena Ivanova', '+79161234567', 'instagram', ServiceType::Yacht, $yacht, Pipeline::Yacht, 'quotation_sent', LeadPriority::Hot, 1, 7200, null],
+            ['Priya Sharma', '+971521234567', 'whatsapp', ServiceType::Trip, $trip, Pipeline::Yacht, 'availability_confirmed', LeadPriority::Hot, 1, 1200, null],
+            ['Omar Siddiqui', '+971504443322', 'corporate-partner', null, null, Pipeline::B2b, 'meeting', LeadPriority::Hot, 2, 60000, 'Atlas Events LLC'],
+            ['Rachel Green', '+971555009988', 'concierge-hotel', null, null, Pipeline::B2b, 'proposal', LeadPriority::Warm, 3, 25000, 'Palm Bay Hotel Concierge'],
         ];
 
-        foreach ($leads as [$name, $phone, $src, $service, $item, $status, $priority, $followUpDays]) {
-            $lead = Lead::firstOrCreate(['phone' => $phone, 'service_type' => $service], [
-                'name' => $name, 'lead_source_id' => $source($src), 'status' => $status, 'priority' => $priority,
+        foreach ($leads as [$name, $phone, $src, $service, $item, $pipeline, $stage, $priority, $followUpDays, $budget, $company]) {
+            $lead = Lead::firstOrCreate(['phone' => $phone], [
+                'name' => $name, 'company_name' => $company, 'lead_source_id' => $source($src) ?? $source('other'),
+                'service_type' => $service, 'pipeline' => $pipeline, 'stage' => $stage, 'priority' => $priority,
                 'interested_in_type' => $item?->getMorphClass(), 'interested_in_id' => $item?->getKey(),
-                'preferred_date' => today()->addDays(5), 'assigned_to' => $sales->id,
+                'preferred_date' => today()->addDays(5), 'assigned_to' => $sales->id, 'budget' => $budget,
                 'next_follow_up_at' => $followUpDays === null ? null : now()->addDays($followUpDays),
-                'lost_reason' => $status === LeadStatus::Lost ? 'Price too high' : null,
-                'customer_id' => $status === LeadStatus::Converted ? $customer->id : null,
-                'converted_at' => $status === LeadStatus::Converted ? now()->subDays(10) : null,
-                'message' => 'Hi, is this available next week? Please share the best price.',
+                'lost_reason' => $stage === Pipeline::LOST ? 'Price too high' : null,
+                'customer_id' => $name === 'Ahmed Al Mansoori' ? $customer->id : null,
+                'message' => $pipeline === Pipeline::B2b
+                    ? 'We need cars and a yacht for corporate guests every month. Can we discuss a partner rate?'
+                    : 'Hi, is this available next week? Please share the best price.',
             ]);
 
-            if ($status !== LeadStatus::New && $lead->activities()->doesntExist()) {
+            if ($stage !== 'new' && $lead->activities()->doesntExist()) {
                 $lead->activities()->create([
                     'type' => ActivityType::WhatsApp, 'outcome' => 'interested', 'user_id' => $sales->id,
                     'body' => 'Shared prices and photos on WhatsApp.',
@@ -132,5 +144,6 @@ class DemoDataSeeder extends Seeder
         }
 
         $this->call(DemoAccountsSeeder::class);
+        $this->call(DemoBookingsSeeder::class);
     }
 }

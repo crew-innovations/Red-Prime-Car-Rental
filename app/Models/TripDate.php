@@ -14,6 +14,20 @@ class TripDate extends Model
         return ['date' => 'date', 'is_available' => 'boolean'];
     }
 
+    public function bookings(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(Booking::class);
+    }
+
+    /** Guests already booked on this date. */
+    public function bookedGuests(?int $ignoreBookingId = null): int
+    {
+        return (int) $this->bookings()
+            ->whereIn('status', \App\Enums\BookingStatus::billable())
+            ->when($ignoreBookingId, fn ($q) => $q->whereKeyNot($ignoreBookingId))
+            ->sum('guests');
+    }
+
     public function trip(): BelongsTo
     {
         return $this->belongsTo(Trip::class);

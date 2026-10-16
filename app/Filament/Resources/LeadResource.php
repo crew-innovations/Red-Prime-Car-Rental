@@ -4,6 +4,7 @@ namespace App\Filament\Resources;
 
 use App\Enums\LeadPriority;
 use App\Enums\LeadStatus;
+use App\Enums\Pipeline;
 use App\Enums\ServiceType;
 use App\Filament\Resources\LeadResource\Pages;
 use App\Filament\Resources\LeadResource\RelationManagers;
@@ -18,6 +19,7 @@ use Filament\Forms;
 use Filament\Forms\Components\MorphToSelect;
 use Filament\Forms\Form;
 use Filament\Forms\Get;
+use Filament\Forms\Set;
 use Filament\Notifications\Notification;
 use Filament\Resources\Resource;
 use Filament\Support\Enums\FontWeight;
@@ -54,9 +56,15 @@ class LeadResource extends Resource
                             ->columns(2)
                             ->schema([
                                 Forms\Components\TextInput::make('name')
+                                    ->label(fn (Get $get): string => $get('pipeline') === Pipeline::B2b->value ? 'Contact person' : 'Name')
                                     ->required()
                                     ->maxLength(255)
-                                    ->columnSpanFull(),
+                                    ->columnSpan(fn (Get $get): int|string => $get('pipeline') === Pipeline::B2b->value ? 1 : 'full'),
+                                Forms\Components\TextInput::make('company_name')
+                                    ->label('Company')
+                                    ->required(fn (Get $get): bool => $get('pipeline') === Pipeline::B2b->value)
+                                    ->maxLength(255)
+                                    ->visible(fn (Get $get): bool => $get('pipeline') === Pipeline::B2b->value),
                                 Forms\Components\TextInput::make('phone')
                                     ->tel()
                                     ->placeholder('+971 50 123 4567')
@@ -94,6 +102,18 @@ class LeadResource extends Resource
                                     ->options(ServiceType::class)
                                     ->inline()
                                     ->live()
+                                    ->afterStateUpdated(function (Get $get, Set $set, ?string $state) {
+                                        if ($get('pipeline') === Pipeline::B2b->value) {
+                                            return;
+                                        }
+                                        $pipeline = Pipeline::forService($state);
+                                        if ($pipeline->value !== $get('pipeline')) {
+                                            $set('pipeline', $pipeline->value);
+                                            if (! $pipeline->hasStage($get('stage'))) {
+                                                $set('stage', $pipeline->firstStage());
+                                            }
+                                        }
+                                    })
                                     ->columnSpanFull(),
                                 MorphToSelect::make('interestedIn')
                                     ->label('Specific car, yacht or trip')
@@ -145,22 +165,37 @@ class LeadResource extends Resource
                 Forms\Components\Group::make()
                     ->columnSpan(['lg' => 1])
                     ->schema([
-                        Forms\Components\Section::make('Status')
-                            ->icon('heroicon-o-signal')
+                        Forms\Components\Section::make('Pipeline')
+                            ->icon('heroicon-o-funnel')
                             ->schema([
-                                Forms\Components\ToggleButtons::make('status')
+                                Forms\Components\ToggleButtons::make('pipeline')
                                     ->hiddenLabel()
-                                    ->options(LeadStatus::class)
-                                    ->default(LeadStatus::New)
-                                    ->disableOptionWhen(fn (string $value, ?Lead $record): bool => $value === LeadStatus::Converted->value && ! $record?->customer_id)
+                                    ->options(Pipeline::class)
+                                    ->default(Pipeline::Car->value)
+                                    ->inline()
                                     ->required()
                                     ->live()
-                                    ->columns(2),
+                                    ->afterStateUpdated(function (Get $get, Set $set, ?string $state) {
+                                        $pipeline = Pipeline::tryFrom((string) $state);
+                                        if ($pipeline && ! $pipeline->hasStage($get('stage'))) {
+                                            $set('stage', $pipeline->firstStage());
+                                        }
+                                    }),
+                                Forms\Components\Select::make('stage')
+                                    ->options(fn (Get $get): array => Pipeline::tryFrom((string) $get('pipeline'))?->stageOptions() ?? [])
+                                    ->default('new')
+                                    ->native(false)
+                                    ->required()
+                                    ->live()
+                                    ->selectablePlaceholder(false),
+                                Forms\Components\Placeholder::make('stage_progress')
+                                    ->hiddenLabel()
+                                    ->content(fn (Get $get): HtmlString => self::stageProgress(Pipeline::tryFrom((string) $get('pipeline')), $get('stage'))),
                                 Forms\Components\TextInput::make('lost_reason')
                                     ->label('Why was it lost?')
-                                    ->datalist(['Price too high', 'Car not available', 'Booked with competitor', 'No response', 'Changed plans', 'Not eligible (age / licence)'])
-                                    ->required(fn (Get $get): bool => $get('status') === LeadStatus::Lost->value)
-                                    ->visible(fn (Get $get): bool => $get('status') === LeadStatus::Lost->value),
+                                    ->datalist(self::LOST_REASONS)
+                                    ->required(fn (Get $get): bool => $get('stage') === Pipeline::LOST)
+                                    ->visible(fn (Get $get): bool => $get('stage') === Pipeline::LOST),
                                 Forms\Components\ToggleButtons::make('priority')
                                     ->options(LeadPriority::class)
                                     ->default(LeadPriority::Warm)
@@ -213,6 +248,32 @@ class LeadResource extends Resource
             ]);
     }
 
+    public const LOST_REASONS = ['Price too high', 'Car not available', 'Booked with competitor', 'No response', 'Changed plans', 'Not eligible (age / licence)'];
+
+    /** Small step bar: "Step 4 of 11" with the won part highlighted. */
+    public static function stageProgress(?Pipeline $pipeline, ?string $stage): HtmlString
+    {
+        if (! $pipeline) {
+            return new HtmlString('');
+        }
+        if ($stage === Pipeline::LOST) {
+            return new HtmlString('<span style="color:rgb(var(--danger-500));font-weight:600">Lost</span>');
+        }
+
+        $stages = array_keys($pipeline->stages());
+        $current = max(0, $pipeline->stageIndex($stage));
+        $bars = '';
+        foreach ($stages as $i => $key) {
+            $color = $i <= $current ? ($pipeline->isWon($key) ? 'var(--success-500)' : 'var(--primary-500)') : 'var(--gray-400)';
+            $opacity = $i <= $current ? '1' : '.25';
+            $bars .= '<span title="'.e($pipeline->stageLabel($key)).'" style="flex:1;height:6px;border-radius:3px;background:rgb('.$color.');opacity:'.$opacity.'"></span>';
+        }
+        $next = $stages[$current + 1] ?? null;
+
+        return new HtmlString('<div style="display:flex;gap:3px">'.$bars.'</div><div style="font-size:.75rem;opacity:.7;margin-top:.35rem">Step '.($current + 1).' of '.count($stages)
+            .($next ? ' · next: '.e($pipeline->stageLabel($next)) : ' · final stage').'</div>');
+    }
+
     /** Warns while typing if the phone/email already belongs to a customer or another open lead. */
     protected static function existingContactHint(?string $value, ?Lead $record): ?string
     {
@@ -238,10 +299,10 @@ class LeadResource extends Resource
         return $table
             ->columns([
                 Tables\Columns\TextColumn::make('name')
-                    ->searchable(['name', 'phone', 'whatsapp', 'email'])
+                    ->searchable(['name', 'company_name', 'phone', 'whatsapp', 'email'])
                     ->sortable()
                     ->weight(FontWeight::SemiBold)
-                    ->description(fn (Lead $record): ?string => $record->phone ?: $record->email),
+                    ->description(fn (Lead $record): ?string => collect([$record->company_name, $record->phone ?: $record->email])->filter()->implode(' · ') ?: null),
                 Tables\Columns\TextColumn::make('priority')
                     ->badge()
                     ->sortable()
@@ -255,9 +316,12 @@ class LeadResource extends Resource
                     ->badge()
                     ->color('gray')
                     ->sortable(),
-                Tables\Columns\TextColumn::make('status')
+                Tables\Columns\TextColumn::make('stage')
                     ->badge()
-                    ->sortable(),
+                    ->sortable()
+                    ->formatStateUsing(fn (Lead $record): string => $record->stageLabel())
+                    ->color(fn (Lead $record): string => $record->pipeline?->stageColor($record->stage) ?? 'gray')
+                    ->description(fn (Lead $record): ?string => $record->pipeline?->getLabel()),
                 Tables\Columns\TextColumn::make('assignee.name')
                     ->label('Salesperson')
                     ->placeholder('Unassigned')
@@ -289,6 +353,7 @@ class LeadResource extends Resource
             ->striped()
             ->filtersFormColumns(2)
             ->filters([
+                Tables\Filters\SelectFilter::make('pipeline')->options(Pipeline::class),
                 Tables\Filters\SelectFilter::make('status')->options(LeadStatus::class)->multiple(),
                 Tables\Filters\SelectFilter::make('lead_source_id')->label('Source')->relationship('leadSource', 'name')->multiple()->preload(),
                 Tables\Filters\SelectFilter::make('service_type')->label('Interest')->options(ServiceType::class),
@@ -323,6 +388,12 @@ class LeadResource extends Resource
                     ->visible(fn (Lead $record): bool => filled($record->phone)),
                 Tables\Actions\EditAction::make()->iconButton(),
                 Tables\Actions\ActionGroup::make([
+                    Tables\Actions\Action::make('book')
+                        ->label('Create booking')
+                        ->icon('heroicon-o-calendar-days')
+                        ->color('success')
+                        ->url(fn (Lead $record): string => BookingResource::getUrl('create', ['lead' => $record->id]))
+                        ->visible(fn (Lead $record): bool => $record->pipeline !== Pipeline::B2b && $record->stage !== Pipeline::LOST && ! $record->trashed()),
                     self::convertAction(),
                     self::markLostAction(),
                     Tables\Actions\DeleteAction::make(),
@@ -342,15 +413,17 @@ class LeadResource extends Resource
                         ])
                         ->action(fn (Collection $records, array $data) => $records->each->update(['assigned_to' => $data['assigned_to']]))
                         ->deselectRecordsAfterCompletion(),
-                    Tables\Actions\BulkAction::make('changeStatus')
-                        ->label('Change status')
-                        ->icon('heroicon-o-signal')
+                    Tables\Actions\BulkAction::make('markLost')
+                        ->label('Mark as lost')
+                        ->icon('heroicon-o-x-circle')
+                        ->color('danger')
                         ->form([
-                            Forms\Components\Select::make('status')
-                                ->options(collect(LeadStatus::cases())->reject(fn ($s) => $s === LeadStatus::Converted)->mapWithKeys(fn ($s) => [$s->value => $s->getLabel()]))
+                            Forms\Components\TextInput::make('lost_reason')
+                                ->label('Reason')
+                                ->datalist(self::LOST_REASONS)
                                 ->required(),
                         ])
-                        ->action(fn (Collection $records, array $data) => $records->each->update(['status' => $data['status']]))
+                        ->action(fn (Collection $records, array $data) => $records->each->update(['stage' => Pipeline::LOST, 'lost_reason' => $data['lost_reason']]))
                         ->deselectRecordsAfterCompletion(),
                     Tables\Actions\DeleteBulkAction::make(),
                 ]),
@@ -363,17 +436,17 @@ class LeadResource extends Resource
     public static function convertAction(): Tables\Actions\Action
     {
         return Tables\Actions\Action::make('convert')
-            ->label('Convert to customer')
+            ->label('Create customer profile')
             ->icon('heroicon-o-user-plus')
             ->color('success')
             ->requiresConfirmation()
-            ->modalDescription('Creates a customer profile from this lead (or links the existing customer with the same phone or email) and marks the lead as converted.')
+            ->modalDescription('Creates a customer profile from this lead, or links the existing customer with the same phone or email. The pipeline stage stays the same.')
             ->visible(fn (Lead $record): bool => ! $record->customer_id && ! $record->trashed())
             ->action(function (Lead $record) {
                 $customer = $record->convertToCustomer();
 
                 Notification::make()
-                    ->title('Lead converted')
+                    ->title('Customer profile ready')
                     ->body("Customer profile: {$customer->name}")
                     ->success()
                     ->actions([
@@ -394,16 +467,17 @@ class LeadResource extends Resource
             ->form([
                 Forms\Components\TextInput::make('lost_reason')
                     ->label('Reason')
-                    ->datalist(['Price too high', 'Car not available', 'Booked with competitor', 'No response', 'Changed plans', 'Not eligible (age / licence)'])
+                    ->datalist(self::LOST_REASONS)
                     ->required(),
             ])
-            ->visible(fn (Lead $record): bool => ! in_array($record->status, [LeadStatus::Converted, LeadStatus::Lost], true))
-            ->action(fn (Lead $record, array $data) => $record->update(['status' => LeadStatus::Lost, 'lost_reason' => $data['lost_reason']]));
+            ->visible(fn (Lead $record): bool => $record->stage !== Pipeline::LOST)
+            ->action(fn (Lead $record, array $data) => $record->update(['stage' => Pipeline::LOST, 'lost_reason' => $data['lost_reason']]));
     }
 
     public static function getRelations(): array
     {
         return [
+            \App\Filament\Resources\BookingResource\RelationManagers\BookingsRelationManager::class,
             RelationManagers\ActivitiesRelationManager::class,
         ];
     }
@@ -424,12 +498,12 @@ class LeadResource extends Resource
 
     public static function getGloballySearchableAttributes(): array
     {
-        return ['name', 'phone', 'whatsapp', 'email'];
+        return ['name', 'company_name', 'phone', 'whatsapp', 'email'];
     }
 
     public static function getGlobalSearchResultDetails(Model $record): array
     {
-        return ['Status' => $record->status?->getLabel(), 'Phone' => $record->phone];
+        return ['Stage' => $record->stageLabel(), 'Phone' => $record->phone];
     }
 
     public static function getNavigationBadge(): ?string

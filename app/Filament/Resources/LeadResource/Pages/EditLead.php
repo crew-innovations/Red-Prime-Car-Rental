@@ -2,8 +2,8 @@
 
 namespace App\Filament\Resources\LeadResource\Pages;
 
-use App\Enums\LeadStatus;
-use App\Filament\Resources\CustomerResource;
+use App\Enums\Pipeline;
+use App\Filament\Resources\BookingResource;
 use App\Filament\Resources\LeadResource;
 use App\Models\Lead;
 use App\Support\Phone;
@@ -35,19 +35,25 @@ class EditLead extends EditRecord
                 ->color('info')
                 ->url(Phone::telUrl($lead->phone))
                 ->visible(filled($lead->phone)),
-            Actions\Action::make('convert')
-                ->label('Convert to customer')
-                ->icon('heroicon-o-user-plus')
+            Actions\Action::make('book')
+                ->label('Create booking')
+                ->icon('heroicon-o-calendar-days')
                 ->color('primary')
+                ->url(fn (): string => BookingResource::getUrl('create', ['lead' => $this->getRecord()->id]))
+                ->visible(fn (): bool => $this->getRecord()->pipeline !== Pipeline::B2b && $this->getRecord()->stage !== Pipeline::LOST),
+            Actions\Action::make('convert')
+                ->label('Create customer profile')
+                ->icon('heroicon-o-user-plus')
+                ->color('gray')
                 ->requiresConfirmation()
-                ->modalDescription('Creates a customer profile from this lead (or links the existing customer with the same phone or email) and marks the lead as converted.')
+                ->modalDescription('Creates a customer profile from this lead, or links the existing customer with the same phone or email. The pipeline stage stays the same.')
                 ->visible(fn (): bool => ! $this->getRecord()->customer_id)
                 ->action(function () {
                     $customer = $this->getRecord()->convertToCustomer();
 
-                    Notification::make()->title('Lead converted')->body("Customer profile: {$customer->name}")->success()->send();
+                    Notification::make()->title('Customer profile ready')->body($customer->name)->success()->send();
 
-                    $this->redirect(CustomerResource::getUrl('edit', ['record' => $customer]));
+                    $this->redirect(LeadResource::getUrl('edit', ['record' => $this->getRecord()]));
                 }),
             Actions\ActionGroup::make([
                 Actions\Action::make('lost')
@@ -57,13 +63,13 @@ class EditLead extends EditRecord
                     ->form([
                         Forms\Components\TextInput::make('lost_reason')
                             ->label('Reason')
-                            ->datalist(['Price too high', 'Car not available', 'Booked with competitor', 'No response', 'Changed plans', 'Not eligible (age / licence)'])
+                            ->datalist(LeadResource::LOST_REASONS)
                             ->required(),
                     ])
-                    ->visible(fn (): bool => ! in_array($this->getRecord()->status, [LeadStatus::Converted, LeadStatus::Lost], true))
+                    ->visible(fn (): bool => $this->getRecord()->stage !== Pipeline::LOST)
                     ->action(function (array $data) {
-                        $this->getRecord()->update(['status' => LeadStatus::Lost, 'lost_reason' => $data['lost_reason']]);
-                        $this->refreshFormData(['status', 'lost_reason']);
+                        $this->getRecord()->update(['stage' => Pipeline::LOST, 'lost_reason' => $data['lost_reason']]);
+                        $this->refreshFormData(['stage', 'status', 'lost_reason']);
                     }),
                 Actions\DeleteAction::make(),
                 Actions\RestoreAction::make(),

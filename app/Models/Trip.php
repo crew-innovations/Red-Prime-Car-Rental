@@ -68,6 +68,14 @@ class Trip extends Model implements HasMedia
         return $this->morphMany(Transaction::class, 'related');
     }
 
+    public function bookings(): MorphMany
+    {
+        return $this->morphMany(Booking::class, 'bookable');
+    }
+
+    /** Trips have no booked / free status of their own; seats are tracked per date. */
+    public function refreshBookingStatus(): void {}
+
     public function leads(): MorphMany
     {
         return $this->morphMany(Lead::class, 'interested_in');

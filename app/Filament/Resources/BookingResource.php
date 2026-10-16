@@ -1,0 +1,766 @@
+<?php
+
+namespace App\Filament\Resources;
+
+use App\Enums\BookingStatus;
+use App\Enums\CarStatus;
+use App\Enums\DriveMode;
+use App\Enums\PaymentMethod;
+use App\Enums\PaymentStatus;
+use App\Enums\ServiceType;
+use App\Enums\YachtStatus;
+use App\Filament\Resources\BookingResource\BookingActions;
+use App\Filament\Resources\BookingResource\Pages;
+use App\Models\Booking;
+use App\Models\Car;
+use App\Models\Trip;
+use App\Models\TripDate;
+use App\Models\Yacht;
+use Closure;
+use Filament\Forms;
+use Filament\Forms\Form;
+use Filament\Forms\Get;
+use Filament\Forms\Set;
+use Filament\Resources\Resource;
+use Filament\Support\Enums\FontWeight;
+use Filament\Tables;
+use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\SoftDeletingScope;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\HtmlString;
+
+/** Booking Management (Schedule A7) with delivery and return (A10). */
+class BookingResource extends Resource
+{
+    protected static ?string $model = Booking::class;
+
+    protected static ?string $navigationIcon = 'heroicon-o-calendar-days';
+
+    protected static ?string $navigationGroup = 'Sales';
+
+    protected static ?int $navigationSort = 3;
+
+    protected static ?string $recordTitleAttribute = 'reference';
+
+    /* ------------------------------------------------------------------ */
+    /*  Form                                                              */
+    /* ------------------------------------------------------------------ */
+
+    public static function form(Form $form): Form
+    {
+        return $form
+            ->columns(3)
+            ->schema([
+                Forms\Components\Group::make()
+                    ->columnSpan(['lg' => 2])
+                    ->schema([
+                        self::serviceSection(),
+                        self::datesSection(),
+                        self::priceSection(),
+                        self::photosSection(),
+                    ]),
+                Forms\Components\Group::make()
+                    ->columnSpan(['lg' => 1])
+                    ->schema([
+                        self::statusSection(),
+                        self::paymentSection(),
+                        self::operationsSection(),
+                        Forms\Components\Section::make('Team & notes')
+                            ->icon('heroicon-o-user-group')
+                            ->schema([
+                                Forms\Components\Select::make('assigned_to')
+                                    ->label('Salesperson')
+                                    ->relationship('assignee', 'name', fn (Builder $query) => $query->where('is_active', true))
+                                    ->default(fn () => auth()->id())
+                                    ->searchable()
+                                    ->preload(),
+                                Forms\Components\Textarea::make('notes')
+                                    ->label('Internal notes')
+                                    ->rows(3),
+                            ]),
+                    ]),
+            ]);
+    }
+
+    protected static function serviceSection(): Forms\Components\Section
+    {
+        return Forms\Components\Section::make('Customer & service')
+            ->icon('heroicon-o-user')
+            ->columns(2)
+            ->schema([
+                Forms\Components\Select::make('customer_id')
+                    ->label('Customer')
+                    ->relationship('customer', 'name')
+                    ->getOptionLabelFromRecordUsing(fn (Model $record): string => $record->name.($record->phone ? ' · '.$record->phone : ''))
+                    ->searchable(['name', 'phone', 'whatsapp', 'email', 'company_name'])
+                    ->preload()
+                    ->required(fn (Get $get): bool => blank($get('lead_id')))
+                    ->placeholder(fn (Get $get): string => filled($get('lead_id')) ? 'Created from the lead when saved' : 'Select an option')
+                    ->createOptionForm([
+                        Forms\Components\TextInput::make('name')->required()->maxLength(255),
+                        Forms\Components\TextInput::make('phone')->tel()->required()->maxLength(30),
+                        Forms\Components\TextInput::make('email')->email()->maxLength(255),
+                    ])
+                    ->columnSpanFull(),
+                Forms\Components\Hidden::make('lead_id'),
+
+                Forms\Components\ToggleButtons::make('service_type')
+                    ->label('Service')
+                    ->options([
+                        ServiceType::Car->value => ServiceType::Car->getLabel(),
+                        ServiceType::Yacht->value => ServiceType::Yacht->getLabel(),
+                        ServiceType::Trip->value => ServiceType::Trip->getLabel(),
+                    ])
+                    ->icons([
+                        ServiceType::Car->value => ServiceType::Car->getIcon(),
+                        ServiceType::Yacht->value => ServiceType::Yacht->getIcon(),
+                        ServiceType::Trip->value => ServiceType::Trip->getIcon(),
+                    ])
+                    ->default(ServiceType::Car->value)
+                    ->inline()
+                    ->required()
+                    ->live()
+                    ->afterStateUpdated(function (Set $set) {
+                        $set('bookable_id', null);
+                        $set('trip_date_id', null);
+                    })
+                    ->columnSpanFull(),
+
+                Forms\Components\Select::make('bookable_id')
+                    ->label(fn (Get $get): string => match ($get('service_type')) {
+                        ServiceType::Yacht->value => 'Yacht',
+                        ServiceType::Trip->value => 'Yacht trip',
+                        default => 'Car',
+                    })
+                    ->options(fn (Get $get): array => self::itemOptions($get('service_type')))
+                    ->searchable()
+                    ->required()
+                    ->live()
+                    ->afterStateUpdated(function (Get $get, Set $set) {
+                        $item = self::findItem($get('service_type'), $get('bookable_id'));
+                        if ($item instanceof Car) {
+                            $set('drive_mode', $item->self_drive ? DriveMode::SelfDrive->value : DriveMode::WithDriver->value);
+                        }
+                        if (($item instanceof Car || $item instanceof Yacht) && $item->deposit) {
+                            $set('security_deposit', (float) $item->deposit);
+                        }
+                        $set('trip_date_id', null);
+                        self::recalculate($get, $set);
+                    })
+                    ->helperText(fn (Get $get): ?HtmlString => self::itemHint($get))
+                    ->columnSpanFull(),
+
+                Forms\Components\ToggleButtons::make('drive_mode')
+                    ->label('Rental type')
+                    ->options(DriveMode::class)
+                    ->default(DriveMode::SelfDrive->value)
+                    ->inline()
+                    ->required(fn (Get $get): bool => $get('service_type') === ServiceType::Car->value)
+                    ->disableOptionWhen(function (string $value, Get $get): bool {
+                        $car = self::findItem(ServiceType::Car->value, $get('bookable_id'));
+
+                        return $car instanceof Car && (
+                            ($value === DriveMode::SelfDrive->value && ! $car->self_drive)
+                            || ($value === DriveMode::WithDriver->value && ! $car->with_driver)
+                        );
+                    })
+                    ->live()
+                    ->afterStateUpdated(fn (Get $get, Set $set) => self::recalculate($get, $set))
+                    ->visible(fn (Get $get): bool => $get('service_type') === ServiceType::Car->value),
+
+                Forms\Components\Select::make('driver_id')
+                    ->label('Driver')
+                    ->options(fn (): array => BookingActions::driverOptions())
+                    ->searchable()
+                    ->placeholder('Assign later')
+                    ->helperText(fn (): ?string => BookingActions::driverOptions() ? null : 'Add drivers in Settings › Team with the "Driver" role.')
+                    ->rules([fn (Get $get, ?Booking $record): Closure => function (string $attribute, $value, Closure $fail) use ($get, $record) {
+                        if (! $value || ! $get('start_at') || ! $get('end_at') || ! in_array($get('status'), array_map(fn ($s) => $s->value, BookingStatus::blocking()), true)) {
+                            return;
+                        }
+                        $clash = Booking::query()->blocking()->where('driver_id', $value)
+                            ->where('start_at', '<', $get('end_at'))->where('end_at', '>', $get('start_at'))
+                            ->when($record, fn (Builder $q) => $q->whereKeyNot($record->getKey()))
+                            ->first();
+                        if ($clash) {
+                            $fail("This driver is already on {$clash->reference} (".$clash->start_at->format('d M H:i').' – '.$clash->end_at->format('d M H:i').').');
+                        }
+                    }])
+                    ->visible(fn (Get $get): bool => $get('service_type') === ServiceType::Car->value && $get('drive_mode') === DriveMode::WithDriver->value),
+
+                Forms\Components\Select::make('trip_date_id')
+                    ->label('Trip date')
+                    ->options(fn (Get $get, ?Booking $record): array => self::tripDateOptions($get('bookable_id'), $record))
+                    ->required(fn (Get $get): bool => $get('service_type') === ServiceType::Trip->value)
+                    ->live()
+                    ->afterStateUpdated(function (Get $get, Set $set) {
+                        $date = TripDate::with('trip')->find($get('trip_date_id'));
+                        if ($date) {
+                            $start = Carbon::parse($date->date->toDateString().' '.($date->start_time ?? $date->trip?->start_time ?? '09:00'));
+                            $set('start_at', $start->toDateTimeString());
+                            $set('end_at', $start->copy()->addMinutes($date->trip?->duration_minutes ?: 120)->toDateTimeString());
+                            $set('pickup_location', $date->trip?->meeting_point ?: $date->trip?->departure_marina);
+                        }
+                    })
+                    ->helperText(fn (Get $get): ?string => $get('bookable_id') && ! self::tripDateOptions($get('bookable_id'))
+                        ? 'No upcoming dates. Add dates on the trip first.'
+                        : null)
+                    ->visible(fn (Get $get): bool => $get('service_type') === ServiceType::Trip->value)
+                    ->columnSpanFull(),
+            ]);
+    }
+
+    protected static function datesSection(): Forms\Components\Section
+    {
+        $isCar = fn (Get $get): bool => $get('service_type') === ServiceType::Car->value;
+
+        return Forms\Components\Section::make('Dates & place')
+            ->icon('heroicon-o-calendar')
+            ->columns(2)
+            ->schema([
+                Forms\Components\DateTimePicker::make('start_at')
+                    ->label(fn (Get $get): string => $isCar($get) ? 'Pick-up' : 'Start')
+                    ->native(false)
+                    ->seconds(false)
+                    ->minutesStep(15)
+                    ->displayFormat('D, d M Y · H:i')
+                    ->required()
+                    ->live(onBlur: true)
+                    ->afterStateUpdated(function (Get $get, Set $set, ?string $state) use ($isCar) {
+                        if ($state && ! $get('end_at')) {
+                            $set('end_at', Carbon::parse($state)->addHours($isCar($get) ? 24 : 4)->toDateTimeString());
+                        }
+                        self::recalculate($get, $set);
+                    }),
+                Forms\Components\DateTimePicker::make('end_at')
+                    ->label(fn (Get $get): string => $isCar($get) ? 'Return' : 'End')
+                    ->native(false)
+                    ->seconds(false)
+                    ->minutesStep(15)
+                    ->displayFormat('D, d M Y · H:i')
+                    ->required()
+                    ->after('start_at')
+                    ->live(onBlur: true)
+                    ->afterStateUpdated(fn (Get $get, Set $set) => self::recalculate($get, $set))
+                    ->helperText(fn (Get $get): ?string => self::durationText($get('start_at'), $get('end_at')))
+                    ->rules([fn (Get $get, ?Booking $record): Closure => function (string $attribute, $value, Closure $fail) use ($get, $record) {
+                        $type = $get('service_type');
+                        if (! in_array($type, [ServiceType::Car->value, ServiceType::Yacht->value], true) || ! $get('bookable_id') || ! $get('start_at')
+                            || ! in_array($get('status'), array_map(fn ($s) => $s->value, BookingStatus::blocking()), true)) {
+                            return;
+                        }
+                        $clash = Booking::overlapping($type, (int) $get('bookable_id'), $get('start_at'), $value, $record?->getKey())->first();
+                        if ($clash) {
+                            $fail('Already booked for these dates: '.$clash->reference.' ('.$clash->start_at->format('d M H:i').' – '.$clash->end_at->format('d M H:i').').');
+                        }
+                    }]),
+                Forms\Components\TextInput::make('pickup_location')
+                    ->label(fn (Get $get): string => $isCar($get) ? 'Delivery / pick-up location' : 'Meeting point / marina')
+                    ->placeholder(fn (Get $get): string => $isCar($get) ? 'Office, hotel, airport…' : 'Dubai Marina')
+                    ->datalist(['Office', 'Dubai International Airport (DXB)', 'Al Maktoum Airport (DWC)', 'Dubai Marina', 'Downtown Dubai', 'Palm Jumeirah'])
+                    ->maxLength(255),
+                Forms\Components\TextInput::make('return_location')
+                    ->label('Return location')
+                    ->placeholder('Same as pick-up')
+                    ->datalist(['Office', 'Dubai International Airport (DXB)', 'Al Maktoum Airport (DWC)'])
+                    ->maxLength(255)
+                    ->visible($isCar),
+                Forms\Components\TextInput::make('guests')
+                    ->numeric()
+                    ->minValue(1)
+                    ->required(fn (Get $get): bool => $get('service_type') === ServiceType::Trip->value)
+                    ->live(onBlur: true)
+                    ->afterStateUpdated(fn (Get $get, Set $set) => self::recalculate($get, $set))
+                    ->rules([fn (Get $get, ?Booking $record): Closure => function (string $attribute, $value, Closure $fail) use ($get, $record) {
+                        if ($get('service_type') === ServiceType::Trip->value && ($date = TripDate::with('trip')->find($get('trip_date_id')))) {
+                            $seats = $date->available_slots ?? $date->trip?->guest_capacity;
+                            $left = $seats === null ? null : $seats - $date->bookedGuests($record?->getKey());
+                            if ($left !== null && (int) $value > $left) {
+                                $fail("Only {$left} seat(s) left on this date.");
+                            }
+                        }
+                        if ($get('service_type') === ServiceType::Yacht->value && ($yacht = Yacht::find($get('bookable_id'))) && $yacht->max_guests && (int) $value > $yacht->max_guests) {
+                            $fail("This yacht takes up to {$yacht->max_guests} guests.");
+                        }
+                    }])
+                    ->visible(fn (Get $get): bool => ! $isCar($get)),
+            ]);
+    }
+
+    protected static function priceSection(): Forms\Components\Section
+    {
+        return Forms\Components\Section::make('Price')
+            ->icon('heroicon-o-banknotes')
+            ->description('Worked out from the rates. You can change any amount.')
+            ->columns(3)
+            ->schema([
+                Forms\Components\Hidden::make('rate_type'),
+                Forms\Components\Hidden::make('quantity'),
+                Forms\Components\Hidden::make('rate'),
+                Forms\Components\TextInput::make('base_amount')
+                    ->label('Rental price')
+                    ->numeric()
+                    ->minValue(0)
+                    ->prefix('AED')
+                    ->default(0)
+                    ->required()
+                    ->live(onBlur: true)
+                    ->helperText(fn (Get $get): ?string => $get('rate') !== null && $get('quantity')
+                        ? rtrim(rtrim(number_format((float) $get('quantity'), 2), '0'), '.').' × AED '.number_format((float) $get('rate')).' / '.Booking::rateLabel($get('rate_type'))
+                        : null)
+                    ->suffixAction(
+                        Forms\Components\Actions\Action::make('recalculate')
+                            ->icon('heroicon-m-arrow-path')
+                            ->tooltip('Recalculate from rates')
+                            ->action(fn (Get $get, Set $set) => self::recalculate($get, $set))
+                    ),
+                Forms\Components\TextInput::make('extras_amount')
+                    ->label('Add-ons & delivery')
+                    ->numeric()
+                    ->minValue(0)
+                    ->prefix('AED')
+                    ->default(0)
+                    ->live(onBlur: true),
+                Forms\Components\TextInput::make('discount')
+                    ->numeric()
+                    ->minValue(0)
+                    ->prefix('AED')
+                    ->default(0)
+                    ->live(onBlur: true),
+                Forms\Components\Placeholder::make('total_preview')
+                    ->label('Total')
+                    ->content(fn (Get $get): HtmlString => new HtmlString('<span style="font-size:1.4rem;font-weight:700">AED '
+                        .number_format(max(0, (float) $get('base_amount') + (float) $get('extras_amount') - (float) $get('discount')), 2).'</span>')),
+                Forms\Components\TextInput::make('security_deposit')
+                    ->label('Security deposit')
+                    ->helperText('Refundable, collected at handover.')
+                    ->numeric()
+                    ->minValue(0)
+                    ->prefix('AED')
+                    ->default(0),
+                Forms\Components\Group::make()
+                    ->visibleOn('create')
+                    ->columns(2)
+                    ->schema([
+                        Forms\Components\TextInput::make('advance_amount')
+                            ->label('Advance paid now')
+                            ->numeric()
+                            ->minValue(0)
+                            ->prefix('AED')
+                            ->dehydrated(false),
+                        Forms\Components\Select::make('advance_method')
+                            ->label('Paid by')
+                            ->options(PaymentMethod::class)
+                            ->default(PaymentMethod::Card->value)
+                            ->native(false)
+                            ->dehydrated(false),
+                    ]),
+            ]);
+    }
+
+    protected static function photosSection(): Forms\Components\Section
+    {
+        return Forms\Components\Section::make('Photos & documents')
+            ->icon('heroicon-o-camera')
+            ->collapsible()
+            ->collapsed(fn (?Booking $record): bool => ! $record?->delivered_at)
+            ->hiddenOn('create')
+            ->columns(3)
+            ->schema([
+                Forms\Components\SpatieMediaLibraryFileUpload::make('delivery_photos')
+                    ->label('At handover')
+                    ->collection('delivery')
+                    ->image()->multiple()->panelLayout('grid')->openable()->downloadable(),
+                Forms\Components\SpatieMediaLibraryFileUpload::make('return_photos')
+                    ->label('At return')
+                    ->collection('return')
+                    ->image()->multiple()->panelLayout('grid')->openable()->downloadable(),
+                Forms\Components\SpatieMediaLibraryFileUpload::make('documents')
+                    ->label('Agreement, ID, licence')
+                    ->collection('documents')
+                    ->multiple()->openable()->downloadable()
+                    ->acceptedFileTypes(['image/*', 'application/pdf']),
+            ]);
+    }
+
+    protected static function statusSection(): Forms\Components\Section
+    {
+        return Forms\Components\Section::make('Status')
+            ->icon('heroicon-o-signal')
+            ->schema([
+                Forms\Components\ToggleButtons::make('status')
+                    ->hiddenLabel()
+                    ->options(fn (?Booking $record): array => collect(in_array($record?->status, [BookingStatus::InProgress, BookingStatus::Completed], true)
+                        ? [$record->status]
+                        : BookingStatus::manual())->mapWithKeys(fn (BookingStatus $s) => [$s->value => $s->getLabel()])->all())
+                    ->colors(collect(BookingStatus::cases())->mapWithKeys(fn (BookingStatus $s) => [$s->value => $s->getColor()])->all())
+                    ->icons(collect(BookingStatus::cases())->mapWithKeys(fn (BookingStatus $s) => [$s->value => $s->getIcon()])->all())
+                    ->default(BookingStatus::Confirmed->value)
+                    ->required()
+                    ->live()
+                    ->columns(2),
+                Forms\Components\Placeholder::make('status_hint')
+                    ->hiddenLabel()
+                    ->content(fn (Get $get): string => match ($get('status')) {
+                        BookingStatus::Confirmed->value, BookingStatus::PendingPayment->value => 'The car / yacht is held for these dates.',
+                        BookingStatus::InProgress->value => 'Out with the customer. Use "Receive" when it comes back.',
+                        BookingStatus::Completed->value => 'Returned and closed.',
+                        default => 'Not holding the car / yacht yet.',
+                    }),
+                Forms\Components\TextInput::make('cancel_reason')
+                    ->label('Reason')
+                    ->visible(fn (Get $get): bool => in_array($get('status'), [BookingStatus::Cancelled->value, BookingStatus::NoShow->value], true))
+                    ->required(fn (Get $get): bool => in_array($get('status'), [BookingStatus::Cancelled->value, BookingStatus::NoShow->value], true)),
+            ]);
+    }
+
+    protected static function paymentSection(): Forms\Components\Section
+    {
+        return Forms\Components\Section::make('Payment')
+            ->icon('heroicon-o-credit-card')
+            ->hiddenOn('create')
+            ->schema([
+                Forms\Components\Placeholder::make('payment_summary')
+                    ->hiddenLabel()
+                    ->content(function (?Booking $record): HtmlString {
+                        if (! $record) {
+                            return new HtmlString('');
+                        }
+                        $row = fn (string $a, string $b, string $style = '') => "<tr><td style=\"padding:.2rem 0;opacity:.8\">{$a}</td><td style=\"text-align:right;{$style}\">{$b}</td></tr>";
+                        $aed = fn ($v) => 'AED '.number_format((float) $v, 2);
+                        $html = '<table style="width:100%;font-size:.875rem">'
+                            .$row('Booking total', $aed($record->total))
+                            .((float) $record->extra_charges > 0 ? $row('Return charges', $aed($record->extra_charges)) : '')
+                            .$row('Received', $aed($record->paid_amount), 'color:rgb(var(--success-500))')
+                            .$row('<b>Balance</b>', '<b>'.$aed($record->balance).'</b>', (float) $record->balance > 0 ? 'color:rgb(var(--danger-500))' : '')
+                            .$row('Deposit held', $aed($record->depositHeld()))
+                            .'</table>';
+
+                        return new HtmlString($html);
+                    }),
+                Forms\Components\Placeholder::make('payment_status_badge')
+                    ->hiddenLabel()
+                    ->content(fn (?Booking $record): HtmlString => new HtmlString($record?->payment_status
+                        ? '<span style="font-weight:600;color:rgb(var(--'.$record->payment_status->getColor().'-500))">'.$record->payment_status->getLabel().'</span> · see the Payments tab below'
+                        : 'No payment due yet')),
+            ]);
+    }
+
+    protected static function operationsSection(): Forms\Components\Section
+    {
+        return Forms\Components\Section::make('Handover & return')
+            ->icon('heroicon-o-key')
+            ->visible(fn (?Booking $record): bool => (bool) $record?->delivered_at)
+            ->schema([
+                Forms\Components\Placeholder::make('ops')
+                    ->hiddenLabel()
+                    ->content(function (?Booking $record): HtmlString {
+                        $line = fn (string $a, ?string $b) => $b ? '<div style="display:flex;justify-content:space-between;gap:1rem;font-size:.875rem;padding:.15rem 0"><span style="opacity:.75">'.$a.'</span><span style="text-align:right">'.e($b).'</span></div>' : '';
+                        $fuel = fn (?string $f) => Booking::FUEL_LEVELS[$f] ?? null;
+                        $html = '<div style="font-weight:600;margin-bottom:.25rem">Out</div>'
+                            .$line('When', $record->delivered_at?->format('d M Y, H:i'))
+                            .$line('By', $record->deliveredBy?->name)
+                            .$line('Odometer', $record->delivery_km ? number_format($record->delivery_km).' km' : null)
+                            .$line('Fuel', $fuel($record->delivery_fuel))
+                            .$line('Notes', $record->delivery_notes);
+                        if ($record->returned_at) {
+                            $charges = collect($record->charges ?? [])->map(fn ($v, $k) => (Booking::CHARGES[$k][0] ?? $k).' AED '.number_format((float) $v))->implode(', ');
+                            $html .= '<div style="font-weight:600;margin:.6rem 0 .25rem">Back</div>'
+                                .$line('When', $record->returned_at->format('d M Y, H:i'))
+                                .$line('By', $record->receivedBy?->name)
+                                .$line('Odometer', $record->return_km ? number_format($record->return_km).' km'.($record->delivery_km ? ' ('.number_format($record->return_km - $record->delivery_km).' driven)' : '') : null)
+                                .$line('Fuel', $fuel($record->return_fuel))
+                                .$line('Condition', Booking::CONDITIONS[$record->return_condition] ?? null)
+                                .$line('Charges', $charges ?: null)
+                                .$line('Notes', $record->return_notes);
+                        }
+
+                        return new HtmlString($html);
+                    }),
+            ]);
+    }
+
+    /* ------------------------------------------------------------------ */
+    /*  Form helpers                                                      */
+    /* ------------------------------------------------------------------ */
+
+    public static function findItem(?string $service, $id): ?Model
+    {
+        if (! $id) {
+            return null;
+        }
+
+        return match ($service) {
+            ServiceType::Car->value => Car::withTrashed()->find($id),
+            ServiceType::Yacht->value => Yacht::withTrashed()->find($id),
+            ServiceType::Trip->value => Trip::withTrashed()->find($id),
+            default => null,
+        };
+    }
+
+    public static function itemOptions(?string $service): array
+    {
+        return match ($service) {
+            ServiceType::Yacht->value => Yacht::orderBy('name')->get()
+                ->mapWithKeys(fn (Yacht $y) => [$y->id => $y->name.' · '.$y->status?->getLabel().($y->hourly_price ? ' · AED '.number_format((float) $y->hourly_price).'/hr' : '')])->all(),
+            ServiceType::Trip->value => Trip::orderBy('name')->get()
+                ->mapWithKeys(fn (Trip $t) => [$t->id => $t->name.($t->price ? ' · AED '.number_format((float) $t->price) : '')])->all(),
+            ServiceType::Car->value => Car::orderBy('name')->get()
+                ->mapWithKeys(fn (Car $c) => [$c->id => $c->name.' · '.$c->status?->getLabel().($c->daily_price ? ' · AED '.number_format((float) $c->daily_price).'/day' : '')])->all(),
+            default => [],
+        };
+    }
+
+    protected static function itemHint(Get $get): ?HtmlString
+    {
+        $item = self::findItem($get('service_type'), $get('bookable_id'));
+        if (! $item instanceof Car && ! $item instanceof Yacht) {
+            return null;
+        }
+
+        $parts = [];
+        if (in_array($item->status, [CarStatus::Maintenance, CarStatus::Unavailable, YachtStatus::Maintenance, YachtStatus::Unavailable], true)) {
+            $parts[] = '<span style="color:rgb(var(--danger-500))">Currently '.$item->status->getLabel().'</span>';
+        }
+        $upcoming = $item->bookings()->blocking()->where('end_at', '>=', now())->orderBy('start_at')->limit(3)->get();
+        if ($upcoming->isNotEmpty()) {
+            $parts[] = 'Booked: '.$upcoming->map(fn (Booking $b) => $b->start_at->format('d M').'–'.$b->end_at->format('d M'))->implode(', ');
+        }
+        if ($item instanceof Car) {
+            $modes = array_filter([$item->self_drive ? 'Self-drive' : null, $item->with_driver ? 'With driver' : null]);
+            $parts[] = implode(' & ', $modes) ?: 'No rental type set';
+        }
+
+        return $parts ? new HtmlString(implode(' · ', $parts)) : null;
+    }
+
+    public static function tripDateOptions($tripId, ?Booking $record = null): array
+    {
+        if (! $tripId) {
+            return [];
+        }
+
+        $trip = Trip::find($tripId);
+
+        return TripDate::where('trip_id', $tripId)
+            ->where(fn (Builder $q) => $q->where(fn (Builder $q) => $q->where('date', '>=', today())->where('is_available', true))
+                ->when($record?->trip_date_id, fn (Builder $q, $id) => $q->orWhere('id', $id)))
+            ->orderBy('date')
+            ->limit(60)
+            ->get()
+            ->mapWithKeys(function (TripDate $d) use ($trip, $record) {
+                $seats = $d->available_slots ?? $trip?->guest_capacity;
+                $left = $seats === null ? null : $seats - $d->bookedGuests($record?->getKey());
+                $time = $d->start_time ?? $trip?->start_time;
+
+                return [$d->id => $d->date->format('D, d M Y').($time ? ' · '.substr($time, 0, 5) : '').($left !== null ? " · {$left} seats left" : '')];
+            })
+            ->all();
+    }
+
+    public static function recalculate(Get $get, Set $set): void
+    {
+        $quote = Booking::quote(
+            self::findItem($get('service_type'), $get('bookable_id')),
+            $get('start_at'),
+            $get('end_at'),
+            $get('drive_mode'),
+            (int) $get('guests'),
+        );
+
+        if ($quote) {
+            [$type, $qty, $rate, $amount] = $quote;
+            $set('rate_type', $type);
+            $set('quantity', $qty);
+            $set('rate', $rate);
+            $set('base_amount', $amount);
+        }
+    }
+
+    public static function durationText($start, $end): ?string
+    {
+        if (! $start || ! $end) {
+            return null;
+        }
+
+        $minutes = Carbon::parse($start)->diffInMinutes(Carbon::parse($end), false);
+        if ($minutes <= 0) {
+            return null;
+        }
+
+        $days = intdiv((int) $minutes, 1440);
+        $hours = intdiv((int) $minutes % 1440, 60);
+
+        return trim(($days ? $days.' day'.($days > 1 ? 's' : '').' ' : '').($hours ? $hours.' hr' : ''));
+    }
+
+    /* ------------------------------------------------------------------ */
+    /*  Table                                                             */
+    /* ------------------------------------------------------------------ */
+
+    public static function table(Table $table): Table
+    {
+        return $table
+            ->columns(self::tableColumns())
+            ->modifyQueryUsing(fn (Builder $query) => $query->with(['customer', 'bookable', 'driver']))
+            ->defaultSort('start_at')
+            ->striped()
+            ->filtersFormColumns(2)
+            ->filters([
+                Tables\Filters\SelectFilter::make('status')->options(BookingStatus::class)->multiple(),
+                Tables\Filters\SelectFilter::make('service_type')->label('Service')->options([
+                    ServiceType::Car->value => 'Car rental', ServiceType::Yacht->value => 'Yacht rental', ServiceType::Trip->value => 'Yacht trip',
+                ]),
+                Tables\Filters\SelectFilter::make('drive_mode')->label('Rental type')->options(DriveMode::class),
+                Tables\Filters\SelectFilter::make('payment_status')->label('Payment')->options(PaymentStatus::class)->multiple(),
+                Tables\Filters\SelectFilter::make('driver_id')->label('Driver')->relationship('driver', 'name'),
+                Tables\Filters\SelectFilter::make('customer_id')->label('Customer')->relationship('customer', 'name')->searchable(),
+                Tables\Filters\Filter::make('dates')
+                    ->form([
+                        Forms\Components\DatePicker::make('from')->native(false),
+                        Forms\Components\DatePicker::make('until')->native(false),
+                    ])
+                    ->columns(2)
+                    ->query(fn (Builder $query, array $data): Builder => $query
+                        ->when($data['from'] ?? null, fn (Builder $q, $d) => $q->whereDate('end_at', '>=', $d))
+                        ->when($data['until'] ?? null, fn (Builder $q, $d) => $q->whereDate('start_at', '<=', $d))),
+                Tables\Filters\TrashedFilter::make(),
+            ])
+            ->actions([
+                BookingActions::deliver(Tables\Actions\Action::class)->button()->size('sm'),
+                BookingActions::receive(Tables\Actions\Action::class)->button()->size('sm'),
+                Tables\Actions\EditAction::make()->iconButton(),
+                Tables\Actions\ActionGroup::make([
+                    BookingActions::recordPayment(Tables\Actions\Action::class),
+                    BookingActions::refundDeposit(Tables\Actions\Action::class),
+                    BookingActions::whatsapp(Tables\Actions\Action::class),
+                    BookingActions::cancel(Tables\Actions\Action::class),
+                    Tables\Actions\DeleteAction::make(),
+                    Tables\Actions\RestoreAction::make(),
+                ]),
+            ])
+            ->bulkActions([
+                Tables\Actions\BulkActionGroup::make([
+                    Tables\Actions\DeleteBulkAction::make(),
+                ]),
+            ])
+            ->emptyStateIcon('heroicon-o-calendar-days')
+            ->emptyStateHeading('No bookings here')
+            ->emptyStateDescription('Create a booking, or open a lead and click "Create booking".');
+    }
+
+    /** Shared with the Bookings tab on cars, yachts, trips and customers. */
+    public static function tableColumns(bool $withItem = true, bool $withCustomer = true): array
+    {
+        return array_values(array_filter([
+            Tables\Columns\TextColumn::make('reference')
+                ->label('Booking')
+                ->searchable()
+                ->sortable()
+                ->weight(FontWeight::SemiBold)
+                ->description(fn (Booking $record): ?string => $withCustomer ? $record->customer?->name : $record->bookable?->name),
+            $withItem ? Tables\Columns\TextColumn::make('bookable.name')
+                ->label('Car / yacht / trip')
+                ->placeholder('-')
+                ->description(fn (Booking $record): ?string => $record->drive_mode?->getLabel()
+                    .($record->driver ? ' · '.$record->driver->name : '')
+                    ?: $record->service_type?->getLabel()) : null,
+            Tables\Columns\TextColumn::make('start_at')
+                ->label('Dates')
+                ->sortable()
+                ->formatStateUsing(fn (Booking $record): string => $record->start_at->format('d M, H:i').' → '.($record->end_at->isSameDay($record->start_at) ? $record->end_at->format('H:i') : $record->end_at->format('d M, H:i')))
+                ->description(fn (Booking $record): string => self::durationText($record->start_at, $record->end_at)
+                    .($record->status === BookingStatus::InProgress && $record->end_at->isPast() ? ' · overdue' : ''))
+                ->color(fn (Booking $record): ?string => $record->status === BookingStatus::InProgress && $record->end_at->isPast() ? 'danger' : null),
+            Tables\Columns\TextColumn::make('status')
+                ->badge()
+                ->sortable(),
+            Tables\Columns\TextColumn::make('total')
+                ->label('Total')
+                ->alignEnd()
+                ->sortable()
+                ->formatStateUsing(fn (Booking $record): string => 'AED '.number_format($record->amountDue()))
+                ->description(fn (Booking $record): ?string => (float) $record->balance > 0 ? 'Due AED '.number_format((float) $record->balance) : ($record->payment_status === PaymentStatus::Paid ? 'Paid' : null))
+                ->color(fn (Booking $record): ?string => (float) $record->balance > 0 && in_array($record->status, [BookingStatus::InProgress, BookingStatus::Completed], true) ? 'danger' : null),
+            Tables\Columns\TextColumn::make('payment_status')
+                ->label('Payment')
+                ->badge()
+                ->placeholder('-')
+                ->toggleable(),
+            Tables\Columns\TextColumn::make('pickup_location')
+                ->label('Location')
+                ->limit(25)
+                ->placeholder('-')
+                ->toggleable(isToggledHiddenByDefault: true),
+        ]));
+    }
+
+    public static function getRelations(): array
+    {
+        return [
+            \App\Filament\Resources\TransactionResource\RelationManagers\TransactionsRelationManager::class,
+        ];
+    }
+
+    public static function getWidgets(): array
+    {
+        return [
+            BookingResource\Widgets\BookingOverview::class,
+        ];
+    }
+
+    public static function getPages(): array
+    {
+        return [
+            'index' => Pages\ListBookings::route('/'),
+            'create' => Pages\CreateBooking::route('/create'),
+            'edit' => Pages\EditBooking::route('/{record}/edit'),
+        ];
+    }
+
+    public static function getEloquentQuery(): Builder
+    {
+        return parent::getEloquentQuery()->withoutGlobalScopes([SoftDeletingScope::class]);
+    }
+
+    public static function getGloballySearchableAttributes(): array
+    {
+        return ['reference', 'customer.name', 'customer.phone'];
+    }
+
+    public static function getGlobalSearchResultTitle(Model $record): string
+    {
+        return $record->title();
+    }
+
+    public static function getGlobalSearchResultDetails(Model $record): array
+    {
+        return [
+            'Customer' => $record->customer?->name,
+            'Dates' => $record->start_at->format('d M').' – '.$record->end_at->format('d M'),
+        ];
+    }
+
+    public static function getNavigationBadge(): ?string
+    {
+        $count = static::getModel()::query()
+            ->where(fn (Builder $q) => $q
+                ->where(fn (Builder $q) => $q->whereIn('status', [BookingStatus::Confirmed, BookingStatus::PendingPayment])->whereDate('start_at', today()))
+                ->orWhere(fn (Builder $q) => $q->where('status', BookingStatus::InProgress)->where('end_at', '<=', now()->endOfDay())))
+            ->count();
+
+        return $count ? (string) $count : null;
+    }
+
+    public static function getNavigationBadgeColor(): ?string
+    {
+        return 'warning';
+    }
+
+    public static function getNavigationBadgeTooltip(): ?string
+    {
+        return 'Going out or coming back today';
+    }
+}

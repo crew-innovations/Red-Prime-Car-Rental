@@ -56,5 +56,10 @@ class Customer extends Model
         return Transaction::totals($this->transactions()->getQuery())['received'];
     }
 
-    // bookings(), quotations() and documents() arrive in Milestone 2.
+    public function bookings(): HasMany
+    {
+        return $this->hasMany(Booking::class);
+    }
+
+    // quotations() and documents() arrive in Milestone 2.
 }

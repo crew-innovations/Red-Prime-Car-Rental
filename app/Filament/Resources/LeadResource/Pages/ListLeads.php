@@ -17,6 +17,11 @@ class ListLeads extends ListRecords
     protected function getHeaderActions(): array
     {
         return [
+            Actions\Action::make('board')
+                ->label('Pipeline board')
+                ->icon('heroicon-o-view-columns')
+                ->color('gray')
+                ->url(\App\Filament\Pages\PipelineBoard::getUrl()),
             Actions\CreateAction::make()->label('Add lead'),
         ];
     }
@@ -53,7 +58,8 @@ class ListLeads extends ListRecords
                 ->modifyQueryUsing(fn (Builder $query) => $query->followUpDue()),
             'unassigned' => Tab::make('Unassigned')
                 ->modifyQueryUsing(fn (Builder $query) => $query->open()->whereNull('assigned_to')),
-            'converted' => Tab::make('Converted')
+            'converted' => Tab::make('Won')
+                ->icon('heroicon-o-trophy')
                 ->modifyQueryUsing(fn (Builder $query) => $query->where('status', LeadStatus::Converted)),
             'lost' => Tab::make('Lost')
                 ->modifyQueryUsing(fn (Builder $query) => $query->where('status', LeadStatus::Lost)),

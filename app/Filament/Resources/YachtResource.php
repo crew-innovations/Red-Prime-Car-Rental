@@ -352,6 +352,15 @@ class YachtResource extends Resource
                     ->options(YachtStatus::class)
                     ->selectablePlaceholder(false)
                     ->sortable(),
+                Tables\Columns\TextColumn::make('booking')
+                    ->label('Next booking')
+                    ->state(fn (Yacht $record): ?string => ($b = once(fn () => $record->nextBooking()))
+                        ? ($b->status === \App\Enums\BookingStatus::InProgress ? 'Out now, back '.$b->end_at->format('H:i') : $b->start_at->format('d M, H:i').' – '.$b->end_at->format('H:i'))
+                        : null)
+                    ->description(fn (Yacht $record): ?string => ($b = once(fn () => $record->nextBooking())) ? $b->reference.' · '.$b->customer?->name : null)
+                    ->placeholder('Free')
+                    ->color('warning')
+                    ->url(fn (Yacht $record): ?string => ($b = once(fn () => $record->nextBooking())) ? BookingResource::getUrl('edit', ['record' => $b]) : null),
                 FleetFields::documentsColumn(),
                 WebsitePublishing::toggleColumn(),
                 Tables\Columns\IconColumn::make('is_featured')
@@ -438,6 +447,7 @@ class YachtResource extends Resource
     public static function getRelations(): array
     {
         return [
+            \App\Filament\Resources\BookingResource\RelationManagers\BookingsRelationManager::class,
             \App\Filament\Resources\TransactionResource\RelationManagers\TransactionsRelationManager::class,
         ];
     }

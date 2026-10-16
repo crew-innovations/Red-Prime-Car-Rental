@@ -382,6 +382,7 @@ class TripResource extends Resource
     public static function getRelations(): array
     {
         return [
+            \App\Filament\Resources\BookingResource\RelationManagers\BookingsRelationManager::class,
             RelationManagers\DatesRelationManager::class,
             \App\Filament\Resources\TransactionResource\RelationManagers\TransactionsRelationManager::class,
         ];

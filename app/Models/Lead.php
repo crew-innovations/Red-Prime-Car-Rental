@@ -2,8 +2,10 @@
 
 namespace App\Models;
 
+use App\Enums\CustomerType;
 use App\Enums\LeadPriority;
 use App\Enums\LeadStatus;
+use App\Enums\Pipeline;
 use App\Enums\ServiceType;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
@@ -23,6 +25,7 @@ class Lead extends Model
     {
         return [
             'status' => LeadStatus::class,
+            'pipeline' => Pipeline::class,
             'priority' => LeadPriority::class,
             'end_date' => 'date',
             'budget' => 'decimal:2',
@@ -32,6 +35,56 @@ class Lead extends Model
             'converted_at' => 'datetime',
             'next_follow_up_at' => 'datetime',
         ];
+    }
+
+    protected static function booted(): void
+    {
+        // Pipeline and stage drive the overall status (Schedule A3).
+        static::saving(function (Lead $lead) {
+            $lead->pipeline ??= Pipeline::forService($lead->service_type);
+
+            if (! $lead->pipeline->hasStage($lead->stage)) {
+                $lead->stage = $lead->pipeline->firstStage();
+            }
+
+            $lead->status = $lead->pipeline->statusFor($lead->stage, (bool) $lead->last_contacted_at);
+
+            if ($lead->status === LeadStatus::Converted) {
+                $lead->converted_at ??= now();
+            }
+            if ($lead->status !== LeadStatus::Lost) {
+                $lead->lost_reason = null;
+            }
+        });
+
+        // A won deal always has a customer profile.
+        static::saved(function (Lead $lead) {
+            if ($lead->status === LeadStatus::Converted && ! $lead->customer_id && ! $lead->trashed()) {
+                $lead->convertToCustomer();
+            }
+        });
+    }
+
+    public function stageLabel(): string
+    {
+        return $this->pipeline?->stageLabel($this->stage) ?? (string) $this->stage;
+    }
+
+    /** Move forward to a stage; never moves a lead backwards or out of "Lost". */
+    public function advanceTo(?string $stage): void
+    {
+        if (! $stage || ! $this->pipeline?->hasStage($stage) || $this->stage === Pipeline::LOST) {
+            return;
+        }
+
+        if ($this->pipeline->stageIndex($stage) > $this->pipeline->stageIndex($this->stage)) {
+            $this->update(['stage' => $stage]);
+        }
+    }
+
+    public function bookings(): HasMany
+    {
+        return $this->hasMany(Booking::class);
     }
 
     public function leadSource(): BelongsTo
@@ -76,8 +129,9 @@ class Lead extends Model
     }
 
     /**
-     * Turn this lead into a customer. Re-uses an existing customer with the
-     * same phone or email so the same person is never created twice.
+     * Create (or link) the customer profile for this lead. Re-uses an existing
+     * customer with the same phone or email so nobody is created twice. The
+     * pipeline stage is not changed.
      */
     public function convertToCustomer(): Customer
     {
@@ -105,13 +159,11 @@ class Lead extends Model
                     'email' => $this->email,
                     'lead_source_id' => $this->lead_source_id,
                     'assigned_to' => $this->assigned_to,
+                    'company_name' => $this->company_name,
+                    'type' => $this->pipeline === Pipeline::B2b ? CustomerType::Corporate : CustomerType::Individual,
                 ]);
 
-            $this->update([
-                'customer_id' => $customer->id,
-                'status' => LeadStatus::Converted,
-                'converted_at' => now(),
-            ]);
+            $this->forceFill(['customer_id' => $customer->id])->saveQuietly();
 
             return $customer;
         });

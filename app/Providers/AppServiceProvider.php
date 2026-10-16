@@ -2,6 +2,7 @@
 
 namespace App\Providers;
 
+use App\Models\Booking;
 use App\Models\Car;
 use App\Models\Customer;
 use App\Models\Lead;
@@ -31,6 +32,7 @@ class AppServiceProvider extends ServiceProvider
             'lead' => Lead::class,
             'user' => User::class,
             'transaction' => Transaction::class,
+            'booking' => Booking::class,
         ]);
 
         // Fail loudly in development if a value is written to a column that does not exist.

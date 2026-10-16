@@ -75,6 +75,30 @@ class Yacht extends Model implements HasMedia
         return $this->morphMany(Transaction::class, 'related');
     }
 
+    public function bookings(): MorphMany
+    {
+        return $this->morphMany(Booking::class, 'bookable');
+    }
+
+    /** Current or next booking that holds this yacht. */
+    public function nextBooking(): ?Booking
+    {
+        return $this->bookings()->blocking()->where('end_at', '>=', now())->orderBy('start_at')->first();
+    }
+
+    /** Booked / on rent / free, from its bookings. Maintenance and Unavailable are left alone. */
+    public function refreshBookingStatus(): void
+    {
+        if (in_array($this->status, [YachtStatus::Maintenance, YachtStatus::Unavailable], true)) {
+            return;
+        }
+
+        $status = Booking::fleetStatusFor($this);
+        if ($status && $status !== $this->status) {
+            $this->forceFill(['status' => $status])->saveQuietly();
+        }
+    }
+
     public function leads(): MorphMany
     {
         return $this->morphMany(Lead::class, 'interested_in');

@@ -34,6 +34,8 @@ class WelcomeBanner extends Widget
         $newUnhandled = Lead::where('status', LeadStatus::New)->count();
         $carsFree = Car::where('status', CarStatus::Available)->count();
         $docs = Car::documentsDueSoon()->count() + Yacht::documentsDueSoon()->count();
+        $outToday = \App\Models\Booking::whereIn('status', [\App\Enums\BookingStatus::Confirmed, \App\Enums\BookingStatus::PendingPayment])->whereDate('start_at', today())->count();
+        $backToday = \App\Models\Booking::where('status', \App\Enums\BookingStatus::InProgress)->where('end_at', '<=', now()->endOfDay())->count();
         $revenue = Transaction::totals(Transaction::query()->betweenDates(now()->startOfMonth(), now()->endOfMonth()))['received'];
 
         return [
@@ -52,10 +54,14 @@ class WelcomeBanner extends Widget
                 ['label' => 'new leads today', 'value' => $newToday, 'alert' => false],
                 ['label' => 'not contacted yet', 'value' => $newUnhandled, 'alert' => $newUnhandled > 0],
                 ['label' => 'cars available', 'value' => $carsFree, 'alert' => false],
+                $outToday ? ['label' => 'going out today', 'value' => $outToday, 'alert' => false] : null,
+                $backToday ? ['label' => 'due back today', 'value' => $backToday, 'alert' => true] : null,
                 $docs ? ['label' => 'documents due', 'value' => $docs, 'alert' => true] : null,
             ])),
             'actions' => [
                 ['label' => 'New lead', 'icon' => 'heroicon-m-plus', 'url' => LeadResource::getUrl('create'), 'primary' => true],
+                ['label' => 'New booking', 'icon' => 'heroicon-m-calendar-days', 'url' => \App\Filament\Resources\BookingResource::getUrl('create'), 'primary' => false],
+                ['label' => 'Pipeline', 'icon' => 'heroicon-m-view-columns', 'url' => \App\Filament\Pages\PipelineBoard::getUrl(), 'primary' => false],
                 ['label' => 'Add car', 'icon' => 'heroicon-m-truck', 'url' => CarResource::getUrl('create'), 'primary' => false],
                 ['label' => 'Add yacht', 'icon' => 'heroicon-m-lifebuoy', 'url' => YachtResource::getUrl('create'), 'primary' => false],
                 ['label' => 'Add trip', 'icon' => 'heroicon-m-sun', 'url' => TripResource::getUrl('create'), 'primary' => false],

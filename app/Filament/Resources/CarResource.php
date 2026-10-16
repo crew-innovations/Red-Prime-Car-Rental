@@ -194,6 +194,26 @@ class CarResource extends Resource
         return Forms\Components\Tabs\Tab::make('Pricing & rules')
             ->icon('heroicon-o-banknotes')
             ->schema([
+                Forms\Components\Fieldset::make('Rental type')
+                    ->columns(2)
+                    ->schema([
+                        Forms\Components\Toggle::make('self_drive')
+                            ->label('Self-drive')
+                            ->helperText('Customer drives the car.')
+                            ->default(true)
+                            ->live()
+                            ->rules([fn (Get $get): \Closure => function (string $attribute, $value, \Closure $fail) use ($get) {
+                                if (! $value && ! $get('with_driver')) {
+                                    $fail('Choose self-drive, with driver, or both.');
+                                }
+                            }]),
+                        Forms\Components\Toggle::make('with_driver')
+                            ->label('With driver (chauffeur)')
+                            ->helperText('We provide the driver.')
+                            ->default(false)
+                            ->live(),
+                    ]),
+
                 Forms\Components\Fieldset::make('Rates')
                     ->columns(3)
                     ->schema([
@@ -222,17 +242,36 @@ class CarResource extends Resource
                             ->minValue(0)
                             ->prefix('AED')
                             ->placeholder('Not offered'),
-                        Forms\Components\TextInput::make('chauffeur_daily_price')
-                            ->label('With driver, per day')
-                            ->numeric()
-                            ->minValue(0)
-                            ->prefix('AED')
-                            ->placeholder('Not offered'),
                         Forms\Components\TextInput::make('deposit')
                             ->label('Security deposit')
                             ->numeric()
                             ->minValue(0)
                             ->prefix('AED'),
+                    ]),
+
+                Forms\Components\Fieldset::make('With driver')
+                    ->columns(3)
+                    ->visible(fn (Get $get): bool => (bool) $get('with_driver'))
+                    ->schema([
+                        Forms\Components\TextInput::make('chauffeur_daily_price')
+                            ->label('Per day, with driver')
+                            ->numeric()
+                            ->minValue(0)
+                            ->prefix('AED')
+                            ->required(fn (Get $get): bool => (bool) $get('with_driver')),
+                        Forms\Components\TextInput::make('chauffeur_hourly_price')
+                            ->label('Per hour, with driver')
+                            ->numeric()
+                            ->minValue(0)
+                            ->prefix('AED')
+                            ->placeholder('Not offered'),
+                        Forms\Components\TextInput::make('driver_hours_per_day')
+                            ->label('Driver hours in a day')
+                            ->numeric()
+                            ->minValue(1)
+                            ->maxValue(24)
+                            ->suffix('hrs')
+                            ->placeholder('10'),
                     ]),
 
                 Forms\Components\Fieldset::make('Rental rules')
@@ -423,6 +462,22 @@ class CarResource extends Resource
                     ->options(CarStatus::class)
                     ->selectablePlaceholder(false)
                     ->sortable(),
+                Tables\Columns\TextColumn::make('booking')
+                    ->label('Booking')
+                    ->state(fn (Car $record): ?string => self::bookingState($record))
+                    ->description(fn (Car $record): ?string => self::bookingCustomer($record))
+                    ->placeholder('Free')
+                    ->color(fn (Car $record): string => $record->status === CarStatus::Rented ? 'info' : 'warning')
+                    ->url(fn (Car $record): ?string => ($b = self::currentBooking($record)) ? BookingResource::getUrl('edit', ['record' => $b]) : null),
+                Tables\Columns\TextColumn::make('rental_type')
+                    ->label('Rental type')
+                    ->badge()
+                    ->state(fn (Car $record): array => array_values(array_filter([
+                        $record->self_drive ? 'Self-drive' : null,
+                        $record->with_driver ? 'With driver' : null,
+                    ])))
+                    ->color(fn (string $state): string => $state === 'With driver' ? 'warning' : 'gray')
+                    ->toggleable(),
                 FleetFields::documentsColumn(),
                 WebsitePublishing::toggleColumn(),
                 Tables\Columns\IconColumn::make('is_featured')
@@ -518,9 +573,35 @@ class CarResource extends Resource
             ]);
     }
 
+    /** Current or next booking, loaded once per row. */
+    protected static function currentBooking(Car $car): ?\App\Models\Booking
+    {
+        return once(fn () => $car->nextBooking());
+    }
+
+    protected static function bookingState(Car $car): ?string
+    {
+        $b = self::currentBooking($car);
+        if (! $b) {
+            return null;
+        }
+
+        return $b->status === \App\Enums\BookingStatus::InProgress
+            ? 'On rent till '.$b->end_at->format('d M, H:i').($b->end_at->isPast() ? ' (late)' : '')
+            : 'Booked '.$b->start_at->format('d M').' – '.$b->end_at->format('d M');
+    }
+
+    protected static function bookingCustomer(Car $car): ?string
+    {
+        $b = self::currentBooking($car);
+
+        return $b ? $b->reference.' · '.$b->customer?->name : null;
+    }
+
     public static function getRelations(): array
     {
         return [
+            \App\Filament\Resources\BookingResource\RelationManagers\BookingsRelationManager::class,
             RelationManagers\MaintenancesRelationManager::class,
             \App\Filament\Resources\TransactionResource\RelationManagers\TransactionsRelationManager::class,
         ];
