@@ -14,8 +14,8 @@ use Illuminate\Database\Eloquent\Model;
  */
 class WebsitePublishing
 {
-    /** Sidebar section on the edit form. $urlPrefix is the public path, e.g. "cars". */
-    public static function formSection(string $urlPrefix): Forms\Components\Section
+    /** Sidebar section on the edit form with the show/feature switches. */
+    public static function formSection(): Forms\Components\Section
     {
         return Forms\Components\Section::make('Website')
             ->description('Controls how this item appears on the public website.')
@@ -27,14 +27,35 @@ class WebsitePublishing
                     ->live(),
                 Forms\Components\Toggle::make('is_featured')
                     ->label('Featured on homepage'),
-                Forms\Components\TextInput::make('slug')
-                    ->label('Page address')
-                    ->prefix("/{$urlPrefix}/")
-                    ->maxLength(255)
-                    ->unique(ignoreRecord: true)
-                    ->alphaDash()
-                    ->helperText('Leave empty to create it from the name.'),
             ]);
+    }
+
+    /** Public page address. $urlPrefix is the public path, e.g. "cars". */
+    public static function slugField(string $urlPrefix): Forms\Components\TextInput
+    {
+        return Forms\Components\TextInput::make('slug')
+            ->label('Page address')
+            ->prefix("/{$urlPrefix}/")
+            ->maxLength(255)
+            ->unique(ignoreRecord: true)
+            ->alphaDash()
+            ->helperText('Leave empty to create it from the name.');
+    }
+
+    /** SEO fields shown in the "Website & SEO" tab. */
+    public static function seoFields(): array
+    {
+        return [
+            Forms\Components\TextInput::make('meta_title')
+                ->label('SEO title')
+                ->maxLength(70)
+                ->helperText('Shown in Google results. Best under 60 characters. Leave empty to use the name.'),
+            Forms\Components\Textarea::make('meta_description')
+                ->label('SEO description')
+                ->maxLength(300)
+                ->rows(3)
+                ->helperText('Shown under the title in Google. Best around 150 characters.'),
+        ];
     }
 
     public static function toggleColumn(): Tables\Columns\ToggleColumn

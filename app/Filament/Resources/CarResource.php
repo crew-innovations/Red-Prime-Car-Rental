@@ -18,6 +18,8 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletingScope;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\HtmlString;
 
 class CarResource extends Resource
 {
@@ -56,123 +58,15 @@ class CarResource extends Resource
         return $form
             ->columns(3)
             ->schema([
-                Forms\Components\Group::make()
+                Forms\Components\Tabs::make('car')
                     ->columnSpan(['lg' => 2])
-                    ->schema([
-                        Forms\Components\Section::make('Vehicle details')
-                            ->columns(2)
-                            ->schema([
-                                Forms\Components\TextInput::make('name')
-                                    ->label('Display name')
-                                    ->placeholder('e.g. Lamborghini Urus 2024')
-                                    ->required()
-                                    ->maxLength(255)
-                                    ->columnSpanFull(),
-                                Forms\Components\TextInput::make('brand')
-                                    ->required()
-                                    ->datalist(self::BRANDS)
-                                    ->maxLength(100),
-                                Forms\Components\TextInput::make('model')
-                                    ->required()
-                                    ->maxLength(100),
-                                Forms\Components\TextInput::make('year')
-                                    ->numeric()
-                                    ->minValue(1990)
-                                    ->maxValue((int) date('Y') + 1),
-                                Forms\Components\Select::make('type')
-                                    ->options(self::TYPES)
-                                    ->native(false),
-                                Forms\Components\Select::make('transmission')
-                                    ->options(['Automatic' => 'Automatic', 'Manual' => 'Manual'])
-                                    ->default('Automatic')
-                                    ->native(false),
-                                Forms\Components\Select::make('fuel')
-                                    ->options(['Petrol' => 'Petrol', 'Diesel' => 'Diesel', 'Hybrid' => 'Hybrid', 'Electric' => 'Electric'])
-                                    ->default('Petrol')
-                                    ->native(false),
-                                Forms\Components\TextInput::make('seats')
-                                    ->numeric()
-                                    ->minValue(1)
-                                    ->maxValue(20),
-                                Forms\Components\TextInput::make('colour')
-                                    ->maxLength(50),
-                                Forms\Components\TextInput::make('registration_number')
-                                    ->label('Plate / registration no.')
-                                    ->helperText('Internal only, never shown on the website.')
-                                    ->maxLength(50),
-                                Forms\Components\TextInput::make('mileage')
-                                    ->numeric()
-                                    ->minValue(0)
-                                    ->suffix('km'),
-                            ]),
-
-                        Forms\Components\Section::make('Pricing')
-                            ->description('Leave weekly or monthly empty to show "price on request".')
-                            ->columns(4)
-                            ->schema([
-                                Forms\Components\TextInput::make('daily_price')
-                                    ->label('Per day')
-                                    ->numeric()
-                                    ->minValue(0)
-                                    ->prefix('AED')
-                                    ->required(fn (Get $get): bool => (bool) $get('is_published'))
-                                    ->validationMessages(['required' => 'A daily price is needed before the car can be shown on the website.']),
-                                Forms\Components\TextInput::make('weekly_price')
-                                    ->label('Per week')
-                                    ->numeric()
-                                    ->minValue(0)
-                                    ->prefix('AED'),
-                                Forms\Components\TextInput::make('monthly_price')
-                                    ->label('Per month')
-                                    ->numeric()
-                                    ->minValue(0)
-                                    ->prefix('AED'),
-                                Forms\Components\TextInput::make('deposit')
-                                    ->label('Security deposit')
-                                    ->numeric()
-                                    ->minValue(0)
-                                    ->prefix('AED'),
-                            ]),
-
-                        Forms\Components\Section::make('Photos')
-                            ->description('The first photo is used as the cover image. Drag to reorder.')
-                            ->schema([
-                                Forms\Components\SpatieMediaLibraryFileUpload::make('gallery')
-                                    ->hiddenLabel()
-                                    ->collection('gallery')
-                                    ->disk('uploads')
-                                    ->multiple()
-                                    ->reorderable()
-                                    ->image()
-                                    ->imageEditor()
-                                    ->maxFiles(20)
-                                    ->maxSize(5120)
-                                    ->panelLayout('grid'),
-                            ]),
-
-                        Forms\Components\Section::make('Description & features')
-                            ->collapsible()
-                            ->schema([
-                                Forms\Components\RichEditor::make('description')
-                                    ->toolbarButtons(['bold', 'italic', 'bulletList', 'orderedList', 'link', 'undo', 'redo']),
-                                Forms\Components\TagsInput::make('features')
-                                    ->placeholder('Add a feature and press Enter')
-                                    ->suggestions([
-                                        'GPS Navigation', 'Bluetooth', 'Apple CarPlay', 'Android Auto', 'Sunroof',
-                                        'Panoramic Roof', 'Leather Seats', 'Heated Seats', '360° Camera',
-                                        'Parking Sensors', 'Cruise Control', 'Keyless Entry', 'Premium Sound System',
-                                    ]),
-                                Forms\Components\KeyValue::make('specifications')
-                                    ->keyLabel('Specification')
-                                    ->valueLabel('Value')
-                                    ->keyPlaceholder('e.g. Engine')
-                                    ->valuePlaceholder('e.g. 4.0L V8 Twin Turbo')
-                                    ->reorderable(),
-                                Forms\Components\Textarea::make('terms')
-                                    ->label('Rental terms')
-                                    ->placeholder('Minimum age, mileage limit, Salik / fuel policy...')
-                                    ->rows(4),
-                            ]),
+                    ->persistTabInQueryString()
+                    ->tabs([
+                        self::overviewTab(),
+                        self::pricingTab(),
+                        self::photosTab(),
+                        self::documentsTab(),
+                        self::websiteTab(),
                     ]),
 
                 Forms\Components\Group::make()
@@ -181,15 +75,29 @@ class CarResource extends Resource
                         Forms\Components\Section::make('Status')
                             ->icon('heroicon-o-signal')
                             ->schema([
-                                Forms\Components\Select::make('status')
+                                Forms\Components\ToggleButtons::make('status')
                                     ->hiddenLabel()
                                     ->options(CarStatus::class)
                                     ->default(CarStatus::Available)
                                     ->required()
-                                    ->native(false),
+                                    ->columns(2),
                             ]),
 
-                        WebsitePublishing::formSection('cars'),
+                        Forms\Components\Section::make('Needs attention')
+                            ->icon('heroicon-o-exclamation-triangle')
+                            ->iconColor('danger')
+                            ->visible(fn (?Car $record): bool => filled($record?->documentAlerts()))
+                            ->schema([
+                                Forms\Components\Placeholder::make('alerts')
+                                    ->hiddenLabel()
+                                    ->content(fn (?Car $record): HtmlString => new HtmlString(
+                                        collect($record?->documentAlerts() ?? [])
+                                            ->map(fn (string $msg) => '<div style="color: rgb(var(--danger-500)); font-size: .875rem">• '.e($msg).'</div>')
+                                            ->implode('')
+                                    )),
+                            ]),
+
+                        WebsitePublishing::formSection(),
 
                         Forms\Components\Section::make('Internal notes')
                             ->icon('heroicon-o-lock-closed')
@@ -206,13 +114,380 @@ class CarResource extends Resource
                             ->schema([
                                 Forms\Components\Placeholder::make('created_at')
                                     ->label('Added')
-                                    ->content(fn (?Car $record): string => $record?->created_at?->diffForHumans() ?? '-'),
+                                    ->inlineLabel()
+                                    ->content(fn (?Car $record): string => $record?->created_at?->format('d M Y, H:i') ?? '-'),
                                 Forms\Components\Placeholder::make('updated_at')
                                     ->label('Last updated')
+                                    ->inlineLabel()
                                     ->content(fn (?Car $record): string => $record?->updated_at?->diffForHumans() ?? '-'),
                             ]),
                     ]),
             ]);
+    }
+
+    protected static function overviewTab(): Forms\Components\Tabs\Tab
+    {
+        return Forms\Components\Tabs\Tab::make('Overview')
+            ->icon('heroicon-o-information-circle')
+            ->schema([
+                Forms\Components\Fieldset::make('Vehicle')
+                    ->columns(3)
+                    ->schema([
+                        Forms\Components\TextInput::make('name')
+                            ->label('Display name')
+                            ->placeholder('e.g. Lamborghini Urus 2024')
+                            ->required()
+                            ->maxLength(255)
+                            ->columnSpanFull(),
+                        Forms\Components\TextInput::make('brand')
+                            ->required()
+                            ->datalist(self::BRANDS)
+                            ->maxLength(100),
+                        Forms\Components\TextInput::make('model')
+                            ->required()
+                            ->maxLength(100),
+                        Forms\Components\TextInput::make('year')
+                            ->numeric()
+                            ->minValue(1990)
+                            ->maxValue((int) date('Y') + 1),
+                        Forms\Components\Select::make('type')
+                            ->options(self::TYPES)
+                            ->native(false),
+                        Forms\Components\TextInput::make('colour')
+                            ->label('Exterior colour')
+                            ->maxLength(50),
+                        Forms\Components\TextInput::make('interior_colour')
+                            ->maxLength(50),
+                        Forms\Components\TextInput::make('mileage')
+                            ->label('Current mileage')
+                            ->numeric()
+                            ->minValue(0)
+                            ->suffix('km'),
+                        Forms\Components\TextInput::make('branch')
+                            ->label('Branch / location')
+                            ->datalist(['Dubai Marina', 'Downtown Dubai', 'Business Bay', 'JBR', 'Palm Jumeirah', 'Deira', 'Abu Dhabi'])
+                            ->maxLength(100),
+                    ]),
+
+                Forms\Components\Fieldset::make('Specs shown on the website')
+                    ->columns(4)
+                    ->schema([
+                        Forms\Components\Select::make('transmission')
+                            ->options(['Automatic' => 'Automatic', 'Manual' => 'Manual'])
+                            ->default('Automatic')
+                            ->native(false),
+                        Forms\Components\Select::make('fuel')
+                            ->options(['Petrol' => 'Petrol', 'Diesel' => 'Diesel', 'Hybrid' => 'Hybrid', 'Electric' => 'Electric'])
+                            ->default('Petrol')
+                            ->native(false),
+                        Forms\Components\TextInput::make('engine')
+                            ->placeholder('4.0L V8 Twin Turbo')
+                            ->maxLength(100),
+                        Forms\Components\TextInput::make('horsepower')
+                            ->numeric()
+                            ->minValue(0)
+                            ->suffix('hp'),
+                        Forms\Components\TextInput::make('seats')
+                            ->numeric()
+                            ->minValue(1)
+                            ->maxValue(20),
+                        Forms\Components\TextInput::make('doors')
+                            ->numeric()
+                            ->minValue(2)
+                            ->maxValue(6),
+                        Forms\Components\TextInput::make('luggage')
+                            ->label('Bags')
+                            ->numeric()
+                            ->minValue(0)
+                            ->maxValue(10),
+                    ]),
+
+                Forms\Components\RichEditor::make('description')
+                    ->toolbarButtons(['bold', 'italic', 'bulletList', 'orderedList', 'link', 'undo', 'redo']),
+                Forms\Components\TagsInput::make('features')
+                    ->placeholder('Add a feature and press Enter')
+                    ->suggestions([
+                        'GPS Navigation', 'Bluetooth', 'Apple CarPlay', 'Android Auto', 'Sunroof',
+                        'Panoramic Roof', 'Leather Seats', 'Heated Seats', 'Ventilated Seats', '360° Camera',
+                        'Parking Sensors', 'Cruise Control', 'Keyless Entry', 'Premium Sound System', 'Ambient Lighting',
+                    ]),
+                Forms\Components\KeyValue::make('specifications')
+                    ->label('More specifications')
+                    ->keyLabel('Specification')
+                    ->valueLabel('Value')
+                    ->keyPlaceholder('e.g. 0-100 km/h')
+                    ->valuePlaceholder('e.g. 3.6 s')
+                    ->reorderable(),
+            ]);
+    }
+
+    protected static function pricingTab(): Forms\Components\Tabs\Tab
+    {
+        return Forms\Components\Tabs\Tab::make('Pricing & rules')
+            ->icon('heroicon-o-banknotes')
+            ->schema([
+                Forms\Components\Fieldset::make('Rates')
+                    ->columns(3)
+                    ->schema([
+                        Forms\Components\TextInput::make('daily_price')
+                            ->label('Per day')
+                            ->numeric()
+                            ->minValue(0)
+                            ->prefix('AED')
+                            ->required(fn (Get $get): bool => (bool) $get('is_published'))
+                            ->validationMessages(['required' => 'A daily price is needed before the car can be shown on the website.']),
+                        Forms\Components\TextInput::make('weekly_price')
+                            ->label('Per week')
+                            ->numeric()
+                            ->minValue(0)
+                            ->prefix('AED')
+                            ->placeholder('On request'),
+                        Forms\Components\TextInput::make('monthly_price')
+                            ->label('Per month')
+                            ->numeric()
+                            ->minValue(0)
+                            ->prefix('AED')
+                            ->placeholder('On request'),
+                        Forms\Components\TextInput::make('hourly_price')
+                            ->label('Per hour')
+                            ->numeric()
+                            ->minValue(0)
+                            ->prefix('AED')
+                            ->placeholder('Not offered'),
+                        Forms\Components\TextInput::make('chauffeur_daily_price')
+                            ->label('With driver, per day')
+                            ->numeric()
+                            ->minValue(0)
+                            ->prefix('AED')
+                            ->placeholder('Not offered'),
+                        Forms\Components\TextInput::make('deposit')
+                            ->label('Security deposit')
+                            ->numeric()
+                            ->minValue(0)
+                            ->prefix('AED'),
+                    ]),
+
+                Forms\Components\Fieldset::make('Rental rules')
+                    ->columns(3)
+                    ->schema([
+                        Forms\Components\TextInput::make('min_rental_days')
+                            ->label('Minimum rental')
+                            ->numeric()
+                            ->minValue(1)
+                            ->default(1)
+                            ->suffix('days'),
+                        Forms\Components\TextInput::make('min_driver_age')
+                            ->label('Minimum driver age')
+                            ->numeric()
+                            ->minValue(18)
+                            ->maxValue(80)
+                            ->default(21)
+                            ->suffix('years'),
+                        Forms\Components\Select::make('insurance_type')
+                            ->label('Insurance included')
+                            ->options([
+                                'basic' => 'Basic (third party)',
+                                'comprehensive' => 'Comprehensive',
+                                'full' => 'Full cover, zero excess',
+                            ])
+                            ->default('basic')
+                            ->native(false),
+                        Forms\Components\TextInput::make('daily_km_limit')
+                            ->label('Km limit per day')
+                            ->numeric()
+                            ->minValue(0)
+                            ->suffix('km')
+                            ->placeholder('Unlimited'),
+                        Forms\Components\TextInput::make('extra_km_charge')
+                            ->label('Extra km charge')
+                            ->numeric()
+                            ->minValue(0)
+                            ->prefix('AED')
+                            ->suffix('/ km'),
+                        Forms\Components\TextInput::make('salik_charge')
+                            ->label('Salik (toll) charge')
+                            ->numeric()
+                            ->minValue(0)
+                            ->prefix('AED')
+                            ->suffix('/ crossing'),
+                        Forms\Components\Toggle::make('delivery_available')
+                            ->label('Delivery & pick-up available')
+                            ->default(true)
+                            ->live()
+                            ->inline(false),
+                        Forms\Components\TextInput::make('delivery_fee')
+                            ->numeric()
+                            ->minValue(0)
+                            ->prefix('AED')
+                            ->placeholder('Free')
+                            ->visible(fn (Get $get): bool => (bool) $get('delivery_available')),
+                    ]),
+
+                Forms\Components\Repeater::make('addons')
+                    ->label('Add-ons')
+                    ->helperText('Optional extras the customer can add to a booking.')
+                    ->columns(3)
+                    ->defaultItems(0)
+                    ->addActionLabel('Add an add-on')
+                    ->reorderable()
+                    ->collapsible()
+                    ->itemLabel(fn (array $state): ?string => $state['name'] ?? null)
+                    ->schema([
+                        Forms\Components\TextInput::make('name')
+                            ->required()
+                            ->datalist(['Child seat', 'Additional driver', 'Full insurance upgrade', 'GPS device', 'Airport delivery', 'Wi-Fi hotspot']),
+                        Forms\Components\TextInput::make('price')
+                            ->numeric()
+                            ->minValue(0)
+                            ->prefix('AED')
+                            ->required(),
+                        Forms\Components\Select::make('unit')
+                            ->options(['per_day' => 'Per day', 'per_rental' => 'Per rental'])
+                            ->default('per_day')
+                            ->required()
+                            ->native(false),
+                    ]),
+
+                Forms\Components\Textarea::make('terms')
+                    ->label('Other rental terms')
+                    ->placeholder('Fuel policy, cross-border rules, cancellation...')
+                    ->rows(4),
+            ]);
+    }
+
+    protected static function photosTab(): Forms\Components\Tabs\Tab
+    {
+        return Forms\Components\Tabs\Tab::make('Photos')
+            ->icon('heroicon-o-photo')
+            ->badge(fn (?Car $record) => $record?->getMedia('gallery')->count() ?: null)
+            ->schema([
+                Forms\Components\SpatieMediaLibraryFileUpload::make('gallery')
+                    ->hiddenLabel()
+                    ->helperText('The first photo is the cover image on the website. Drag to reorder. Up to 20 photos, 5 MB each.')
+                    ->collection('gallery')
+                    ->disk('uploads')
+                    ->multiple()
+                    ->reorderable()
+                    ->image()
+                    ->imageEditor()
+                    ->maxFiles(20)
+                    ->maxSize(5120)
+                    ->panelLayout('grid'),
+            ]);
+    }
+
+    protected static function documentsTab(): Forms\Components\Tabs\Tab
+    {
+        return Forms\Components\Tabs\Tab::make('Documents')
+            ->icon('heroicon-o-document-text')
+            ->badge(fn (?Car $record) => count($record?->documentAlerts() ?? []) ?: null)
+            ->badgeColor('danger')
+            ->schema([
+                Forms\Components\Fieldset::make('Registration (Mulkiya)')
+                    ->columns(3)
+                    ->schema([
+                        Forms\Components\TextInput::make('registration_number')
+                            ->label('Plate number')
+                            ->maxLength(50),
+                        Forms\Components\TextInput::make('vin')
+                            ->label('VIN / chassis no.')
+                            ->maxLength(50),
+                        self::expiryDate('registration_expiry', 'Registration expiry'),
+                    ]),
+
+                Forms\Components\Fieldset::make('Insurance')
+                    ->columns(3)
+                    ->schema([
+                        Forms\Components\TextInput::make('insurance_company')
+                            ->maxLength(100),
+                        Forms\Components\TextInput::make('insurance_policy_no')
+                            ->label('Policy number')
+                            ->maxLength(100),
+                        self::expiryDate('insurance_expiry', 'Insurance expiry'),
+                    ]),
+
+                Forms\Components\Fieldset::make('Service')
+                    ->columns(3)
+                    ->schema([
+                        self::expiryDate('next_service_date', 'Next service date'),
+                        Forms\Components\TextInput::make('next_service_km')
+                            ->label('Next service at')
+                            ->numeric()
+                            ->minValue(0)
+                            ->suffix('km'),
+                    ]),
+
+                Forms\Components\Fieldset::make('Ownership')
+                    ->columns(3)
+                    ->schema([
+                        Forms\Components\ToggleButtons::make('ownership')
+                            ->options(['own' => 'Our fleet', 'partner' => 'Partner car'])
+                            ->icons(['own' => 'heroicon-o-building-office', 'partner' => 'heroicon-o-users'])
+                            ->default('own')
+                            ->inline()
+                            ->live(),
+                        Forms\Components\TextInput::make('partner_name')
+                            ->required(fn (Get $get): bool => $get('ownership') === 'partner')
+                            ->visible(fn (Get $get): bool => $get('ownership') === 'partner')
+                            ->maxLength(100),
+                        Forms\Components\TextInput::make('partner_commission')
+                            ->label('Partner share')
+                            ->numeric()
+                            ->minValue(0)
+                            ->maxValue(100)
+                            ->suffix('%')
+                            ->visible(fn (Get $get): bool => $get('ownership') === 'partner'),
+                    ]),
+
+                Forms\Components\Placeholder::make('documents_note')
+                    ->hiddenLabel()
+                    ->content('Document scans (Mulkiya, insurance) are uploaded in the Documents module in Milestone 2. Never shown on the website.'),
+            ]);
+    }
+
+    protected static function websiteTab(): Forms\Components\Tabs\Tab
+    {
+        return Forms\Components\Tabs\Tab::make('Website & SEO')
+            ->icon('heroicon-o-globe-alt')
+            ->schema([
+                WebsitePublishing::slugField('cars'),
+                Forms\Components\Select::make('website_badge')
+                    ->label('Badge on the car card')
+                    ->options([
+                        'New' => 'New',
+                        'Best Seller' => 'Best Seller',
+                        'Most Popular' => 'Most Popular',
+                        'Limited Offer' => 'Limited Offer',
+                        'Chauffeur Available' => 'Chauffeur Available',
+                    ])
+                    ->placeholder('No badge')
+                    ->native(false),
+                ...WebsitePublishing::seoFields(),
+            ]);
+    }
+
+    /** Date picker that warns when the date is close or passed. */
+    protected static function expiryDate(string $name, string $label): Forms\Components\DatePicker
+    {
+        return Forms\Components\DatePicker::make($name)
+            ->label($label)
+            ->native(false)
+            ->displayFormat('d M Y')
+            ->live()
+            ->hint(function (?string $state): ?string {
+                if (! $state) {
+                    return null;
+                }
+                $days = (int) today()->diffInDays(Carbon::parse($state), false);
+
+                return match (true) {
+                    $days < 0 => 'Overdue',
+                    $days <= Car::EXPIRY_WARNING_DAYS => "Due in {$days} days",
+                    default => null,
+                };
+            })
+            ->hintColor('danger')
+            ->hintIcon(fn (?string $state): ?string => $state && Carbon::parse($state)->lte(today()->addDays(Car::EXPIRY_WARNING_DAYS)) ? 'heroicon-o-exclamation-triangle' : null);
     }
 
     public static function table(Table $table): Table
@@ -250,9 +525,19 @@ class CarResource extends Resource
                     ->money('AED')
                     ->sortable()
                     ->toggleable(isToggledHiddenByDefault: true),
-                Tables\Columns\TextColumn::make('status')
-                    ->badge()
+                Tables\Columns\SelectColumn::make('status')
+                    ->options(CarStatus::class)
+                    ->selectablePlaceholder(false)
                     ->sortable(),
+                Tables\Columns\IconColumn::make('document_alerts')
+                    ->label('Docs')
+                    ->state(fn (Car $record): bool => filled($record->documentAlerts()))
+                    ->boolean()
+                    ->trueIcon('heroicon-o-exclamation-triangle')
+                    ->trueColor('danger')
+                    ->falseIcon('heroicon-o-check-circle')
+                    ->falseColor('success')
+                    ->tooltip(fn (Car $record): string => implode(' · ', $record->documentAlerts()) ?: 'Registration, insurance and service are up to date'),
                 WebsitePublishing::toggleColumn(),
                 Tables\Columns\IconColumn::make('is_featured')
                     ->label('Featured')
@@ -262,8 +547,28 @@ class CarResource extends Resource
                     ->trueColor('warning')
                     ->falseColor('gray')
                     ->toggleable(),
+                Tables\Columns\TextColumn::make('website_badge')
+                    ->label('Badge')
+                    ->badge()
+                    ->color('warning')
+                    ->toggleable(isToggledHiddenByDefault: true),
                 Tables\Columns\TextColumn::make('registration_number')
                     ->label('Plate')
+                    ->searchable()
+                    ->toggleable(isToggledHiddenByDefault: true),
+                Tables\Columns\TextColumn::make('branch')
+                    ->sortable()
+                    ->toggleable(isToggledHiddenByDefault: true),
+                Tables\Columns\TextColumn::make('ownership')
+                    ->badge()
+                    ->formatStateUsing(fn (string $state): string => $state === 'partner' ? 'Partner' : 'Own')
+                    ->color(fn (string $state): string => $state === 'partner' ? 'info' : 'gray')
+                    ->description(fn (Car $record): ?string => $record->partner_name)
+                    ->toggleable(isToggledHiddenByDefault: true),
+                Tables\Columns\TextColumn::make('mileage')
+                    ->numeric()
+                    ->suffix(' km')
+                    ->sortable()
                     ->toggleable(isToggledHiddenByDefault: true),
                 Tables\Columns\TextColumn::make('updated_at')
                     ->label('Updated')
@@ -272,6 +577,8 @@ class CarResource extends Resource
                     ->toggleable(isToggledHiddenByDefault: true),
             ])
             ->defaultSort('sort_order')
+            ->filtersFormColumns(2)
+            ->striped()
             ->reorderable('sort_order')
             ->filters([
                 Tables\Filters\SelectFilter::make('status')
@@ -282,6 +589,12 @@ class CarResource extends Resource
                     ->multiple(),
                 WebsitePublishing::filter(),
                 Tables\Filters\TernaryFilter::make('is_featured')->label('Featured'),
+                Tables\Filters\SelectFilter::make('ownership')
+                    ->options(['own' => 'Our fleet', 'partner' => 'Partner cars']),
+                Tables\Filters\Filter::make('documents_due')
+                    ->label('Documents or service due in 30 days')
+                    ->toggle()
+                    ->query(fn (Builder $query): Builder => $query->documentsDueSoon()),
                 Tables\Filters\TrashedFilter::make()->label('Deleted cars'),
             ])
             ->actions([
@@ -331,6 +644,13 @@ class CarResource extends Resource
     {
         return [
             RelationManagers\MaintenancesRelationManager::class,
+        ];
+    }
+
+    public static function getWidgets(): array
+    {
+        return [
+            CarResource\Widgets\FleetOverview::class,
         ];
     }
 

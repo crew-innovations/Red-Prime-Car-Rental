@@ -21,6 +21,11 @@ class ListCars extends ListRecords
         ];
     }
 
+    protected function getHeaderWidgets(): array
+    {
+        return CarResource::getWidgets();
+    }
+
     public function getTabs(): array
     {
         $count = fn (?CarStatus $status = null) => Car::query()
@@ -39,6 +44,11 @@ class ListCars extends ListRecords
                 ->badge(fn () => $count(CarStatus::Maintenance) ?: null)
                 ->badgeColor('danger')
                 ->modifyQueryUsing(fn (Builder $q) => $q->where('status', CarStatus::Maintenance)),
+            'documents' => Tab::make('Documents due')
+                ->icon('heroicon-o-exclamation-triangle')
+                ->badge(fn () => Car::documentsDueSoon()->count() ?: null)
+                ->badgeColor('danger')
+                ->modifyQueryUsing(fn (Builder $q) => $q->documentsDueSoon()),
             'hidden' => Tab::make('Hidden from website')
                 ->modifyQueryUsing(fn (Builder $q) => $q->where('is_published', false)),
         ];
