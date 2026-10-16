@@ -17,6 +17,13 @@ trait PublishesToWebsite
 {
     public static function bootPublishesToWebsite(): void
     {
+        // New items go to the end of the website order.
+        static::creating(function ($model) {
+            if (! $model->sort_order) {
+                $model->sort_order = (int) static::withTrashed()->max('sort_order') + 1;
+            }
+        });
+
         static::saving(function ($model) {
             if (blank($model->slug)) {
                 $model->slug = static::uniqueSlug($model->name, $model->getKey());

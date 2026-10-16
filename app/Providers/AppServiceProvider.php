@@ -31,8 +31,8 @@ class AppServiceProvider extends ServiceProvider
             'user' => User::class,
         ]);
 
-        // Catch N+1 queries and typos in attribute names during development.
-        Model::shouldBeStrict(! $this->app->isProduction());
+        // Fail loudly in development if a value is written to a column that does not exist.
+        Model::preventSilentlyDiscardingAttributes(! $this->app->isProduction());
 
         // Super Admin can do everything; per-role permissions arrive in Milestone 2.
         \Illuminate\Support\Facades\Gate::before(

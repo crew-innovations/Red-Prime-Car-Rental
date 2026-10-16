@@ -48,7 +48,7 @@ class Car extends Model implements HasMedia
 
     public function maintenances(): HasMany
     {
-        return $this->hasMany(CarMaintenance::class)->latest('date');
+        return $this->hasMany(CarMaintenance::class);
     }
 
     public function leads(): MorphMany
