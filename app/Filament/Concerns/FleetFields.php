@@ -92,6 +92,41 @@ class FleetFields
             ]);
     }
 
+    /**
+     * Mandatory charges added on top of the price (marina fee, VAT, cleaning...),
+     * as opposed to optional add-ons the customer chooses.
+     *
+     * @param  array<string, string>  $units
+     */
+    public static function chargesRepeater(array $suggestions, array $units): Forms\Components\Repeater
+    {
+        return Forms\Components\Repeater::make('additional_charges')
+            ->label('Additional charges')
+            ->helperText('Always added to the price, e.g. marina fee or VAT. Shown to the customer before booking.')
+            ->columns(3)
+            ->defaultItems(0)
+            ->addActionLabel('Add a charge')
+            ->reorderable()
+            ->collapsible()
+            ->itemLabel(fn (array $state): ?string => $state['name'] ?? null)
+            ->schema([
+                Forms\Components\TextInput::make('name')
+                    ->required()
+                    ->datalist($suggestions),
+                Forms\Components\TextInput::make('amount')
+                    ->numeric()
+                    ->minValue(0)
+                    ->required()
+                    ->prefix(fn (Get $get): string => $get('unit') === 'percent' ? '%' : 'AED'),
+                Forms\Components\Select::make('unit')
+                    ->options($units + ['percent' => '% of total'])
+                    ->default(array_key_first($units))
+                    ->required()
+                    ->live()
+                    ->native(false),
+            ]);
+    }
+
     /** Red sidebar box listing expired / expiring documents. */
     public static function alertsSection(): Forms\Components\Section
     {

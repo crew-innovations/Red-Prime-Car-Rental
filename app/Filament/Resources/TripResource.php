@@ -220,6 +220,11 @@ class TripResource extends Resource
                             ->visible(fn (Get $get): bool => $get('price_unit') !== 'per_trip'),
                     ]),
 
+                FleetFields::chargesRepeater(
+                    ['VAT', 'Marina entry fee', 'Booking fee'],
+                    ['per_person' => 'Per person', 'per_booking' => 'Per booking'],
+                ),
+
                 FleetFields::addonsRepeater(
                     ['Hotel pick-up', 'Dinner upgrade', 'Drinks package', 'Photography', 'Jet ski (30 min)', 'Birthday cake'],
                     ['per_person' => 'Per person', 'per_booking' => 'Per booking'],

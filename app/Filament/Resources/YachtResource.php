@@ -227,6 +227,11 @@ class YachtResource extends Resource
                             ->inline(false),
                     ]),
 
+                FleetFields::chargesRepeater(
+                    ['Marina fee', 'VAT', 'Cleaning fee', 'Fuel surcharge', 'Captain overtime'],
+                    ['per_booking' => 'Per booking', 'per_hour' => 'Per hour', 'per_guest' => 'Per guest'],
+                ),
+
                 FleetFields::addonsRepeater(
                     ['Catering / BBQ package', 'Birthday cake & decoration', 'DJ', 'Photographer', 'Jet ski (per hour)', 'Seabob', 'Fishing equipment', 'Champagne'],
                     ['per_booking' => 'Per booking', 'per_hour' => 'Per hour', 'per_guest' => 'Per guest'],
