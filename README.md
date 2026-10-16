@@ -28,6 +28,12 @@ php artisan serve
 
 Open http://localhost:8000/crm and log in with `ADMIN_EMAIL` / `ADMIN_PASSWORD` from `.env`.
 
+Optional sample data for demos (cars, yachts, a trip with dates, leads, a customer):
+
+```bash
+php artisan db:seed --class=DemoDataSeeder
+```
+
 ## Hosting on Hostinger (shared / hPanel)
 
 - Upload the whole project to the domain folder; the root `.htaccess` sends all traffic into `/public`

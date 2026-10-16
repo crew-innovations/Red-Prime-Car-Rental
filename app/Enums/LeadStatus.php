@@ -3,9 +3,10 @@
 namespace App\Enums;
 
 use Filament\Support\Contracts\HasColor;
+use Filament\Support\Contracts\HasIcon;
 use Filament\Support\Contracts\HasLabel;
 
-enum LeadStatus: string implements HasLabel, HasColor
+enum LeadStatus: string implements HasLabel, HasColor, HasIcon
 {
     case New = 'new';
     case Contacted = 'contacted';
@@ -32,6 +33,17 @@ enum LeadStatus: string implements HasLabel, HasColor
             self::Qualified => 'warning',
             self::Converted => 'success',
             self::Lost => 'danger',
+        };
+    }
+
+    public function getIcon(): string
+    {
+        return match ($this) {
+            self::New => 'heroicon-m-sparkles',
+            self::Contacted => 'heroicon-m-chat-bubble-left',
+            self::Qualified => 'heroicon-m-check-badge',
+            self::Converted => 'heroicon-m-user-plus',
+            self::Lost => 'heroicon-m-x-circle',
         };
     }
 }

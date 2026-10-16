@@ -29,6 +29,9 @@ class Trip extends Model implements HasMedia
             'included_services' => 'array',
             'excluded_services' => 'array',
             'price' => 'decimal:2',
+            'child_price' => 'decimal:2',
+            'itinerary' => 'array',
+            'addons' => 'array',
             'is_published' => 'boolean',
             'is_featured' => 'boolean',
         ];

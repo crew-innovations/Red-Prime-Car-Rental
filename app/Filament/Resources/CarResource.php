@@ -3,6 +3,7 @@
 namespace App\Filament\Resources;
 
 use App\Enums\CarStatus;
+use App\Filament\Concerns\FleetFields;
 use App\Filament\Concerns\WebsitePublishing;
 use App\Filament\Resources\CarResource\Pages;
 use App\Filament\Resources\CarResource\RelationManagers;
@@ -18,8 +19,6 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletingScope;
-use Illuminate\Support\Carbon;
-use Illuminate\Support\HtmlString;
 
 class CarResource extends Resource
 {
@@ -83,44 +82,13 @@ class CarResource extends Resource
                                     ->columns(2),
                             ]),
 
-                        Forms\Components\Section::make('Needs attention')
-                            ->icon('heroicon-o-exclamation-triangle')
-                            ->iconColor('danger')
-                            ->visible(fn (?Car $record): bool => filled($record?->documentAlerts()))
-                            ->schema([
-                                Forms\Components\Placeholder::make('alerts')
-                                    ->hiddenLabel()
-                                    ->content(fn (?Car $record): HtmlString => new HtmlString(
-                                        collect($record?->documentAlerts() ?? [])
-                                            ->map(fn (string $msg) => '<div style="color: rgb(var(--danger-500)); font-size: .875rem">• '.e($msg).'</div>')
-                                            ->implode('')
-                                    )),
-                            ]),
+                        FleetFields::alertsSection(),
 
                         WebsitePublishing::formSection(),
 
-                        Forms\Components\Section::make('Internal notes')
-                            ->icon('heroicon-o-lock-closed')
-                            ->collapsible()
-                            ->schema([
-                                Forms\Components\Textarea::make('notes')
-                                    ->hiddenLabel()
-                                    ->placeholder('Only visible to your team.')
-                                    ->rows(4),
-                            ]),
+                        FleetFields::notesSection(),
 
-                        Forms\Components\Section::make()
-                            ->hiddenOn('create')
-                            ->schema([
-                                Forms\Components\Placeholder::make('created_at')
-                                    ->label('Added')
-                                    ->inlineLabel()
-                                    ->content(fn (?Car $record): string => $record?->created_at?->format('d M Y, H:i') ?? '-'),
-                                Forms\Components\Placeholder::make('updated_at')
-                                    ->label('Last updated')
-                                    ->inlineLabel()
-                                    ->content(fn (?Car $record): string => $record?->updated_at?->diffForHumans() ?? '-'),
-                            ]),
+                        FleetFields::metaSection(),
                     ]),
             ]);
     }
@@ -323,30 +291,10 @@ class CarResource extends Resource
                             ->visible(fn (Get $get): bool => (bool) $get('delivery_available')),
                     ]),
 
-                Forms\Components\Repeater::make('addons')
-                    ->label('Add-ons')
-                    ->helperText('Optional extras the customer can add to a booking.')
-                    ->columns(3)
-                    ->defaultItems(0)
-                    ->addActionLabel('Add an add-on')
-                    ->reorderable()
-                    ->collapsible()
-                    ->itemLabel(fn (array $state): ?string => $state['name'] ?? null)
-                    ->schema([
-                        Forms\Components\TextInput::make('name')
-                            ->required()
-                            ->datalist(['Child seat', 'Additional driver', 'Full insurance upgrade', 'GPS device', 'Airport delivery', 'Wi-Fi hotspot']),
-                        Forms\Components\TextInput::make('price')
-                            ->numeric()
-                            ->minValue(0)
-                            ->prefix('AED')
-                            ->required(),
-                        Forms\Components\Select::make('unit')
-                            ->options(['per_day' => 'Per day', 'per_rental' => 'Per rental'])
-                            ->default('per_day')
-                            ->required()
-                            ->native(false),
-                    ]),
+                FleetFields::addonsRepeater(
+                    ['Child seat', 'Additional driver', 'Full insurance upgrade', 'GPS device', 'Airport delivery', 'Wi-Fi hotspot'],
+                    ['per_day' => 'Per day', 'per_rental' => 'Per rental'],
+                ),
 
                 Forms\Components\Textarea::make('terms')
                     ->label('Other rental terms')
@@ -392,7 +340,7 @@ class CarResource extends Resource
                         Forms\Components\TextInput::make('vin')
                             ->label('VIN / chassis no.')
                             ->maxLength(50),
-                        self::expiryDate('registration_expiry', 'Registration expiry'),
+                        FleetFields::expiryDate('registration_expiry', 'Registration expiry'),
                     ]),
 
                 Forms\Components\Fieldset::make('Insurance')
@@ -403,13 +351,13 @@ class CarResource extends Resource
                         Forms\Components\TextInput::make('insurance_policy_no')
                             ->label('Policy number')
                             ->maxLength(100),
-                        self::expiryDate('insurance_expiry', 'Insurance expiry'),
+                        FleetFields::expiryDate('insurance_expiry', 'Insurance expiry'),
                     ]),
 
                 Forms\Components\Fieldset::make('Service')
                     ->columns(3)
                     ->schema([
-                        self::expiryDate('next_service_date', 'Next service date'),
+                        FleetFields::expiryDate('next_service_date', 'Next service date'),
                         Forms\Components\TextInput::make('next_service_km')
                             ->label('Next service at')
                             ->numeric()
@@ -417,27 +365,7 @@ class CarResource extends Resource
                             ->suffix('km'),
                     ]),
 
-                Forms\Components\Fieldset::make('Ownership')
-                    ->columns(3)
-                    ->schema([
-                        Forms\Components\ToggleButtons::make('ownership')
-                            ->options(['own' => 'Our fleet', 'partner' => 'Partner car'])
-                            ->icons(['own' => 'heroicon-o-building-office', 'partner' => 'heroicon-o-users'])
-                            ->default('own')
-                            ->inline()
-                            ->live(),
-                        Forms\Components\TextInput::make('partner_name')
-                            ->required(fn (Get $get): bool => $get('ownership') === 'partner')
-                            ->visible(fn (Get $get): bool => $get('ownership') === 'partner')
-                            ->maxLength(100),
-                        Forms\Components\TextInput::make('partner_commission')
-                            ->label('Partner share')
-                            ->numeric()
-                            ->minValue(0)
-                            ->maxValue(100)
-                            ->suffix('%')
-                            ->visible(fn (Get $get): bool => $get('ownership') === 'partner'),
-                    ]),
+                FleetFields::ownershipFieldset('Our fleet', 'Partner car'),
 
                 Forms\Components\Placeholder::make('documents_note')
                     ->hiddenLabel()
@@ -451,43 +379,9 @@ class CarResource extends Resource
             ->icon('heroicon-o-globe-alt')
             ->schema([
                 WebsitePublishing::slugField('cars'),
-                Forms\Components\Select::make('website_badge')
-                    ->label('Badge on the car card')
-                    ->options([
-                        'New' => 'New',
-                        'Best Seller' => 'Best Seller',
-                        'Most Popular' => 'Most Popular',
-                        'Limited Offer' => 'Limited Offer',
-                        'Chauffeur Available' => 'Chauffeur Available',
-                    ])
-                    ->placeholder('No badge')
-                    ->native(false),
+                FleetFields::badgeSelect(['New', 'Best Seller', 'Most Popular', 'Limited Offer', 'Chauffeur Available']),
                 ...WebsitePublishing::seoFields(),
             ]);
-    }
-
-    /** Date picker that warns when the date is close or passed. */
-    protected static function expiryDate(string $name, string $label): Forms\Components\DatePicker
-    {
-        return Forms\Components\DatePicker::make($name)
-            ->label($label)
-            ->native(false)
-            ->displayFormat('d M Y')
-            ->live()
-            ->hint(function (?string $state): ?string {
-                if (! $state) {
-                    return null;
-                }
-                $days = (int) today()->diffInDays(Carbon::parse($state), false);
-
-                return match (true) {
-                    $days < 0 => 'Overdue',
-                    $days <= Car::EXPIRY_WARNING_DAYS => "Due in {$days} days",
-                    default => null,
-                };
-            })
-            ->hintColor('danger')
-            ->hintIcon(fn (?string $state): ?string => $state && Carbon::parse($state)->lte(today()->addDays(Car::EXPIRY_WARNING_DAYS)) ? 'heroicon-o-exclamation-triangle' : null);
     }
 
     public static function table(Table $table): Table
@@ -529,15 +423,7 @@ class CarResource extends Resource
                     ->options(CarStatus::class)
                     ->selectablePlaceholder(false)
                     ->sortable(),
-                Tables\Columns\IconColumn::make('document_alerts')
-                    ->label('Docs')
-                    ->state(fn (Car $record): bool => filled($record->documentAlerts()))
-                    ->boolean()
-                    ->trueIcon('heroicon-o-exclamation-triangle')
-                    ->trueColor('danger')
-                    ->falseIcon('heroicon-o-check-circle')
-                    ->falseColor('success')
-                    ->tooltip(fn (Car $record): string => implode(' · ', $record->documentAlerts()) ?: 'Registration, insurance and service are up to date'),
+                FleetFields::documentsColumn(),
                 WebsitePublishing::toggleColumn(),
                 Tables\Columns\IconColumn::make('is_featured')
                     ->label('Featured')
@@ -559,12 +445,7 @@ class CarResource extends Resource
                 Tables\Columns\TextColumn::make('branch')
                     ->sortable()
                     ->toggleable(isToggledHiddenByDefault: true),
-                Tables\Columns\TextColumn::make('ownership')
-                    ->badge()
-                    ->formatStateUsing(fn (string $state): string => $state === 'partner' ? 'Partner' : 'Own')
-                    ->color(fn (string $state): string => $state === 'partner' ? 'info' : 'gray')
-                    ->description(fn (Car $record): ?string => $record->partner_name)
-                    ->toggleable(isToggledHiddenByDefault: true),
+                FleetFields::ownershipColumn(),
                 Tables\Columns\TextColumn::make('mileage')
                     ->numeric()
                     ->suffix(' km')
@@ -591,10 +472,7 @@ class CarResource extends Resource
                 Tables\Filters\TernaryFilter::make('is_featured')->label('Featured'),
                 Tables\Filters\SelectFilter::make('ownership')
                     ->options(['own' => 'Our fleet', 'partner' => 'Partner cars']),
-                Tables\Filters\Filter::make('documents_due')
-                    ->label('Documents or service due in 30 days')
-                    ->toggle()
-                    ->query(fn (Builder $query): Builder => $query->documentsDueSoon()),
+                FleetFields::documentsDueFilter(),
                 Tables\Filters\TrashedFilter::make()->label('Deleted cars'),
             ])
             ->actions([

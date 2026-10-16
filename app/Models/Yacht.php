@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Enums\YachtStatus;
+use App\Models\Concerns\HasExpiringDocuments;
 use App\Models\Concerns\PublishesToWebsite;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -14,7 +15,7 @@ use Spatie\MediaLibrary\MediaCollections\Models\Media;
 
 class Yacht extends Model implements HasMedia
 {
-    use InteractsWithMedia, PublishesToWebsite, SoftDeletes;
+    use HasExpiringDocuments, InteractsWithMedia, PublishesToWebsite, SoftDeletes;
 
     public const CATEGORY = Category::YACHTS;
 
@@ -31,9 +32,25 @@ class Yacht extends Model implements HasMedia
             'half_day_price' => 'decimal:2',
             'full_day_price' => 'decimal:2',
             'deposit' => 'decimal:2',
+            'sunset_price' => 'decimal:2',
+            'partner_commission' => 'decimal:2',
+            'addons' => 'array',
+            'fuel_included' => 'boolean',
+            'license_expiry' => 'date',
+            'insurance_expiry' => 'date',
+            'next_service_date' => 'date',
             'captain_included' => 'boolean',
             'is_published' => 'boolean',
             'is_featured' => 'boolean',
+        ];
+    }
+
+    public static function expiringDocuments(): array
+    {
+        return [
+            'Licence' => 'license_expiry',
+            'Insurance' => 'insurance_expiry',
+            'Service' => 'next_service_date',
         ];
     }
 

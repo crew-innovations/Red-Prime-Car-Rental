@@ -3,8 +3,8 @@
 namespace App\Models;
 
 use App\Enums\CarStatus;
+use App\Models\Concerns\HasExpiringDocuments;
 use App\Models\Concerns\PublishesToWebsite;
-use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
@@ -15,7 +15,7 @@ use Spatie\MediaLibrary\MediaCollections\Models\Media;
 
 class Car extends Model implements HasMedia
 {
-    use InteractsWithMedia, PublishesToWebsite, SoftDeletes;
+    use HasExpiringDocuments, InteractsWithMedia, PublishesToWebsite, SoftDeletes;
 
     public const CATEGORY = Category::CARS;
 
@@ -47,44 +47,13 @@ class Car extends Model implements HasMedia
         ];
     }
 
-    /** Days before expiry at which documents are flagged in the CRM. */
-    public const EXPIRY_WARNING_DAYS = 30;
-
-    /** Registration, insurance or service due within the warning window (or overdue). */
-    public function scopeDocumentsDueSoon(Builder $query): Builder
+    public static function expiringDocuments(): array
     {
-        $limit = today()->addDays(self::EXPIRY_WARNING_DAYS);
-
-        return $query->where(fn (Builder $q) => $q
-            ->where('registration_expiry', '<=', $limit)
-            ->orWhere('insurance_expiry', '<=', $limit)
-            ->orWhere('next_service_date', '<=', $limit));
-    }
-
-    /** @return array<string, string> label => human message, for items needing attention */
-    public function documentAlerts(): array
-    {
-        $alerts = [];
-
-        foreach ([
-            'Registration' => $this->registration_expiry,
-            'Insurance' => $this->insurance_expiry,
-            'Service' => $this->next_service_date,
-        ] as $label => $date) {
-            if (! $date) {
-                continue;
-            }
-
-            $days = (int) today()->diffInDays($date, false);
-
-            if ($days < 0) {
-                $alerts[$label] = "{$label} overdue by ".abs($days).' days';
-            } elseif ($days <= self::EXPIRY_WARNING_DAYS) {
-                $alerts[$label] = "{$label} due in {$days} days";
-            }
-        }
-
-        return $alerts;
+        return [
+            'Registration' => 'registration_expiry',
+            'Insurance' => 'insurance_expiry',
+            'Service' => 'next_service_date',
+        ];
     }
 
     public function registerMediaCollections(): void

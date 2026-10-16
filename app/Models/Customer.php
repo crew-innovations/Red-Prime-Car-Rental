@@ -19,6 +19,8 @@ class Customer extends Model
         return [
             'type' => CustomerType::class,
             'is_vip' => 'boolean',
+            'tags' => 'array',
+            'date_of_birth' => 'date',
             'next_follow_up_at' => 'datetime',
         ];
     }
@@ -36,6 +38,11 @@ class Customer extends Model
     public function leads(): HasMany
     {
         return $this->hasMany(Lead::class);
+    }
+
+    public function scopeFollowUpDue(\Illuminate\Database\Eloquent\Builder $query): \Illuminate\Database\Eloquent\Builder
+    {
+        return $query->whereNotNull('next_follow_up_at')->where('next_follow_up_at', '<=', now());
     }
 
     // bookings(), quotations(), payments(), documents() arrive in Milestone 2.
