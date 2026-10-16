@@ -3,7 +3,7 @@
 namespace App\Filament\Resources\LeadResource\RelationManagers;
 
 use App\Enums\ActivityType;
-use App\Models\LeadActivity;
+use App\Filament\Resources\LeadResource;
 use Filament\Forms;
 use Filament\Forms\Form;
 use Filament\Resources\RelationManagers\RelationManager;
@@ -90,7 +90,10 @@ class ActivitiesRelationManager extends RelationManager
                         unset($data['next_follow_up_at']);
 
                         return $data;
-                    }),
+                    })
+                    // The activity can change the lead's status and follow-up, so reload the
+                    // page; otherwise a later "Save changes" would write the old values back.
+                    ->after(fn () => $this->redirect(LeadResource::getUrl('edit', ['record' => $this->getOwnerRecord()]))),
             ])
             ->actions([
                 Tables\Actions\EditAction::make()->iconButton(),
