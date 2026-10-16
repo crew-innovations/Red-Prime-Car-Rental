@@ -12,7 +12,7 @@ use Filament\Widgets\TableWidget as BaseWidget;
 /** Open leads due for follow-up today or earlier, for the logged-in salesperson. */
 class MyFollowUps extends BaseWidget
 {
-    protected static ?int $sort = 3;
+    protected static ?int $sort = 5;
 
     protected int|string|array $columnSpan = 1;
 
@@ -29,6 +29,7 @@ class MyFollowUps extends BaseWidget
                     ->where('next_follow_up_at', '<=', today()->endOfDay())
                     ->with(['leadSource', 'interestedIn'])
             )
+            ->description('Due today or overdue')
             ->defaultSort('next_follow_up_at')
             ->paginated([5, 10])
             ->defaultPaginationPageOption(5)

@@ -31,19 +31,27 @@ class YachtOverview extends StatsOverviewWidget
 
         return [
             Stat::make('Total yachts', $total)
+                ->icon('heroicon-o-lifebuoy')
+                ->extraAttributes(['class' => 'rp-stat rp-accent-gold'])
                 ->description($guests.' guests total capacity')
                 ->descriptionIcon('heroicon-m-users')
                 ->color('gray'),
             Stat::make('Available now', $available)
+                ->icon('heroicon-o-check-circle')
+                ->extraAttributes(['class' => 'rp-stat rp-accent-success'])
                 ->description($booked.' booked')
                 ->descriptionIcon('heroicon-m-check-circle')
                 ->color('success')
                 ->url(YachtResource::getUrl('index', ['activeTab' => 'available'])),
             Stat::make('Average hourly rate', $rates?->avg_rate ? $aed($rates->avg_rate) : '-')
+                ->icon('heroicon-o-banknotes')
+                ->extraAttributes(['class' => 'rp-stat rp-accent-warning'])
                 ->description($rates?->min_rate ? $aed($rates->min_rate).' to '.$aed($rates->max_rate) : 'Set prices on your yachts')
                 ->descriptionIcon('heroicon-m-banknotes')
                 ->color('warning'),
             Stat::make('Documents & service due', $docsDue)
+                ->icon('heroicon-o-document-text')
+                ->extraAttributes(['class' => 'rp-stat rp-accent-danger'])
                 ->description($docsDue ? 'Within '.Yacht::EXPIRY_WARNING_DAYS.' days or overdue' : 'Everything up to date')
                 ->descriptionIcon($docsDue ? 'heroicon-m-exclamation-triangle' : 'heroicon-m-shield-check')
                 ->color($docsDue ? 'danger' : 'success')

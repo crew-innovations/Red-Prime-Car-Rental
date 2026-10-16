@@ -41,29 +41,41 @@ class FleetOverview extends StatsOverviewWidget
 
         return [
             Stat::make('Total fleet', $total)
+                ->icon('heroicon-o-truck')
+                ->extraAttributes(['class' => 'rp-stat rp-accent-gold'])
                 ->description(($total - $partners).' own · '.$partners.' partner · '.$published.' on website')
                 ->descriptionIcon('heroicon-m-truck')
                 ->color('gray'),
             Stat::make('Available now', $available)
+                ->icon('heroicon-o-check-circle')
+                ->extraAttributes(['class' => 'rp-stat rp-accent-success'])
                 ->description($pct($available))
                 ->descriptionIcon('heroicon-m-check-circle')
                 ->color('success')
                 ->url(CarResource::getUrl('index', ['activeTab' => 'available'])),
             Stat::make('On rent / reserved', $onRent)
+                ->icon('heroicon-o-key')
+                ->extraAttributes(['class' => 'rp-stat rp-accent-info'])
                 ->description($pct($onRent).' utilisation')
                 ->descriptionIcon('heroicon-m-key')
                 ->color('info')
                 ->url(CarResource::getUrl('index', ['activeTab' => 'rented'])),
             Stat::make('In maintenance', $maintenance)
+                ->icon('heroicon-o-wrench-screwdriver')
+                ->extraAttributes(['class' => 'rp-stat rp-accent-danger'])
                 ->description($maintenance ? 'Not bookable right now' : 'All cars on the road')
                 ->descriptionIcon('heroicon-m-wrench-screwdriver')
                 ->color($maintenance ? 'danger' : 'success')
                 ->url(CarResource::getUrl('index', ['activeTab' => 'maintenance'])),
             Stat::make('Average daily rate', $rates?->avg_rate ? $aed($rates->avg_rate) : '-')
+                ->icon('heroicon-o-banknotes')
+                ->extraAttributes(['class' => 'rp-stat rp-accent-warning'])
                 ->description($rates?->min_rate ? $aed($rates->min_rate).' to '.$aed($rates->max_rate) : 'Set prices on your cars')
                 ->descriptionIcon('heroicon-m-banknotes')
                 ->color('warning'),
             Stat::make('Documents & service due', $docsDue)
+                ->icon('heroicon-o-document-text')
+                ->extraAttributes(['class' => 'rp-stat rp-accent-danger'])
                 ->description($docsDue ? 'Within '.Car::EXPIRY_WARNING_DAYS.' days or overdue' : 'Everything up to date')
                 ->descriptionIcon($docsDue ? 'heroicon-m-exclamation-triangle' : 'heroicon-m-shield-check')
                 ->color($docsDue ? 'danger' : 'success')

@@ -11,6 +11,8 @@ use Filament\Pages;
 use Filament\Panel;
 use Filament\PanelProvider;
 use Filament\Support\Colors\Color;
+use Filament\View\PanelsRenderHook;
+use Illuminate\Support\HtmlString;
 use Filament\Support\Enums\MaxWidth;
 use Filament\Enums\ThemeMode;
 use Filament\Widgets;
@@ -61,6 +63,11 @@ class AdminPanelProvider extends PanelProvider
             ->widgets([
                 \App\Filament\Resources\LeadResource\Widgets\LeadOverview::class,
             ])
+            // Extra styling (dashboard banner, stat cards, lists). Plain CSS, versioned by file time.
+            ->renderHook(
+                PanelsRenderHook::HEAD_END,
+                fn (): HtmlString => new HtmlString('<link rel="stylesheet" href="'.asset('css/crm.css').'?v='.@filemtime(public_path('css/crm.css')).'">'),
+            )
             ->middleware([
                 EncryptCookies::class,
                 AddQueuedCookiesToResponse::class,

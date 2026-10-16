@@ -49,21 +49,29 @@ class LeadOverview extends StatsOverviewWidget
 
         return [
             Stat::make('New leads today', $today)
+                ->icon('heroicon-o-sparkles')
+                ->extraAttributes(['class' => 'rp-stat rp-accent-primary'])
                 ->description($yesterday.' yesterday')
                 ->descriptionIcon($today >= $yesterday ? 'heroicon-m-arrow-trending-up' : 'heroicon-m-arrow-trending-down')
                 ->chart($chart)
                 ->color($today >= $yesterday ? 'success' : 'warning'),
             Stat::make('Open leads', $open)
+                ->icon('heroicon-o-inbox-stack')
+                ->extraAttributes(['class' => 'rp-stat rp-accent-info'])
                 ->description('Not yet converted or lost')
                 ->descriptionIcon('heroicon-m-inbox')
                 ->color('info')
                 ->url(LeadResource::getUrl('index', ['activeTab' => 'open'])),
             Stat::make('Follow-ups due', $due)
+                ->icon('heroicon-o-bell-alert')
+                ->extraAttributes(['class' => 'rp-stat rp-accent-danger'])
                 ->description($due ? 'Call or message them now' : 'Nothing overdue')
                 ->descriptionIcon($due ? 'heroicon-m-bell-alert' : 'heroicon-m-check-circle')
                 ->color($due ? 'danger' : 'success')
                 ->url(LeadResource::getUrl('index', ['activeTab' => 'follow_up'])),
             Stat::make('Conversion (30 days)', $rate.'%')
+                ->icon('heroicon-o-trophy')
+                ->extraAttributes(['class' => 'rp-stat rp-accent-gold'])
                 ->description($topSource ? "{$converted30} of {$total30} · top source: {$topSource->name}" : "{$converted30} of {$total30} leads")
                 ->descriptionIcon('heroicon-m-user-plus')
                 ->color('warning'),
