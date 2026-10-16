@@ -28,11 +28,11 @@ class MyFollowUps extends BaseWidget
                     ->whereNotNull('next_follow_up_at')
                     ->where('next_follow_up_at', '<=', today()->endOfDay())
                     ->with(['leadSource', 'interestedIn'])
+                    ->limit(8)
             )
             ->description('Due today or overdue')
             ->defaultSort('next_follow_up_at')
-            ->paginated([5, 10])
-            ->defaultPaginationPageOption(5)
+            ->paginated(false)
             ->columns([
                 Tables\Columns\TextColumn::make('name')
                     ->weight('semibold')
