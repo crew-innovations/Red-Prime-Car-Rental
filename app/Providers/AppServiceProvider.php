@@ -47,10 +47,12 @@ class AppServiceProvider extends ServiceProvider
         \App\Support\Access::register();
 
         // Private files are opened through a short-lived signed link (see routes/web.php).
+        // The signature covers the path only (not scheme or host), so it also works behind
+        // the hosting proxy, where the app may see http while the browser uses https.
         // Skipped while an old cached config (without the private disk) is still in place.
         if (config('filesystems.disks.private')) {
             \Illuminate\Support\Facades\Storage::disk('private')->buildTemporaryUrlsUsing(
-                fn (string $path, \DateTimeInterface $expiration) => \Illuminate\Support\Facades\URL::temporarySignedRoute('private-file', $expiration, ['path' => $path])
+                fn (string $path, \DateTimeInterface $expiration) => \Illuminate\Support\Facades\URL::temporarySignedRoute('private-file', $expiration, ['path' => $path], absolute: false)
             );
         }
     }

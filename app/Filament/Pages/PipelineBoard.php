@@ -151,6 +151,7 @@ class PipelineBoard extends Page
             ->modalWidth('md')
             ->form([
                 Forms\Components\TextInput::make('lost_reason')
+                    ->validationMessages(['required' => 'Please add why this lead was lost.'])
                     ->label('Why was it lost?')
                     ->datalist(\App\Support\Options::list('lost_reasons'))
                     ->required(),

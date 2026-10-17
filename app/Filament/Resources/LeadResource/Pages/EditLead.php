@@ -75,6 +75,7 @@ class EditLead extends EditRecord
                     ->color('danger')
                     ->form([
                         Forms\Components\TextInput::make('lost_reason')
+                            ->validationMessages(['required' => 'Please add why this lead was lost.'])
                             ->label('Reason')
                             ->datalist(\App\Support\Options::list('lost_reasons'))
                             ->required(),

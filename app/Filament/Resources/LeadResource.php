@@ -207,6 +207,7 @@ class LeadResource extends Resource
                                     ->hiddenLabel()
                                     ->content(fn (Get $get): HtmlString => self::stageProgress(Pipeline::tryFrom((string) $get('pipeline')), $get('stage'))),
                                 Forms\Components\TextInput::make('lost_reason')
+                                    ->validationMessages(['required' => 'Please add why this lead was lost.'])
                                     ->label('Why was it lost?')
                                     ->datalist(fn (): array => \App\Support\Options::list('lost_reasons'))
                                     ->required(fn (Get $get): bool => $get('stage') === Pipeline::LOST)
@@ -446,6 +447,7 @@ class LeadResource extends Resource
                         ->color('danger')
                         ->form([
                             Forms\Components\TextInput::make('lost_reason')
+                                ->validationMessages(['required' => 'Please add why this lead was lost.'])
                                 ->label('Reason')
                                 ->datalist(fn (): array => \App\Support\Options::list('lost_reasons'))
                                 ->required(),
@@ -495,6 +497,7 @@ class LeadResource extends Resource
             ->color('danger')
             ->form([
                 Forms\Components\TextInput::make('lost_reason')
+                    ->validationMessages(['required' => 'Please add why this lead was lost.'])
                     ->label('Reason')
                     ->datalist(fn (): array => \App\Support\Options::list('lost_reasons'))
                     ->required(),

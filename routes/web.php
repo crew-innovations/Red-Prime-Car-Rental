@@ -21,7 +21,7 @@ Route::get('/crm/private-file/{path}', function (Request $request, string $path)
     abort_unless($disk->exists($path), 404);
 
     return $disk->response($path, null, ['Cache-Control' => 'private, max-age=300', 'X-Content-Type-Options' => 'nosniff']);
-})->where('path', '.*')->middleware('signed')->name('private-file');
+})->where('path', '.*')->middleware('signed:relative')->name('private-file');
 
 // Customer-facing pages (no login): secure document upload link and quotation view.
 Route::get('/upload/{token}', [DocumentUploadController::class, 'show'])->middleware('throttle:60,1')->name('documents.upload');

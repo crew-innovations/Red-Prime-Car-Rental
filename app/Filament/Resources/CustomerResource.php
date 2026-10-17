@@ -139,7 +139,7 @@ class CustomerResource extends Resource
 
                         Forms\Components\Placeholder::make('m2_note')
                             ->hiddenLabel()
-                            ->content('Bookings and payments are in the tabs below. Quotations and ID documents are added in Milestone 2.'),
+                            ->content('Bookings, quotations, documents and payments are in the tabs below.'),
                     ]),
 
                 Forms\Components\Group::make()
@@ -197,9 +197,15 @@ class CustomerResource extends Resource
                                 Forms\Components\Placeholder::make('last_payment')
                                     ->label('Last payment')
                                     ->inlineLabel()
-                                    ->content(fn (?Customer $record): string => $record?->transactions()->income()->latest('date')->value('date')
-                                        ? \Illuminate\Support\Carbon::parse($record->transactions()->income()->latest('date')->value('date'))->format('d M Y')
-                                        : '-'),
+                                    // Money actually received, not the open balance row (dated in the future).
+                                    ->content(function (?Customer $record): string {
+                                        $date = $record?->transactions()->income()
+                                            ->where('is_balance', false)
+                                            ->whereIn('status', [\App\Enums\PaymentStatus::Paid, \App\Enums\PaymentStatus::PartiallyPaid])
+                                            ->latest('date')->value('date');
+
+                                        return $date ? \Illuminate\Support\Carbon::parse($date)->format('d M Y') : '-';
+                                    }),
                             ]),
                     ]),
             ]);

@@ -29,7 +29,7 @@ class DocumentsTest extends TestCase
         Storage::fake('uploads');
         // Same signed-link builder the app registers for the real private disk.
         Storage::disk('private')->buildTemporaryUrlsUsing(
-            fn (string $path, \DateTimeInterface $expiration) => \Illuminate\Support\Facades\URL::temporarySignedRoute('private-file', $expiration, ['path' => $path])
+            fn (string $path, \DateTimeInterface $expiration) => \Illuminate\Support\Facades\URL::temporarySignedRoute('private-file', $expiration, ['path' => $path], absolute: false)
         );
         $this->seedRoles();
     }
@@ -81,6 +81,12 @@ class DocumentsTest extends TestCase
 
         $this->actingAs($this->user('Sales'));
         $this->get($url)->assertOk();
+
+        // Behind the hosting proxy the app may see another scheme / host than the browser:
+        // the link must still work, but a changed path must not.
+        $this->assertStringStartsWith('/crm/private-file/', $url);
+        $this->get('https://crm.example.test'.$url)->assertOk();
+        $this->get(str_replace('p.pdf', 'q.pdf', $url))->assertForbidden();
     }
 
     public function test_inactive_user_cannot_open_private_files(): void

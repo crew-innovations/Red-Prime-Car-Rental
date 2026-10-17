@@ -68,6 +68,11 @@ class AdminPanelProvider extends PanelProvider
                 PanelsRenderHook::HEAD_END,
                 fn (): HtmlString => new HtmlString('<link rel="stylesheet" href="'.asset('css/crm.css').'?v='.@filemtime(public_path('css/crm.css')).'">'),
             )
+            // Phones and tablets: start each page with the menu closed so it never covers the content.
+            ->renderHook(
+                PanelsRenderHook::BODY_END,
+                fn (): HtmlString => new HtmlString("<script>document.addEventListener('alpine:initialized',function(){var s=window.Alpine&&window.Alpine.store('sidebar');if(s&&s.isOpen&&window.innerWidth<1024){s.close();}});</script>"),
+            )
             // Signed-in user card at the bottom of the sidebar.
             ->renderHook(
                 PanelsRenderHook::SIDEBAR_FOOTER,
