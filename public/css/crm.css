@@ -3,6 +3,229 @@
 :root {
     --rp-red: 215, 20, 26;
     --rp-gold: 212, 166, 42;
+    /* The sidebar is a dark "cabin" in both themes. */
+    --rp-cabin: #121014;
+    --rp-cabin-deep: #0c0b0e;
+    --rp-wine: 74, 10, 16;
+    --rp-cabin-text: #d9d4cc;
+    --rp-cabin-muted: #8e8893;
+    --rp-cabin-line: rgba(255, 255, 255, .07);
+}
+
+/* =====================================================================
+   Sidebar: dark leather cabin with gold stitching down the edge
+   ===================================================================== */
+:root .fi-body .fi-sidebar {
+    background:
+        radial-gradient(120% 22rem at 0% 0%, rgba(var(--rp-wine), .85) 0%, transparent 70%),
+        radial-gradient(80% 16rem at 100% 100%, rgba(var(--rp-gold), .07) 0%, transparent 70%),
+        linear-gradient(180deg, var(--rp-cabin) 0%, var(--rp-cabin-deep) 100%);
+    color: var(--rp-cabin-text);
+    box-shadow: none;
+    --tw-ring-color: transparent;
+}
+/* The stitch: a dashed gold thread a few pixels in from the edge. */
+:root .fi-body .fi-sidebar::after {
+    content: "";
+    position: absolute;
+    top: 0; bottom: 0; right: 5px;
+    width: 1px;
+    pointer-events: none;
+    background: repeating-linear-gradient(to bottom, rgba(var(--rp-gold), .34) 0 7px, transparent 7px 12px);
+    -webkit-mask-image: linear-gradient(180deg, transparent 0, #000 6rem, #000 calc(100% - 6rem), transparent 100%);
+            mask-image: linear-gradient(180deg, transparent 0, #000 6rem, #000 calc(100% - 6rem), transparent 100%);
+}
+:root .fi-body .fi-sidebar::before {
+    content: "";
+    position: absolute;
+    top: 0; bottom: 0; right: 0;
+    width: 1px;
+    background: rgba(255, 255, 255, .06);
+    pointer-events: none;
+}
+
+:root .fi-body .fi-sidebar-header {
+    background: transparent;
+    box-shadow: none;
+    --tw-ring-color: transparent;
+    border-bottom: 1px solid var(--rp-cabin-line);
+}
+/* Always the light-on-dark logo inside the cabin. */
+:root .fi-body .fi-sidebar .fi-logo.dark\:hidden { display: none; }
+:root .fi-body .fi-sidebar .fi-logo.dark\:flex { display: flex; }
+:root .fi-body .fi-sidebar .fi-icon-btn { color: var(--rp-cabin-muted); }
+:root .fi-body .fi-sidebar .fi-icon-btn:hover { color: #fff; background: rgba(255, 255, 255, .06); }
+
+:root .fi-body .fi-sidebar-nav {
+    gap: 1.6rem;
+    padding-top: 1.5rem;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, .12) transparent;
+    -webkit-mask-image: linear-gradient(180deg, #000 calc(100% - 2.5rem), transparent);
+            mask-image: linear-gradient(180deg, #000 calc(100% - 2.5rem), transparent);
+}
+:root .fi-body .fi-sidebar-nav-groups { gap: 1.4rem; }
+
+/* Group names: small, in gold, with a hairline running to the edge */
+:root .fi-body .fi-sidebar-group-button { padding-top: 0; padding-bottom: .35rem; }
+:root .fi-body .fi-sidebar-group-label {
+    flex: 1;
+    display: flex; align-items: center; gap: .65rem;
+    font-size: .72rem;
+    font-weight: 600;
+    letter-spacing: .03em;
+    color: rgba(var(--rp-gold), .82);
+}
+:root .fi-body .fi-sidebar-group-label::after {
+    content: ""; flex: 1; height: 1px;
+    background: linear-gradient(90deg, rgba(var(--rp-gold), .28), transparent);
+}
+:root .fi-body .fi-sidebar-group-collapse-button { color: var(--rp-cabin-muted); }
+
+/* Items */
+:root .fi-body .fi-sidebar-item-button {
+    border-radius: .8rem;
+    padding: .55rem .7rem;
+    gap: .8rem;
+    transition: background-color .15s, color .15s, box-shadow .2s;
+}
+:root .fi-body .fi-sidebar-item-button:hover,
+:root .fi-body .fi-sidebar-item-button:focus-visible { background: rgba(255, 255, 255, .055); }
+:root .fi-body .fi-sidebar-item-button:focus-visible { box-shadow: 0 0 0 2px rgba(var(--rp-gold), .6); }
+:root .fi-body .fi-sidebar-item-icon { width: 1.3rem; height: 1.3rem; color: var(--rp-cabin-muted); transition: color .15s; }
+:root .fi-body .fi-sidebar-item-label { color: var(--rp-cabin-text); font-weight: 500; font-size: .875rem; }
+:root .fi-body .fi-sidebar-item-button:hover .fi-sidebar-item-icon { color: rgb(var(--rp-gold)); }
+:root .fi-body .fi-sidebar-item-button:hover .fi-sidebar-item-label { color: #fff; }
+
+/* Active page: a lit red pill */
+:root .fi-body .fi-sidebar-item.fi-active > .fi-sidebar-item-button {
+    background: linear-gradient(135deg, #e3191f 0%, #b40e13 100%);
+    box-shadow: 0 10px 22px -10px rgba(var(--rp-red), .9), inset 0 1px 0 rgba(255, 255, 255, .18);
+}
+:root .fi-body .fi-sidebar-item.fi-active .fi-sidebar-item-icon,
+:root .fi-body .fi-sidebar-item.fi-active .fi-sidebar-item-label { color: #fff; font-weight: 600; }
+
+/* Counters next to items */
+:root .fi-body .fi-sidebar .fi-badge {
+    min-width: 1.5rem;
+    justify-content: center;
+    border-radius: 999px;
+    padding: .05rem .45rem;
+    font-size: .7rem;
+    background: rgba(var(--c-400, 212, 166, 42), .12);
+    color: rgb(var(--c-400, 212, 166, 42));
+    --tw-ring-color: rgba(var(--c-400, 212, 166, 42), .25);
+}
+:root .fi-body .fi-sidebar-item.fi-active .fi-badge {
+    background: rgba(255, 255, 255, .2);
+    color: #fff;
+    --tw-ring-color: rgba(255, 255, 255, .3);
+}
+:root .fi-body .fi-sidebar-item-grouped-border .bg-gray-400,
+:root .fi-body .fi-sidebar-item-grouped-border .bg-gray-300 { background: rgba(255, 255, 255, .15); }
+
+/* Signed-in user card at the bottom */
+.rp-sidefoot {
+    display: flex; align-items: center; gap: .7rem;
+    margin: .5rem 1rem 1rem;
+    padding: .6rem .7rem;
+    border-radius: .9rem;
+    background: rgba(255, 255, 255, .035);
+    border: 1px solid var(--rp-cabin-line);
+}
+.rp-sidefoot.is-collapsed { justify-content: center; padding: .5rem 0; background: transparent; border-color: transparent; margin-inline: .5rem; }
+.rp-sidefoot-avatar {
+    flex: none; width: 2.2rem; height: 2.2rem; border-radius: 50%;
+    display: grid; place-items: center;
+    font-size: .75rem; font-weight: 700; color: #fff;
+    background: radial-gradient(circle at 30% 25%, #ff3a40, rgb(var(--rp-red)) 55%, #7d0a0e);
+    box-shadow: 0 0 0 2px var(--rp-cabin), 0 0 0 3px rgba(var(--rp-gold), .7);
+}
+.rp-sidefoot-text { min-width: 0; display: grid; line-height: 1.25; }
+.rp-sidefoot-name { font-size: .85rem; font-weight: 600; color: #f3efe8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rp-sidefoot-role { font-size: .72rem; color: rgba(var(--rp-gold), .9); }
+
+/* =====================================================================
+   Top bar and page chrome
+   ===================================================================== */
+.fi-body .fi-topbar > nav {
+    background: rgba(250, 250, 250, .82);
+    -webkit-backdrop-filter: saturate(160%) blur(12px);
+            backdrop-filter: saturate(160%) blur(12px);
+    box-shadow: none;
+    --tw-ring-color: transparent;
+    border-bottom: 1px solid rgba(var(--gray-950), .06);
+}
+.dark .fi-body .fi-topbar > nav {
+    background: rgba(9, 9, 11, .72);
+    border-bottom-color: rgba(255, 255, 255, .06);
+}
+.fi-body .fi-global-search-field .fi-input-wrp { border-radius: 999px; }
+.fi-body .fi-user-avatar { box-shadow: 0 0 0 2px rgba(var(--rp-gold), .55); }
+
+.fi-body .fi-header-heading { letter-spacing: -.02em; }
+
+/* Cards, tables and stats share one softer radius */
+.fi-body .fi-section,
+.fi-body .fi-ta-ctn,
+.fi-body .fi-wi-stats-overview-stat,
+.fi-body .fi-fo-tabs,
+.fi-body .fi-in-section { border-radius: 1rem; }
+html:not(.dark) .fi-body .fi-section,
+html:not(.dark) .fi-body .fi-ta-ctn,
+html:not(.dark) .fi-body .fi-wi-stats-overview-stat { box-shadow: 0 1px 2px rgba(16, 16, 20, .04), 0 8px 24px -16px rgba(16, 16, 20, .18); }
+
+.fi-body .fi-ta-header-cell { background: rgba(var(--gray-500), .04); }
+.fi-body .fi-ta-header-cell-label { font-size: .8rem; letter-spacing: .01em; }
+.fi-body .fi-ta-row { transition: background-color .12s; }
+.fi-body .fi-ta-row:hover { background: rgba(var(--rp-red), .035); }
+.dark .fi-body .fi-ta-row:hover { background: rgba(255, 255, 255, .025); }
+
+/* Primary buttons get a little depth */
+.fi-body .fi-btn.fi-color-primary:not(.fi-btn-outlined):not(.fi-link) {
+    background-image: linear-gradient(180deg, rgba(255, 255, 255, .12), rgba(255, 255, 255, 0));
+    box-shadow: 0 6px 16px -8px rgba(var(--rp-red), .8), inset 0 1px 0 rgba(255, 255, 255, .15);
+}
+
+/* Tabs: active tab reads as red, not grey */
+.fi-body .fi-tabs-item.fi-active { background: rgba(var(--rp-red), .1); }
+
+/* =====================================================================
+   Sign-in page
+   ===================================================================== */
+.fi-body .fi-simple-layout {
+    background:
+        radial-gradient(60rem 40rem at 0% 100%, rgba(var(--rp-red), .16), transparent 60%),
+        radial-gradient(40rem 30rem at 100% 0%, rgba(var(--rp-gold), .10), transparent 60%),
+        rgb(var(--gray-50));
+}
+.dark .fi-body .fi-simple-layout {
+    background:
+        radial-gradient(60rem 40rem at 0% 100%, rgba(var(--rp-red), .28), transparent 60%),
+        radial-gradient(40rem 30rem at 100% 0%, rgba(var(--rp-gold), .12), transparent 60%),
+        #0a090c;
+}
+.fi-body .fi-simple-main {
+    position: relative;
+    overflow: hidden;
+    border-radius: 1.25rem;
+    box-shadow: 0 30px 60px -30px rgba(16, 16, 20, .35);
+}
+.dark .fi-body .fi-simple-main {
+    background: rgba(24, 22, 27, .82);
+    -webkit-backdrop-filter: blur(10px);
+            backdrop-filter: blur(10px);
+    box-shadow: 0 30px 80px -30px rgba(var(--rp-red), .45);
+}
+.fi-body .fi-simple-main::before {
+    content: "";
+    position: absolute; inset: 0 0 auto 0; height: 3px;
+    background: linear-gradient(90deg, rgb(var(--rp-red)), rgb(var(--rp-gold)) 70%, transparent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    :root .fi-body .fi-sidebar-item-button,
+    .fi-body .fi-ta-row { transition: none; }
 }
 
 /* ---------- Welcome banner ---------- */
@@ -209,3 +432,4 @@ a.rp-stat:hover { transform: translateY(-2px); box-shadow: 0 12px 24px -12px rgb
 .rp-icon-btn.is-wa { color: rgb(var(--success-500)); background: rgba(var(--success-500), .12); }
 .rp-initials { display: inline-grid; place-items: center; width: 1.6rem; height: 1.6rem; border-radius: 50%; font-size: .65rem; font-weight: 700; color: #fff; background: rgb(var(--rp-red)); }
 .rp-board-hint { font-size: .8rem; opacity: .55; }
+.fi-body .fi-simple-header .fi-logo { height: 3.25rem !important; margin-bottom: .25rem; }
