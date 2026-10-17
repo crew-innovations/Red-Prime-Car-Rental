@@ -179,3 +179,11 @@ The app was installed here and tested for real for the first time:
 | Browser check of 12 screens at 1366 px and 390 px | No horizontal overflow |
 
 **Not testable here:** the Hostinger server itself, real WhatsApp sending, Google Fonts, and the website (not built yet).
+
+## 2026-10-17 · New look for the CRM
+
+Bilal asked for a more attractive UI and sidebar. This is a styling change only: no new module, field or behaviour.
+- **Sidebar:** a dark "cabin" in both themes, with a wine glow behind the logo and a gold stitched line down the edge. Group names are in gold, the active page is a red pill, counters are softer, and a signed-in user card sits at the bottom. It also works when collapsed and on phones.
+- **Rest of the panel:** a blurred top bar, softer cards and tables, primary buttons with depth, and a branded sign-in page with a larger logo.
+- **Files:** `public/css/crm.css`, `resources/views/filament/sidebar-footer.blade.php`, and a `SIDEBAR_FOOTER` hook in `AdminPanelProvider`.
+- **Checked:** screenshots in dark and light at 1366 px and 390 px (no sideways scrolling), plus the collapsed sidebar. The smoke and permission tests pass (15 tests).
