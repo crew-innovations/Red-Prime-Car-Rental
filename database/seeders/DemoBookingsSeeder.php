@@ -109,11 +109,11 @@ class DemoBookingsSeeder extends Seeder
             'pickup_location' => 'Palm Jumeirah', 'status' => BookingStatus::PendingPayment,
         ]);
 
-        // 4. Yacht charter in two days.
+        // 4. Yacht charter in two days (morning, so it does not clash with the evening trip on the same yacht).
         $yacht = Yacht::first();
         $b4 = $make([
             'customer_id' => $mei->id, 'service_type' => ServiceType::Yacht, 'bookable_id' => $yacht?->id,
-            'start_at' => $at(2, 16), 'end_at' => $at(2, 20), 'guests' => 8, 'pickup_location' => 'Dubai Marina',
+            'start_at' => $at(2, 10), 'end_at' => $at(2, 14), 'guests' => 8, 'pickup_location' => 'Dubai Marina',
             'status' => BookingStatus::Confirmed,
         ]);
         $b4?->recordPayment(round((float) $b4->total * .5), PaymentMethod::BankTransfer->value, null, 'Deposit for charter · '.$b4->reference);

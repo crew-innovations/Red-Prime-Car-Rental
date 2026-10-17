@@ -213,7 +213,7 @@ class LeadResource extends Resource
                                     ->visible(fn (Get $get): bool => $get('stage') === Pipeline::LOST),
                                 Forms\Components\ToggleButtons::make('priority')
                                     ->options(LeadPriority::class)
-                                    ->default(LeadPriority::Warm)
+                                    ->default(LeadPriority::Warm->value)
                                     ->inline(),
                             ]),
 

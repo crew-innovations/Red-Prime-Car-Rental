@@ -37,13 +37,13 @@ class ListQuotations extends ListRecords
         return [
             'open' => Tab::make('Open')
                 ->badge($count($open))
-                ->modifyQueryUsing(fn (Builder $q) => $q->whereIn('status', $open)),
+                ->modifyQueryUsing(fn (Builder $query) => $query->whereIn('status', $open)),
             'accepted' => Tab::make('Accepted · to book')
                 ->badge(Quotation::where('status', QuotationStatus::Accepted)->whereNull('booking_id')->count() ?: null)
                 ->badgeColor('success')
-                ->modifyQueryUsing(fn (Builder $q) => $q->where('status', QuotationStatus::Accepted)),
+                ->modifyQueryUsing(fn (Builder $query) => $query->where('status', QuotationStatus::Accepted)),
             'closed' => Tab::make('Declined / expired')
-                ->modifyQueryUsing(fn (Builder $q) => $q->whereIn('status', [QuotationStatus::Rejected, QuotationStatus::Expired])),
+                ->modifyQueryUsing(fn (Builder $query) => $query->whereIn('status', [QuotationStatus::Rejected, QuotationStatus::Expired])),
             'all' => Tab::make('All'),
         ];
     }

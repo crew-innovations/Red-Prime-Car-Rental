@@ -22,6 +22,20 @@ class Rules
         'item_daily' => "One day at the car's daily rate for each started late day",
     ];
 
+    /** Price-suggestion thresholds (Business settings › Bookings & returns). */
+    public const PRICING = [
+        'hourly_max_hours' => ['Hourly rate is used for rentals under', 'hours', 8],
+        'weekly_from_days' => ['Weekly rate is used from', 'days', 7],
+        'monthly_from_days' => ['Monthly rate is used from', 'days', 28],
+        'yacht_half_day_hours' => ['Yacht half-day price is for exactly', 'hours', 4],
+        'yacht_full_day_from_hours' => ['Yacht full-day price is used from', 'hours', 8],
+    ];
+
+    public static function pricing(string $key): int
+    {
+        return max(1, (int) Setting::read($key, self::PRICING[$key][2]));
+    }
+
     /** Does a "Pending payment" booking keep the car / yacht for those dates? */
     public static function pendingPaymentHolds(): bool
     {

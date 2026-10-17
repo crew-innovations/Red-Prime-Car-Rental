@@ -22,7 +22,10 @@ class TripDate extends Model
     /** Guests already booked on this date. */
     public function bookedGuests(?int $ignoreBookingId = null): int
     {
-        return (int) $this->bookings()
+        // Latest saved data even inside a long save transaction (see Availability::latest).
+        $query = $this->bookings()->getQuery();
+
+        return (int) \App\Support\Availability::latest($query)
             ->whereIn('status', \App\Enums\BookingStatus::billable())
             ->when($ignoreBookingId, fn ($q) => $q->whereKeyNot($ignoreBookingId))
             ->sum('guests');

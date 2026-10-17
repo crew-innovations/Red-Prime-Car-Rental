@@ -82,7 +82,7 @@ class TransactionResource extends Resource
                 ->schema([
                     Forms\Components\ToggleButtons::make('type')
                         ->options(TransactionType::class)
-                        ->default(TransactionType::Income)
+                        ->default(TransactionType::Income->value)
                         ->inline()
                         ->required()
                         ->live()
@@ -136,7 +136,7 @@ class TransactionResource extends Resource
                     Forms\Components\ToggleButtons::make('status')
                         ->hiddenLabel()
                         ->options(PaymentStatus::class)
-                        ->default(PaymentStatus::Paid)
+                        ->default(PaymentStatus::Paid->value)
                         ->required()
                         ->live()
                         ->columns(2),

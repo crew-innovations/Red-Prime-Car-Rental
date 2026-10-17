@@ -16,6 +16,9 @@ class CustomerDocument extends Model
 
     protected $guarded = ['id'];
 
+    /** Same defaults as the database, so new records are complete before they are reloaded. */
+    protected $attributes = ['status' => 'received', 'uploaded_via' => 'staff'];
+
     protected function casts(): array
     {
         return [

@@ -20,6 +20,7 @@ use Illuminate\Support\Carbon;
 use Illuminate\Validation\ValidationException;
 use App\Models\Concerns\Audited;
 use App\Support\Availability;
+use App\Support\Rules;
 use App\Support\Tax;
 use Spatie\MediaLibrary\HasMedia;
 use Spatie\MediaLibrary\InteractsWithMedia;
@@ -459,12 +460,12 @@ class Booking extends Model implements HasMedia
         }
 
         if ($item instanceof Yacht) {
-            if ($hours >= 8 && $item->full_day_price) {
+            if ($hours >= Rules::pricing('yacht_full_day_from_hours') && $item->full_day_price) {
                 $days = max(1, (int) ceil($hours / 24));
 
                 return ['full_day', $days, (float) $item->full_day_price, round($days * (float) $item->full_day_price, 2)];
             }
-            if ($hours === 4 && $item->half_day_price) {
+            if ($hours === Rules::pricing('yacht_half_day_hours') && $item->half_day_price) {
                 return ['half_day', 1, (float) $item->half_day_price, (float) $item->half_day_price];
             }
 
@@ -482,15 +483,15 @@ class Booking extends Model implements HasMedia
                 return ['day', $days, (float) $item->chauffeur_daily_price, round($days * (float) $item->chauffeur_daily_price, 2)];
             }
 
-            if ($hours < 24 && $item->hourly_price && $hours < 8) {
+            if ($hours < 24 && $item->hourly_price && $hours < Rules::pricing('hourly_max_hours')) {
                 return ['hour', $hours, (float) $item->hourly_price, round($hours * (float) $item->hourly_price, 2)];
             }
-            if ($days >= 28 && $item->monthly_price) {
+            if ($days >= Rules::pricing('monthly_from_days') && $item->monthly_price) {
                 $months = round($days / 30, 2);
 
                 return ['month', $months, (float) $item->monthly_price, round($months * (float) $item->monthly_price, 2)];
             }
-            if ($days >= 7 && $item->weekly_price) {
+            if ($days >= Rules::pricing('weekly_from_days') && $item->weekly_price) {
                 $weeks = round($days / 7, 2);
 
                 return ['week', $weeks, (float) $item->weekly_price, round($weeks * (float) $item->weekly_price, 2)];

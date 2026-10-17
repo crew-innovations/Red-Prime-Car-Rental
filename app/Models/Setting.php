@@ -41,6 +41,11 @@ class Setting extends Model
         'car_default_hours' => 24,
         'yacht_default_hours' => 4,
         'trip_default_minutes' => 120,
+        'hourly_max_hours' => 8,
+        'weekly_from_days' => 7,
+        'monthly_from_days' => 28,
+        'yacht_half_day_hours' => 4,
+        'yacht_full_day_from_hours' => 8,
     ];
 
     /** Per-request copy, so permission checks don't hit the cache every time. */
@@ -55,6 +60,13 @@ class Setting extends Model
 
             return array_replace(self::DEFAULTS, $stored);
         });
+    }
+
+    /** Forget cached values (after direct DB changes, and between tests). */
+    public static function flushCache(): void
+    {
+        Cache::forget('crm.settings');
+        static::$memo = null;
     }
 
     public static function read(string $key, mixed $default = null): mixed

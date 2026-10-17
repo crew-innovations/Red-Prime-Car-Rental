@@ -30,6 +30,8 @@ class Quotation extends Model
         'base_amount', 'extras', 'discount', 'tax_rate', 'tax_inclusive', 'security_deposit', 'advance_required',
     ];
 
+    protected $attributes = ['status' => 'draft'];
+
     protected function casts(): array
     {
         return [

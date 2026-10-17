@@ -56,9 +56,11 @@ The full brief is `docs/MASTER-PROMPT.md`. The current audit and phase plan are 
   - Action forms do not save relationships, so attach media manually.
 - **UI text** is plain English for staff. Communicate with Bilal in Roman Urdu: short, human, no jargon.
 
-## Verifying code (no vendor/ in this environment)
+## Verifying code
 
-Packagist is blocked here, so the app cannot run locally. Before every commit:
+Automated tests: `php vendor/bin/phpunit` (needs an empty MySQL/MariaDB database `rp_testing`, see `phpunit.xml`). Race tests: `tests/Concurrency`. Checklist status: `docs/CHECKLIST-STATUS.md`.
+
+If Packagist is blocked in the agent environment, install packages from GitHub clones (path repositories) or, at minimum, before every commit:
 - Run `php -l` on every changed file.
 - Check every `use` import and every chained method against the cloned Filament 3.x and Laravel 12.x sources in the session scratchpad (`ref/filament/packages`, `ref/framework/src`), with the verify script if available.
 - Unit-test pure logic (enums, calculations) with stub interfaces.

@@ -78,7 +78,7 @@ class CustomerResource extends Resource
                             ->schema([
                                 Forms\Components\ToggleButtons::make('type')
                                     ->options(CustomerType::class)
-                                    ->default(CustomerType::Individual)
+                                    ->default(CustomerType::Individual->value)
                                     ->inline()
                                     ->live()
                                     ->columnSpanFull(),

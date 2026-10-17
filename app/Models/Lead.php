@@ -55,6 +55,9 @@ class Lead extends Model
             }
             if ($lead->status !== LeadStatus::Lost) {
                 $lead->lost_reason = null;
+            } elseif (blank($lead->lost_reason)) {
+                // Lost always needs a reason (Schedule A3), whichever screen it comes from.
+                throw \Illuminate\Validation\ValidationException::withMessages(['data.lost_reason' => 'Please give a reason why the lead was lost.']);
             }
         });
 

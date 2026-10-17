@@ -24,6 +24,15 @@ use Illuminate\Support\Facades\DB;
  */
 class Availability
 {
+    /**
+     * Inside a transaction, read the latest saved bookings (not the transaction's
+     * older snapshot), so a booking someone else just saved is always seen.
+     */
+    public static function latest(Builder $query): Builder
+    {
+        return DB::transactionLevel() > 0 ? $query->sharedLock() : $query;
+    }
+
     /** Lock the asset row for the rest of the current transaction. */
     public static function lock(string $type, int $id): ?Model
     {
@@ -59,15 +68,26 @@ class Availability
 
         self::lock($type, $id);
 
-        $clash = Booking::query()
+        $clash = self::latest(Booking::query())
             ->blocking()
             ->where('bookable_type', $type)
             ->where('bookable_id', $id)
             ->where('start_at', '<', $end->copy()->addMinutes($buffer))
-            ->where('end_at', '>', $start->copy()->subMinutes($buffer))
+            ->where(function (Builder $q) use ($start, $buffer) {
+                $from = $start->copy()->subMinutes($buffer);
+                $q->where('end_at', '>', $from);
+                // Not returned yet (late): still out, so it blocks anything starting before now.
+                if (now()->greaterThan($from)) {
+                    $q->orWhere('status', BookingStatus::InProgress);
+                }
+            })
             ->when($ignoreBookingId, fn (Builder $q) => $q->whereKeyNot($ignoreBookingId))
             ->orderBy('start_at')
             ->first();
+
+        if ($clash && $clash->status === BookingStatus::InProgress && $clash->end_at->lessThanOrEqualTo($start)) {
+            return 'Still out on '.$clash->reference.' (was due back '.$clash->end_at->format('d M H:i').'). Receive it first.';
+        }
 
         if ($clash) {
             return ($buffer ? 'Already booked (including the '.$buffer.'-minute gap between bookings): ' : 'Already booked for these dates: ').$clash->reference.' ('.$clash->start_at->format('d M H:i').' – '.$clash->end_at->format('d M H:i').').';
@@ -84,7 +104,7 @@ class Availability
     /** A scheduled, open trip departure on this yacht that overlaps the window. */
     public static function tripDepartureClash(int $yachtId, Carbon $start, Carbon $end, ?int $ignoreTripDateId = null): ?TripDate
     {
-        return TripDate::query()
+        return self::latest(TripDate::query())
             ->with('trip')
             ->where('is_available', true)
             ->whereHas('trip', fn (Builder $q) => $q->where('yacht_id', $yachtId))
@@ -108,7 +128,7 @@ class Availability
 
         [$from, $to] = self::departureWindow($date);
 
-        return Booking::query()->blocking()
+        return self::latest(Booking::query())->blocking()
             ->where('bookable_type', 'yacht')->where('bookable_id', $yachtId)
             ->where('start_at', '<', $to)->where('end_at', '>', $from)
             ->first();
@@ -143,6 +163,32 @@ class Availability
         return null;
     }
 
+    /** Another booking of the same car / yacht that has not been returned yet. */
+    public static function stillOut(Booking $booking): ?Booking
+    {
+        if (! in_array($booking->bookable_type, ['car', 'yacht'], true)) {
+            return null;
+        }
+
+        return Booking::query()
+            ->where('bookable_type', $booking->bookable_type)
+            ->where('bookable_id', $booking->bookable_id)
+            ->where('status', BookingStatus::InProgress)
+            ->whereKeyNot($booking->getKey())
+            ->first();
+    }
+
+    /** Holding bookings from now on for a car / yacht (used to warn when it is taken out of service). */
+    public static function upcomingHolds(Model $item): \Illuminate\Support\Collection
+    {
+        return Booking::query()->blocking()
+            ->where('bookable_type', $item->getMorphClass())
+            ->where('bookable_id', $item->getKey())
+            ->where('end_at', '>', now())
+            ->orderBy('start_at')
+            ->get();
+    }
+
     /** Not cleaned / inspected yet after the last return. */
     public static function notReady(?Model $item): ?string
     {
@@ -168,7 +214,7 @@ class Availability
     /** The same driver on another holding booking at the same time. */
     public static function driverConflict(int $driverId, $start, $end, ?int $ignoreBookingId = null): ?Booking
     {
-        return Booking::query()->blocking()
+        return self::latest(Booking::query())->blocking()
             ->where('driver_id', $driverId)
             ->where('start_at', '<', $end)
             ->where('end_at', '>', $start)

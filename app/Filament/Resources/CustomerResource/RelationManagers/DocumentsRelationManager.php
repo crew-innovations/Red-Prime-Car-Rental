@@ -35,6 +35,12 @@ class DocumentsRelationManager extends RelationManager
         return 'info';
     }
 
+    /** Passports, IDs and licences: only people who handle documents see them. */
+    public static function canViewForRecord(\Illuminate\Database\Eloquent\Model $ownerRecord, string $pageClass): bool
+    {
+        return Access::allows('review-documents');
+    }
+
     public function isReadOnly(): bool
     {
         return ! Access::allows('review-documents');

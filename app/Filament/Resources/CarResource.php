@@ -75,7 +75,7 @@ class CarResource extends Resource
                                 Forms\Components\ToggleButtons::make('status')
                                     ->hiddenLabel()
                                     ->options(CarStatus::class)
-                                    ->default(CarStatus::Available)
+                                    ->default(CarStatus::Available->value)
                                     ->required()
                                     ->columns(2),
                             ]),
@@ -655,11 +655,11 @@ class CarResource extends Resource
 
     public static function getNavigationBadge(): ?string
     {
-        return (string) static::getModel()::where('status', CarStatus::Available)->count();
+        return (string) static::getModel()::where('status', CarStatus::Available)->where('readiness', 'ready')->count();
     }
 
     public static function getNavigationBadgeTooltip(): ?string
     {
-        return 'Available now';
+        return 'Available and ready now';
     }
 }

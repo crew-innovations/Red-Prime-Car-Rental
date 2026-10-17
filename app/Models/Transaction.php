@@ -99,8 +99,10 @@ class Transaction extends Model
         return $this->belongsTo(Booking::class);
     }
 
-    public static function categories(?string $type = null): array
+    public static function categories(TransactionType|string|null $type = null): array
     {
+        $type = $type instanceof TransactionType ? $type->value : $type;
+
         // Editable under Business settings; the constants above are the starting list.
         $income = \App\Support\Options::categories('income', self::INCOME_CATEGORIES);
         $expense = \App\Support\Options::categories('expense', self::EXPENSE_CATEGORIES);

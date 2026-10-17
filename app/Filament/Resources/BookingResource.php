@@ -241,6 +241,7 @@ class BookingResource extends Resource
                     ->label('Driver')
                     ->options(fn (Get $get): array => BookingActions::driverOptions($get('bookable_id') ? (int) $get('bookable_id') : null))
                     ->searchable()
+                    ->live()
                     ->placeholder('Assign later')
                     ->helperText(fn (Get $get): ?string => BookingActions::driverOptions() ? self::driverHint($get) : 'Add drivers under Fleet › Drivers.')
                     ->rules([fn (Get $get, ?Booking $record): Closure => function (string $attribute, $value, Closure $fail) use ($get, $record) {
@@ -673,8 +674,13 @@ class BookingResource extends Resource
     {
         $car = $get('bookable_id') ? Car::find($get('bookable_id')) : null;
         $usual = $car?->drivers()->pluck('name')->implode(', ');
+        $driver = $get('driver_id') ? \App\Models\User::find($get('driver_id')) : null;
+        $cars = $driver?->assignedCars()->pluck('name')->implode(', ');
 
-        return $usual ? 'Usual driver(s) for this car: '.$usual.'. You can pick anyone.' : null;
+        return collect([
+            $usual ? 'Usual driver(s) for this car: '.$usual.'. You can pick anyone.' : null,
+            $driver ? $driver->name.' usually drives: '.($cars ?: 'no cars assigned yet').'.' : null,
+        ])->filter()->implode(' ') ?: null;
     }
 
     public static function recalculate(Get $get, Set $set): void

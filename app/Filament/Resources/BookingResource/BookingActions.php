@@ -199,12 +199,16 @@ class BookingActions
 
                 Forms\Components\Fieldset::make('Extra charges')
                     ->columns(4)
-                    ->schema(collect(\App\Support\Options::charges())->map(fn ($meta, $key) => Forms\Components\TextInput::make("charges.{$key}")
+                    ->schema([Forms\Components\Placeholder::make('charges_note')
+                        ->hiddenLabel()
+                        ->columnSpanFull()
+                        ->content('Extra km and late return are filled in as estimates from your rules. Check or change them: they are only charged when you complete the return.'),
+                        ...collect(\App\Support\Options::charges())->map(fn ($meta, $key) => Forms\Components\TextInput::make("charges.{$key}")
                         ->label($meta[0])
                         ->numeric()->minValue(0)->prefix('AED')
                         ->live(onBlur: true)
                         ->visible($record->isCar() || ! $meta[2])
-                    )->values()->all()),
+                    )->values()->all()]),
 
                 Forms\Components\Section::make('Payment check')
                     ->icon('heroicon-o-banknotes')
@@ -352,7 +356,7 @@ class BookingActions
             ->icon('heroicon-o-arrow-uturn-left')
             ->color('gray')
             ->modalWidth('lg')
-            ->visible(fn (Booking $record): bool => $record->status === BookingStatus::Completed && $record->depositHeld() > 0)
+            ->visible(fn (Booking $record): bool => in_array($record->status, [BookingStatus::Completed, BookingStatus::Cancelled, BookingStatus::NoShow], true) && $record->depositHeld() > 0)
             ->fillForm(fn (Booking $record): array => ['amount' => $record->depositHeld(), 'method' => PaymentMethod::Card->value])
             ->form(fn (Booking $record): array => [
                 Forms\Components\TextInput::make('amount')
@@ -371,7 +375,7 @@ class BookingActions
 
     public static function cancel(string $class)
     {
-        return $class::make('cancel')
+        return $class::make('cancelBooking') // not 'cancel': that name is taken by the form's Cancel button
             ->label('Cancel booking')
             ->authorize('manage-bookings')
             ->icon('heroicon-o-x-circle')
@@ -432,6 +436,9 @@ class BookingActions
         }
         if ($msg = Availability::notReady($record->bookable)) {
             $blockers[] = $msg;
+        }
+        if ($out = Availability::stillOut($record)) {
+            $blockers[] = 'Still out with another customer on '.$out->reference.' (due back '.$out->end_at->format('d M H:i').'). Receive it first.';
         }
         foreach ($record->missingDocuments() as $label) {
             $blockers[] = 'Missing approved document: '.$label.'.';

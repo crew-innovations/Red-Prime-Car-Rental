@@ -164,6 +164,12 @@ class BusinessSettings extends Page implements HasForms
                             ->label('New yacht booking / quote length')
                             ->numeric()->minValue(1)->maxValue(72)->suffix('hours')->required(),
                     ]),
+                Forms\Components\Section::make('Price suggestions')
+                    ->description('Which rate the CRM suggests on bookings and quotations. Staff can always change the price.')
+                    ->columns(3)
+                    ->schema(collect(Rules::PRICING)->map(fn ($meta, $key) => Forms\Components\TextInput::make($key)
+                        ->label($meta[0])
+                        ->numeric()->minValue(1)->maxValue(365)->suffix($meta[1])->required())->values()->all()),
                 Forms\Components\Section::make('Late return')
                     ->columns(3)
                     ->schema([
@@ -424,6 +430,7 @@ class BusinessSettings extends Page implements HasForms
             'doc_block_handover', 'upload_link_hours',
             'pending_payment_holds', 'booking_buffer_minutes', 'trip_default_minutes', 'car_default_hours', 'yacht_default_hours',
             'late_grace_minutes', 'late_charge_mode', 'late_charge_amount',
+            ...array_keys(Rules::PRICING),
         ] as $key) {
             $out[$key] = $data[$key] ?? null;
         }

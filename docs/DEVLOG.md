@@ -125,3 +125,57 @@ Bilal: "dont do anything hardcoded we have to edit or change everything by ourse
 - `Rules` unit tests (grace, the four late-charge modes, with driver, yacht, defaults): 11 of 11 passed.
 
 **Still to test live:** saving the settings page and the effect on the forms, after deploy.
+
+## 2026-10-17 · Checklist tested on a real install
+
+The app was installed here and tested for real for the first time:
+- Laravel 12 and Filament 3.3.57, with packages cloned from GitHub because Packagist is blocked.
+- MariaDB 10.11.
+- Checklist results by item: `docs/CHECKLIST-STATUS.md`.
+
+### Bugs found by running the app, and fixed
+
+1. **Quotations list crashed.**
+   - Cause: the tab filter closures used `$q` instead of `$query`. Filament injects parameters by name, so it passed an empty query.
+2. **"New transaction" crashed.**
+   - Cause: form defaults were enum objects, while the closures expected strings.
+   - Fix: every enum form default now uses `->value` (cars, yachts, trips, customers, leads, activities and transactions).
+3. **"Cancel booking" on the booking page did nothing.**
+   - Cause: the action was named `cancel`, the same as the form's Cancel button.
+   - Fix: renamed to `cancelBooking`.
+4. **Simultaneous saves could double-book a car, or overbook trip seats.**
+   - Cause: inside a long save transaction, the availability queries read an old snapshot of the data.
+   - Fix: `Availability::latest()` makes them locking reads.
+   - Tested with two processes.
+5. **An overdue (not returned) car looked free.**
+   - New bookings that start before it is back are now refused.
+   - Handover of later bookings is blocked until it is received.
+6. **The demo seeder clashed with its own trip.** The guard now refuses that booking, so the demo charter was moved to the morning.
+7. **Lost without a reason could be saved outside the form.** The model now refuses it.
+8. **Customer documents were visible to every role.** They are now limited to roles with the `review-documents` ability.
+9. **Old booking photos on the `uploads`/`public` disks.**
+   - `crm:secure-booking-files` handles any old disk and reports the leftover `booking-uploads` temp files.
+   - Tested on a copy of the old version's database.
+
+### Also added
+
+- **Booking page:**
+  - The driver field shows the driver's usual cars.
+  - Return charges marked as estimates.
+  - Deposit refund available on cancelled bookings.
+- **Settings:** price-suggestion thresholds (hourly / weekly / monthly / yacht half and full day).
+- **Fleet:**
+  - A warning, recorded in the history, when a car or yacht is put into maintenance while it has bookings ahead.
+  - The car and yacht menu badges count only cars and yachts that are available and ready.
+- **Tests:** an automated suite (`tests/Feature`, 72 tests) and race scripts (`tests/Concurrency`).
+
+### Tests run
+
+| What | Result |
+|---|---|
+| PHPUnit | 72 tests, 567 assertions, all passing |
+| Race scripts (same car, last seats) | Second save refused |
+| `migrate` from the old version, `migrate:rollback --step=3`, and `migrate` again | OK |
+| Browser check of 12 screens at 1366 px and 390 px | No horizontal overflow |
+
+**Not testable here:** the Hostinger server itself, real WhatsApp sending, Google Fonts, and the website (not built yet).

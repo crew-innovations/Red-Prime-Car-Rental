@@ -17,7 +17,7 @@ use Spatie\MediaLibrary\MediaCollections\Models\Media;
 
 class Car extends Model implements HasMedia
 {
-    use Audited, HasExpiringDocuments, InteractsWithMedia, PublishesToWebsite, SoftDeletes;
+    use Audited, HasExpiringDocuments, InteractsWithMedia, PublishesToWebsite, SoftDeletes, \App\Models\Concerns\WarnsAboutBookings;
 
     public const CATEGORY = Category::CARS;
 

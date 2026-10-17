@@ -34,7 +34,7 @@ class ActivitiesRelationManager extends RelationManager
             ->schema([
                 Forms\Components\ToggleButtons::make('type')
                     ->options(ActivityType::class)
-                    ->default(ActivityType::WhatsApp)
+                    ->default(ActivityType::WhatsApp->value)
                     ->inline()
                     ->required()
                     ->columnSpanFull(),

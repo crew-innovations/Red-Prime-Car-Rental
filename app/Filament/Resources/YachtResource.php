@@ -72,7 +72,7 @@ class YachtResource extends Resource
                                 Forms\Components\ToggleButtons::make('status')
                                     ->hiddenLabel()
                                     ->options(YachtStatus::class)
-                                    ->default(YachtStatus::Available)
+                                    ->default(YachtStatus::Available->value)
                                     ->required()
                                     ->columns(2),
                             ]),
@@ -496,11 +496,11 @@ class YachtResource extends Resource
 
     public static function getNavigationBadge(): ?string
     {
-        return (string) static::getModel()::where('status', YachtStatus::Available)->count();
+        return (string) static::getModel()::where('status', YachtStatus::Available)->where('readiness', 'ready')->count();
     }
 
     public static function getNavigationBadgeTooltip(): ?string
     {
-        return 'Available now';
+        return 'Available and ready now';
     }
 }

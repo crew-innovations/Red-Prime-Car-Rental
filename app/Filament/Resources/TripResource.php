@@ -95,7 +95,7 @@ class TripResource extends Resource
                                 Forms\Components\ToggleButtons::make('status')
                                     ->hiddenLabel()
                                     ->options(TripStatus::class)
-                                    ->default(TripStatus::Active)
+                                    ->default(TripStatus::Active->value)
                                     ->required()
                                     ->inline(),
                             ]),
