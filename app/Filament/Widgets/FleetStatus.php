@@ -22,6 +22,8 @@ class FleetStatus extends Widget
 
     protected static ?int $sort = 4;
 
+    protected int|string|array $columnSpan = ['default' => 'full', 'xl' => 5];
+
     /** Bar colours per status (CSS rgb triplets). */
     protected const COLORS = [
         'success' => 'var(--success-500)',

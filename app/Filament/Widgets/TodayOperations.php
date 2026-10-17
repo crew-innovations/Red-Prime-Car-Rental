@@ -19,6 +19,8 @@ class TodayOperations extends Widget
 
     protected static ?int $sort = 5;
 
+    protected int|string|array $columnSpan = ['default' => 'full', 'xl' => 7];
+
     protected static ?string $pollingInterval = '60s';
 
     protected function getViewData(): array

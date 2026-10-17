@@ -187,3 +187,32 @@ Bilal asked for a more attractive UI and sidebar. This is a styling change only:
 - **Rest of the panel:** a blurred top bar, softer cards and tables, primary buttons with depth, and a branded sign-in page with a larger logo.
 - **Files:** `public/css/crm.css`, `resources/views/filament/sidebar-footer.blade.php`, and a `SIDEBAR_FOOTER` hook in `AdminPanelProvider`.
 - **Checked:** screenshots in dark and light at 1366 px and 390 px (no sideways scrolling), plus the collapsed sidebar. The smoke and permission tests pass (15 tests).
+
+## 2026-10-17 · Dashboard redesign
+
+Bilal: "dashboard abi be attractive ni ha". This is layout and styling only. The data comes from the same queries; no business rule changed.
+- **New `App\Filament\Pages\Dashboard`** (replaces Filament's default page). It sets a fixed widget order, a 12-column grid (7/5 split from xl screens) and no page heading.
+- **Order:** today first, then sales.
+  1. Today console
+  2. Handovers & returns, next to fleet status
+  3. Yacht trips this week
+  4. Lead stats
+  5. Leads trend, next to leads by source
+  6. My follow-ups, next to latest enquiries
+- **Today console** (WelcomeBanner):
+  - dark, like the sidebar
+  - four big numbers: going out, due back (with the late count), cars ready of total, and received this month (finance roles only; others see new leads today)
+  - "waiting" alerts that link to the matching list tab
+  - 4 main actions, plus small Add car / yacht / trip buttons
+- **Yacht trips:** a strip of departure cards.
+- **Leads by source:** ranked bars instead of a 7-colour donut.
+- **Leads trend:** bars in brand red and a gold that passes the colour-blind check.
+- **Fleet:** the "Fleet today" stat row (FleetSnapshot) is no longer on the dashboard. Fleet status already shows the same numbers. The class is kept.
+- **Fixes:**
+  - The balance pill overflowed its card in Today's handovers. The list grid now lets rows shrink.
+  - Cards in the same row now share one height.
+- **Tests:**
+  - New `test_dashboard_opens_for_every_role` (8 roles; revenue is hidden from non-finance roles).
+  - Full suite: 80 tests pass.
+  - Screens checked in dark and light at 1366 px and 390 px.
+- **Deploy note:** because there is a new page class, run the deploy script, so the route and Filament component caches are rebuilt.

@@ -69,6 +69,22 @@ class ScreensAndPermissionsTest extends TestCase
         }
     }
 
+    public static function roles(): array
+    {
+        return array_map(fn ($r) => [$r], ['Super Admin', 'Admin', 'Manager', 'Sales', 'Operations', 'Finance', 'Staff', 'Driver']);
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('roles')]
+    public function test_dashboard_opens_for_every_role(string $role): void
+    {
+        $this->actingAs($this->user($role));
+        $response = $this->get('/crm')->assertOk()->assertSee('rp-console', false);
+        // Money only for roles that may see it.
+        \App\Support\Access::allows('manage-finance')
+            ? $response->assertSee('received this month')
+            : $response->assertDontSee('received this month');
+    }
+
     public function test_sales_can_see_fleet_but_not_change_it(): void
     {
         $this->actingAs($this->user('Sales'));

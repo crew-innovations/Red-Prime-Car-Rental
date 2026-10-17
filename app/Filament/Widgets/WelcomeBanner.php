@@ -41,6 +41,31 @@ class WelcomeBanner extends Widget
         $notReady = Car::where('readiness', '!=', 'ready')->count() + Yacht::where('readiness', '!=', 'ready')->count();
         $revenue = Transaction::totals(Transaction::query()->betweenDates(now()->startOfMonth(), now()->endOfMonth()))['received'];
 
+        $cars = Car::count();
+        $lateBack = \App\Models\Booking::where('status', \App\Enums\BookingStatus::InProgress)->where('end_at', '<', now())->count();
+        $bookings = \App\Filament\Resources\BookingResource::class;
+        $canFinance = \App\Support\Access::allows('manage-finance');
+
+        // The four big numbers. Revenue only for roles that see money.
+        $gauges = array_values(array_filter([
+            ['value' => $outToday, 'label' => 'going out today', 'note' => null, 'url' => $bookings::getUrl('index', ['activeTab' => 'today'])],
+            ['value' => $backToday, 'label' => 'due back today', 'note' => $lateBack ? $lateBack.' late' : null, 'url' => $bookings::getUrl('index', ['activeTab' => 'today'])],
+            ['value' => $carsFree, 'unit' => '/ '.$cars, 'label' => 'cars ready to rent', 'note' => null, 'url' => CarResource::getUrl('index')],
+            $canFinance
+                ? ['value' => number_format($revenue), 'unit' => 'AED', 'unitFirst' => true, 'label' => 'received this month', 'note' => null, 'url' => \App\Filament\Pages\AccountsOverview::getUrl()]
+                : ['value' => $newToday, 'label' => 'new leads today', 'note' => null, 'url' => LeadResource::getUrl('index')],
+        ]));
+
+        // Things waiting for someone. Only shown when there is something.
+        $alerts = array_values(array_filter([
+            $followUps ? ['value' => $followUps, 'label' => 'follow-up'.($followUps > 1 ? 's' : '').' for you', 'url' => LeadResource::getUrl('index', ['activeTab' => 'follow_up'])] : null,
+            $newUnhandled ? ['value' => $newUnhandled, 'label' => 'new lead'.($newUnhandled > 1 ? 's' : '').' not contacted', 'url' => LeadResource::getUrl('index', ['activeTab' => 'new'])] : null,
+            $quotesWaiting ? ['value' => $quotesWaiting, 'label' => 'accepted quote'.($quotesWaiting > 1 ? 's' : '').' to book', 'url' => \App\Filament\Resources\QuotationResource::getUrl('index', ['activeTab' => 'accepted'])] : null,
+            $notReady ? ['value' => $notReady, 'label' => 'waiting for cleaning / inspection', 'url' => CarResource::getUrl('index', ['activeTab' => 'attention'])] : null,
+            $docsToReview ? ['value' => $docsToReview, 'label' => 'customer document'.($docsToReview > 1 ? 's' : '').' to review', 'url' => null] : null,
+            $docs ? ['value' => $docs, 'label' => 'car / yacht document'.($docs > 1 ? 's' : '').' due', 'url' => CarResource::getUrl('index')] : null,
+        ]));
+
         return [
             'greeting' => match (true) {
                 $hour < 12 => 'Good morning',
@@ -48,30 +73,22 @@ class WelcomeBanner extends Widget
                 default => 'Good evening',
             },
             'name' => $name,
-            'date' => now()->format('l, j F Y'),
-            'summary' => $followUps
-                ? "You have {$followUps} follow-up".($followUps > 1 ? 's' : '').' waiting. Let\'s close some deals today.'
-                : 'You are all caught up. Here is how Red Prime is doing today.',
-            'chips' => array_values(array_filter([
-                \App\Support\Access::allows('manage-finance') ? ['label' => 'revenue this month', 'value' => 'AED '.number_format($revenue), 'alert' => false] : null,
-                ['label' => 'new leads today', 'value' => $newToday, 'alert' => false],
-                ['label' => 'not contacted yet', 'value' => $newUnhandled, 'alert' => $newUnhandled > 0],
-                ['label' => 'cars available', 'value' => $carsFree, 'alert' => false],
-                $outToday ? ['label' => 'going out today', 'value' => $outToday, 'alert' => false] : null,
-                $backToday ? ['label' => 'due back today', 'value' => $backToday, 'alert' => true] : null,
-                $notReady ? ['label' => 'waiting for cleaning / inspection', 'value' => $notReady, 'alert' => true] : null,
-                $quotesWaiting ? ['label' => 'accepted quotes to book', 'value' => $quotesWaiting, 'alert' => true] : null,
-                $docsToReview ? ['label' => 'customer documents to review', 'value' => $docsToReview, 'alert' => true] : null,
-                $docs ? ['label' => 'documents due', 'value' => $docs, 'alert' => true] : null,
-            ])),
+            'date' => now()->format('l, j F'),
+            'summary' => $alerts
+                ? 'Here is what needs you today.'
+                : 'Nothing is waiting for you. Everything is on track.',
+            'gauges' => $gauges,
+            'alerts' => $alerts,
             'actions' => [
                 ['label' => 'New lead', 'icon' => 'heroicon-m-plus', 'url' => LeadResource::getUrl('create'), 'primary' => true],
                 ['label' => 'New quotation', 'icon' => 'heroicon-m-document-text', 'url' => \App\Filament\Resources\QuotationResource::getUrl('create'), 'primary' => false],
-                ['label' => 'New booking', 'icon' => 'heroicon-m-calendar-days', 'url' => \App\Filament\Resources\BookingResource::getUrl('create'), 'primary' => false],
+                ['label' => 'New booking', 'icon' => 'heroicon-m-calendar-days', 'url' => $bookings::getUrl('create'), 'primary' => false],
                 ['label' => 'Pipeline', 'icon' => 'heroicon-m-view-columns', 'url' => \App\Filament\Pages\PipelineBoard::getUrl(), 'primary' => false],
-                ['label' => 'Add car', 'icon' => 'heroicon-m-truck', 'url' => CarResource::getUrl('create'), 'primary' => false],
-                ['label' => 'Add yacht', 'icon' => 'heroicon-m-lifebuoy', 'url' => YachtResource::getUrl('create'), 'primary' => false],
-                ['label' => 'Add trip', 'icon' => 'heroicon-m-sun', 'url' => TripResource::getUrl('create'), 'primary' => false],
+            ],
+            'fleetActions' => [
+                ['label' => 'Car', 'icon' => 'heroicon-m-truck', 'url' => CarResource::getUrl('create')],
+                ['label' => 'Yacht', 'icon' => 'heroicon-m-lifebuoy', 'url' => YachtResource::getUrl('create')],
+                ['label' => 'Trip', 'icon' => 'heroicon-m-sun', 'url' => TripResource::getUrl('create')],
             ],
         ];
     }

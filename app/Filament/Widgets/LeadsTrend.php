@@ -15,9 +15,11 @@ class LeadsTrend extends ChartWidget
 
     protected static ?int $sort = 1;
 
+    protected int|string|array $columnSpan = ['default' => 'full', 'xl' => 7];
+
     protected static ?string $heading = 'Leads trend';
 
-    protected static ?string $description = 'Enquiries received and converted per day';
+    protected static ?string $description = 'Enquiries received and won, per day';
 
     protected static ?string $maxHeight = '260px';
 
@@ -57,22 +59,24 @@ class LeadsTrend extends ChartWidget
                 [
                     'label' => 'Received',
                     'data' => $a,
-                    'borderColor' => '#d7141a',
-                    'backgroundColor' => 'rgba(215, 20, 26, 0.12)',
-                    'fill' => true,
-                    'tension' => 0.35,
-                    'pointRadius' => 0,
-                    'borderWidth' => 2,
+                    'backgroundColor' => '#d7141a',
+                    'borderRadius' => 4,
+                    'borderWidth' => 0,
+                    'borderSkipped' => 'start',
+                    'maxBarThickness' => 12,
+                    'categoryPercentage' => 0.8,
+                    'barPercentage' => 0.9,
                 ],
                 [
                     'label' => 'Converted',
                     'data' => $b,
-                    'borderColor' => '#d4a62a',
-                    'backgroundColor' => 'rgba(212, 166, 42, 0.10)',
-                    'fill' => true,
-                    'tension' => 0.35,
-                    'pointRadius' => 0,
-                    'borderWidth' => 2,
+                    'backgroundColor' => '#b8891a',
+                    'borderRadius' => 4,
+                    'borderWidth' => 0,
+                    'borderSkipped' => 'start',
+                    'maxBarThickness' => 12,
+                    'categoryPercentage' => 0.8,
+                    'barPercentage' => 0.9,
                 ],
             ],
             'labels' => $labels,
@@ -81,17 +85,17 @@ class LeadsTrend extends ChartWidget
 
     protected function getType(): string
     {
-        return 'line';
+        return 'bar';
     }
 
     protected function getOptions(): array
     {
         return [
-            'plugins' => ['legend' => ['position' => 'bottom', 'labels' => ['usePointStyle' => true, 'boxWidth' => 8]]],
+            'plugins' => ['legend' => ['position' => 'top', 'align' => 'end', 'labels' => ['usePointStyle' => true, 'pointStyle' => 'rectRounded', 'boxWidth' => 8, 'boxHeight' => 8]]],
             'interaction' => ['intersect' => false, 'mode' => 'index'],
             'scales' => [
-                'y' => ['beginAtZero' => true, 'ticks' => ['precision' => 0], 'grid' => ['color' => 'rgba(127,127,127,0.12)']],
-                'x' => ['grid' => ['display' => false], 'ticks' => ['maxTicksLimit' => 8]],
+                'y' => ['beginAtZero' => true, 'ticks' => ['precision' => 0], 'grid' => ['color' => 'rgba(127,127,127,0.12)'], 'border' => ['display' => false]],
+                'x' => ['grid' => ['display' => false], 'border' => ['display' => false], 'ticks' => ['maxTicksLimit' => 7, 'maxRotation' => 0, 'autoSkipPadding' => 16]],
             ],
         ];
     }

@@ -17,6 +17,8 @@ class RecentLeads extends Widget
 
     protected static ?int $sort = 7;
 
+    protected int|string|array $columnSpan = ['default' => 'full', 'xl' => 5];
+
     protected function getViewData(): array
     {
         $leads = Lead::query()

@@ -19,7 +19,7 @@ class MyFollowUps extends BaseWidget
 
     protected static ?int $sort = 5;
 
-    protected int|string|array $columnSpan = 1;
+    protected int|string|array $columnSpan = ['default' => 'full', 'xl' => 7];
 
     protected static ?string $heading = 'My follow-ups';
 
