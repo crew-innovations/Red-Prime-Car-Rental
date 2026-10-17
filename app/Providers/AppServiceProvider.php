@@ -47,8 +47,11 @@ class AppServiceProvider extends ServiceProvider
         \App\Support\Access::register();
 
         // Private files are opened through a short-lived signed link (see routes/web.php).
-        \Illuminate\Support\Facades\Storage::disk('private')->buildTemporaryUrlsUsing(
-            fn (string $path, \DateTimeInterface $expiration) => \Illuminate\Support\Facades\URL::temporarySignedRoute('private-file', $expiration, ['path' => $path])
-        );
+        // Skipped while an old cached config (without the private disk) is still in place.
+        if (config('filesystems.disks.private')) {
+            \Illuminate\Support\Facades\Storage::disk('private')->buildTemporaryUrlsUsing(
+                fn (string $path, \DateTimeInterface $expiration) => \Illuminate\Support\Facades\URL::temporarySignedRoute('private-file', $expiration, ['path' => $path])
+            );
+        }
     }
 }

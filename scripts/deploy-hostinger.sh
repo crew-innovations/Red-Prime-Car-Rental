@@ -12,6 +12,8 @@ step "Installing libraries (1-2 minutes)"
 composer install --no-dev --optimize-autoloader --no-scripts --no-interaction
 
 step "Registering packages"
+# Old cached config / routes would hide new settings until rebuilt (rebuilt by "optimize" below).
+rm -f bootstrap/cache/config.php bootstrap/cache/routes-v7.php bootstrap/cache/events.php
 php artisan package:discover
 php artisan filament:upgrade
 
