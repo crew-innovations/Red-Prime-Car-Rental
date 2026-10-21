@@ -1,5 +1,67 @@
 # Development log — RED PRIME RENTALS CRM
 
+## 2026-10-21 · Master prompt: business-model correction, Trips & Packages, website API, redesign
+
+Brief: the master implementation prompt of 21 Oct. Bilal's answers:
+- no new yacht charters; old charters stay in history
+- package enquiries go to the Yacht Trips pipeline, with only labels changed
+- the website address is not known yet, so it is a Business setting
+
+Contract mapping:
+- Trips & Packages: change request
+- Website API: M3, built early
+- Redesign and terminology: improvements to M1/M2
+
+### Business model: Yacht Trips without yacht inventory
+- RED PRIME sells trips, so trips no longer need a yacht. Trips now have an operator name (internal) and customer instructions instead.
+- Yachts: create is blocked (403, even for Super Admin) and the menu is hidden. Old yacht records and charter bookings still open from history.
+- The pipeline is now labelled "Yacht Trips", with stage labels "Trip Selected" and "Trip Completed". Stage keys, transitions and won/lost behaviour are unchanged.
+- Service pickers offer Car Rental, Yacht Trip and Trip / Package. A record that is already a yacht charter keeps its own option.
+- Business settings: yacht-only settings are hidden but kept. Saving no longer wipes values that are not on the screen.
+
+### Trips & Packages (new module, Operations › Trips & Packages)
+- Tables: `package_categories`, `packages` and `package_departures`. Departure links were added to bookings, quotations and leads. The migration is additive and reversible.
+- Itinerary: a day-by-day repeater (add, edit, reorder, remove), with a "match the number of days" helper.
+- Pricing: per person or per package, sale price, child price, group prices, and a per-departure price that wins.
+- Booking: fixed departures with places, locked per row so two bookings at once cannot overbook. "On request" packages have a booking cut-off.
+- Quotations, bookings, accounts (`travel_package` revenue) and the dashboard departures strip all include packages.
+- A Preview page shows an item as the website would, and says why it is not live.
+
+### Website API v1 (`docs/API.md`)
+- Read-only catalogue of published Yacht Trips and packages, using explicit public fields only.
+- `POST /booking-requests` creates a lead and never a booking:
+  - the price is worked out on the server
+  - repeats return the first lead (idempotency key)
+  - the same phone and item within 10 minutes is treated as a duplicate
+  - a honeypot field catches bots
+  - limit of 5 per minute and 50 per day per IP
+- CORS allows the `.env` list plus the "Website connection" addresses in Business settings.
+- **No website is connected.** There is no website code in this project.
+
+### Redesign
+- Neutral gray scale for both themes, with the dark tokens from the brief (workspace `#101216`, sidebar `#151820`, cards `#1B2029`). Red is used for primary actions and the active page; gold is used rarely.
+- Sidebar: the cabin and gold-stitch style was replaced by a white (light) or slate (dark) sidebar. The active page has a red tint and a left bar. Group labels are muted.
+- Menu: Overview / Sales / Operations / Finance / Administration. New "Car readiness" and "To collect" shortcuts.
+- New read-only global lists:
+  - **Administration › Documents:** review tabs. The approve and reject actions are shared with the customer tab.
+  - **Administration › History:** whole-CRM audit log with filters.
+- Top bar: light/dark switch.
+- Avatars: initials drawn locally. Before this, staff names were sent to ui-avatars.com.
+- Smaller page titles, quiet table headers, one card radius.
+- The dashboard console is a plain card (no gradient or watermark).
+- WhatsApp, Call and Record payment buttons are neutral; the next step is the single red button.
+
+### Tests
+- Added `TripsAndPackagesTest` (7 tests) and `WebsiteApiTest` (7).
+- Menu and permission tests for Documents and History, and approving a document from the list.
+- Smoke tests now cover the new pages and tabs.
+- **Full suite: 101 tests, 726 assertions, all passing.**
+- Screenshots: 1366, 1024 and 390 px in light and dark. No sideways scrolling and no JavaScript errors.
+
+### Not verified yet
+- The new pages on staging. This needs the upload plus `bash scripts/deploy-hostinger.sh`, which runs the new migration.
+- The live test from handover onward (pending since 17 Oct).
+
 ## 2026-10-16 · Audit fixes, quotations, documents, readiness, drivers
 
 This round covers the prompt "Audit, fix and implement" and Bilal's request: "first fix all workflow how we make quote and other things docs uploadin system everything".

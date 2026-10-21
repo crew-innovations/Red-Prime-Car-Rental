@@ -1,8 +1,8 @@
-# Development checklist: status after testing (17 Oct 2026)
+# Development checklist: status after testing (17 Oct 2026, updated 21 Oct 2026)
 
 **How this was tested**
 - The CRM was installed and run here with real Laravel 12, Filament 3.3.57 and MariaDB 10.11, the same database family Hostinger uses.
-- An automated test suite was added in `tests/Feature`: **72 tests, 567 checks, all passing**. It covers every item marked *Tested* below.
+- An automated test suite was added in `tests/Feature`: **101 tests, 726 checks, all passing** (21 Oct). It covers every item marked *Tested* below.
 - Other checks:
   - Two-process race tests in `tests/Concurrency`.
   - Migrations upgraded on a copy of the old version's database, and rolled back.
@@ -87,6 +87,8 @@
 
 ## 6. Yachts
 
+**21 Oct:** RED PRIME sells yacht trips and does not keep yacht inventory. New yachts and new charter bookings can no longer be created, and the Yachts menu is hidden. Old charters stay in history and can still be opened. The rows below describe those old charters.
+
 | Item | Status | Evidence / note |
 |---|---|---|
 | Charter bookings, full-period availability | Working | Tested |
@@ -105,6 +107,17 @@
 | Simultaneous seat bookings | **Fixed** | Two bookings of 6 seats at the same moment were both accepted on a 10-seat trip. Now the second is refused ("Only 4 seat(s) left"). Tested with two processes. |
 | Yacht / crew availability | Partial | The yacht is checked against charters; there is no crew module (not in scope). |
 | Completion and balances | Working | |
+| Trip without any yacht record | **Built** (21 Oct) | Operator name and customer instructions instead. Tested. |
+
+## 7b. Trips & Packages (change request, 21 Oct)
+
+| Item | Status | Evidence / note |
+|---|---|---|
+| Multi-day package with an editable day-by-day itinerary | **Built** | 5-day itinerary saved, reordered and a day removed. Tested. |
+| Pricing per person / per package, sale, group and departure prices | **Built** | Tested. |
+| Departures with places; no overbooking; cancelled bookings free places | **Built** | Tested. |
+| Quotation to booking on the same departure | **Built** | Tested. |
+| Website publishing, section switch, preview | **Built** | Tested. |
 
 ## 8. Handover
 
@@ -181,7 +194,11 @@
 
 | Item | Status | Evidence / note |
 |---|---|---|
-| All items | N/A | There is no website or API yet; per the agreement this is M3. The CRM-side controls (publishing, prices, categories) exist. Nothing was built here. |
+| Public catalogue API (published items only, no internal fields) | **Built** (21 Oct) | `docs/API.md`. Tested. |
+| Website requests create leads, never bookings; server-side price | **Built** | Tested. |
+| Duplicates, idempotency, bot honeypot, rate limit | **Built** | Tested. |
+| CORS limited to website addresses in Business settings | **Built** | Tested. |
+| The website itself | N/A | Not built and not connected (M3). |
 
 ## 15. Dashboard and navigation
 
@@ -191,7 +208,9 @@
 | Today's out / back, late returns | Working | Now also lists cars waiting for cleaning or inspection. |
 | Monthly revenue, to collect | Working | |
 | All screens, tabs and widgets open | **Fixed** | Tested every page, tab and widget. Found and fixed two crashes: the Quotations list, and "New transaction" (it crashed on open). |
-| Desktop / phone layout | Working | Checked in a real browser: no sideways scrolling at 390 px. On a phone, the menu is open the first time after login (Filament default); one tap closes it. |
+| Desktop / phone layout | Working | Checked in a real browser at 1366, 1024 and 390 px in both themes (21 Oct): no sideways scrolling. On phones each page starts with the menu closed. |
+| Menu groups and permissions | **Built** (21 Oct) | Overview, Sales, Operations, Finance, Administration. Tested per role. |
+| Global Documents and History lists | **Built** (21 Oct) | Tested (permissions, approve from the list). |
 
 ## 16. Security and data integrity
 

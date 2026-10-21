@@ -65,12 +65,13 @@ Every change is mapped to M1, M2 or M3, or labelled a "change request" if the co
 
 ### Sales
 - **Leads:**
-  - Created by hand now (website capture comes in M3).
+  - Created by hand, or by the website through the public API (`POST /api/v1/booking-requests`, source "Website"). No website is connected yet.
   - Duplicate warning by phone (last 9 digits, so `050…`, `+971 50…` and `00971…` all match) and by email.
-  - Lead source, interest (car, yacht or trip), dates, budget, priority, salesperson and next follow-up.
+  - Lead source, interest (car, yacht trip or trip/package), dates, budget, priority, salesperson and next follow-up.
   - Activity log for calls and WhatsApp.
 - **Pipeline board:**
-  - Three pipelines: Car Rental, Yacht Rental and B2B (Schedule A3).
+  - Three pipelines: Car Rental, Yacht Trips and B2B (Schedule A3). Package enquiries use the Yacht Trips pipeline.
+  - On 21 Oct the yacht pipeline was renamed from "Yacht Rental" to "Yacht Trips" and two stage labels changed ("Trip Selected", "Trip Completed"). Stage keys and behaviour are unchanged.
   - Move a card to another stage by dragging it, or with its ••• menu.
   - Lost needs a reason.
   - Won stages create or link the customer, never a duplicate.
@@ -88,25 +89,34 @@ Every change is mapped to M1, M2 or M3, or labelled a "change request" if the co
   - Profile, type (individual, corporate, agency) and VIP.
   - Tabs for enquiries, bookings, quotations, documents, upload links, accounts and history.
 
-### Accounts
-- **Overview:** revenue, expenses and profit, revenue by service, top earners, and outstanding payments.
+### Finance
+- **Accounts overview:** revenue, expenses and profit, revenue by service, top earners, and outstanding payments.
 - **Transactions:** income and expenses with editable categories. Security deposits are kept separate from revenue.
 - **To collect:** every unpaid booking balance, with a WhatsApp reminder.
 
-### Fleet
+### Operations
 - **Cars:**
   - Specs, rates (hourly, daily, weekly, monthly and with-driver), km limit, extra-km rate, deposit.
   - Documents with expiry dates, ownership (own or partner), maintenance, and usual drivers.
   - Website publishing fields.
-- **Yachts:** specs, hourly, half-day and full-day prices, marina, crew, and mandatory charges.
-- **Yacht trips:** shared trips with dates, times, capacity and prices per seat.
+- **Yacht Trips:**
+  - RED PRIME sells trips; it does not own or rent out yachts.
+  - Shared trips with dates, times, capacity, prices, operator name (internal) and customer instructions. No yacht record is needed.
+  - Old yacht records and charter bookings stay in history. New yachts and new charters cannot be added, and the yacht menu is hidden.
+- **Trips & Packages** (new, change request):
+  - Multi-day or one-day packages: category, type, duration, destinations, meeting point.
+  - A day-by-day itinerary that can be added to, edited, reordered and removed.
+  - Pricing per person or per package, sale price, child price and group prices. A departure can have its own price.
+  - Fixed departure dates with places (no overbooking, even when two staff book at once), or "on request" with a booking cut-off.
+  - Inclusions, exclusions, photos, website publishing and SEO, and a Preview page that explains why an item is not live.
+  - Quotations and bookings work for packages exactly as for trips.
 - **Drivers:**
   - Simple profiles: name, phone, notes, active or inactive, usual cars.
   - Suggested first on bookings.
   - A driver cannot be on two jobs at the same time.
   - No pay, payroll or app.
 - **Readiness:**
-  - Each car and yacht is Ready, Needs cleaning or Needs inspection, separately from its booking status.
+  - Each car is Ready, Needs cleaning or Needs inspection, separately from its booking status. The menu has a "Car readiness" shortcut.
   - Handover is blocked until it is Ready. A manager can override, and the override is logged.
 
 ### Documents
@@ -114,22 +124,27 @@ Every change is mapped to M1, M2 or M3, or labelled a "change request" if the co
 - Review states: To review, Approved (with an expiry date), Rejected, Replacement requested.
 - Files are private and open only through short-lived signed links, for logged-in staff.
 - Handover can be blocked until the required documents are approved. This is a setting, off by default.
+- **Administration › Documents** lists every customer's documents in one place, with tabs for To review, Expired and Waiting for a new upload.
 
-### Settings
-- **Business settings:** everything the business decides. See [section 7](#7-business-settings).
-- **Team:** users and roles.
-- **Lead sources and Website categories.**
+### Administration
+- **Documents** (above) and **History** (below).
+- **Business settings:** everything the business decides. See [section 7](#7-business-settings). Includes "Website connection" (the website addresses allowed to call the API).
+- **Team & roles,** **Lead sources** and **Website sections.**
+
+### Website API
+- Versioned public API at `/api/v1`: published Yacht Trips and Trips & Packages, and website enquiries / booking requests that create leads (never bookings).
+- Full contract: `docs/API.md`. The website itself is not built or connected.
 
 ### Dashboard
 - **"Today" console:**
   - Cars going out today, due back today (with the late count), cars ready to rent, and money received this month (finance roles only).
   - Alerts that link to the matching list.
 - **Today's handovers and returns,** next to **fleet status** (status bars plus documents and services due).
-- **Yacht trips this week:** a strip of departure cards.
+- **Departures this week:** yacht trip and package departures in the next 7 days.
 - **Lead stats, leads trend, leads by source, my follow-ups and latest enquiries.**
 
 ### History (audit log)
-Every change to prices, statuses, bookings, payments and settings is recorded with who made it, when, and the old and new values. Admins and Managers see it in a History tab on each record.
+Every change to prices, statuses, bookings, payments and settings is recorded with who made it, when, and the old and new values. Admins and Managers see it in a History tab on each record, and in **Administration › History** for the whole CRM (filter by record type, event, person and date).
 
 ---
 
@@ -141,7 +156,7 @@ The example is a car. Yachts follow the same steps; differences are listed at th
 - Staff add the lead under **Sales › Leads**.
 - The pipeline is picked from the interest:
   - car → Car Rental
-  - yacht or trip → Yacht Rental
+  - yacht trip or package → Yacht Trips
   - companies → B2B
 - If the phone or email already exists, a warning names the customer or lead.
 
@@ -169,7 +184,7 @@ The example is a car. Yachts follow the same steps; differences are listed at th
 ### 4. Booking is created
 - The customer profile is created or linked.
 - The lead moves to *Confirmed*, and the car becomes *Reserved*.
-- The unpaid balance appears under **Accounts › To collect**.
+- The unpaid balance appears under **Finance › To collect**.
 
 ### 5. Documents
 1. On the customer, open **Documents › Request documents**, tick the documents needed, and set how long the link works.
@@ -221,9 +236,10 @@ Click **Receive car** and record:
 - The lead moves to *Completed*.
 - Any unpaid amount stays in **To collect** until it is marked paid.
 
-### Yachts and trips
-- **Charters:** **Start charter** and **End charter** replace handover and return. There are no odometer or fuel fields. A charter cannot overlap a scheduled trip departure on the same yacht.
-- **Trips:** pick a trip date and the number of guests. The CRM checks the seats left, even when two staff book at the same moment.
+### Yacht trips and packages
+- **Yacht trips:** pick a trip date and the number of guests. The CRM checks the seats left, even when two staff book at the same moment.
+- **Packages:** pick a departure (or a date, for "on request" packages) and the number of guests. Places are checked the same way, and the price comes from the package or the departure.
+- **Old yacht charters** (history only): **Start charter** and **End charter** replace handover and return.
 
 ---
 
@@ -247,7 +263,7 @@ Car and yacht status updates itself from bookings. Maintenance and Unavailable a
 ## 6. Money rules
 
 - **Security deposits are not revenue,** and deposit refunds are not costs.
-- **Each booking has one "balance" row,** holding what is still unpaid. It feeds **Accounts › To collect**. Marking it paid turns it into a normal payment.
+- **Each booking has one "balance" row,** holding what is still unpaid. It feeds **Finance › To collect**. Marking it paid turns it into a normal payment.
 - **All money figures come from one calculation:** `Booking::syncBalance()` works out paid, balance and payment status, so every screen agrees.
 - **Cancelling never refunds anything automatically.** Deposit refunds are tracked separately. A refund of rental money after a cancellation is recorded by Finance by hand until a refund policy is agreed.
 - **VAT is off by default.** When switched on, it uses the rate and the inclusive or exclusive mode from settings, and is stored on each quotation and booking.
@@ -328,13 +344,14 @@ Roles: Super Admin, Admin, Manager, Sales, Operations, Finance, Staff, Driver.
 
 ## 10. Design and user interface
 
-- **Brand:** red `#d7141a`, gold `#d4a62a`, Poppins font. Dark theme by default, and the light theme also works.
-- **Sidebar:**
-  - A dark "cabin" in both themes, with a gold stitched line down the edge and gold group names.
-  - The active page is a red pill, and a user card at the bottom shows the name and role.
-  - It works collapsed (icons only) and on phones. On phones each page now starts with the menu closed.
-- **Dashboard:** "today first", as in [section 3](#dashboard), with charts in brand colours that pass a colour-blindness check.
-- **Sign-in page:** branded, with a larger logo.
+- **Brand:** red `#d7141a` for primary actions and the active page, gold `#d4a62a` only as a rare accent, Poppins font. Neutral surfaces everywhere else (redesign of 21 Oct).
+- **Themes:** dark by default, light fully designed. Dark uses deep slate surfaces (workspace `#101216`, sidebar `#151820`, cards `#1B2029`). A light/dark switch sits in the top bar.
+- **Menu:** Overview, Sales, Operations, Finance, Administration. Shortcuts for Car readiness and To collect. Items show only for roles that may open them.
+- **Sidebar:** white in light theme, slate in dark. The active page has a soft red tint and a short red bar. It works collapsed (icons with tooltips) and on phones, where each page starts with the menu closed.
+- **Page headers:** smaller titles, one-line descriptions, actions on the right. Secondary buttons (WhatsApp, Call, Record payment) are neutral; the next step is the one red button.
+- **Avatars:** initials drawn by the CRM itself; no outside avatar service.
+- **Dashboard:** "today first", as in [section 3](#dashboard), as a plain card without gradients or watermark.
+- **Sign-in page:** plain neutral background, red top line.
 - **Mobile:**
   - Checked at 390 px wide, with no sideways scrolling.
   - Lead stats show two per row on phones.
@@ -387,7 +404,7 @@ Roles: Super Admin, Admin, Manager, Sales, Operations, Finance, Staff, Driver.
 | Group | Tables |
 |---|---|
 | Staff | users, roles and permissions |
-| Fleet | cars, yachts, trips, trip_dates, car_maintenance, car_driver |
+| Fleet and trips | cars, yachts (history only), trips, trip_dates, packages, package_categories, package_departures, car_maintenance, car_driver |
 | Sales | lead_sources, leads, lead_activities, customers, quotations |
 | Bookings and money | bookings, transactions |
 | Documents | customer_documents, document_requests |
@@ -469,6 +486,8 @@ Migrations run from `2026_10_15_*` to `2026_10_17_000002`. All of them are addit
 | 17 Oct 2026 | New look: dark cabin sidebar, softer cards and tables, branded sign-in page |
 | 17 Oct 2026 | Dashboard redesign: today console, today-first layout, trips strip, ranked lead sources |
 | 17 Oct 2026 | Live test fixes: private file links behind the Hostinger proxy, "last payment" date, lost-reason message, menu closed on phones, an old note on the customer page |
+| 21 Oct 2026 | Yacht Trips without yacht inventory; Trips & Packages module; public website API v1 (`docs/API.md`) |
+| 21 Oct 2026 | Redesign: neutral light and dark themes, new menu groups, global Documents and History lists, theme switch |
 
 All commits are local. Nothing has been pushed to GitHub yet (waiting for Bilal's approval).
 
@@ -480,10 +499,11 @@ All commits are local. Nothing has been pushed to GitHub yet (waiting for Bilal'
 - All M1 modules.
 - All M2 operational modules (pipelines, bookings, operations, payments, quotations, documents, readiness, drivers, history, dashboard, roles).
 - Business settings for every business rule.
-- New design for the sidebar, dashboard and sign-in page.
+- Yacht Trips without yacht inventory, Trips & Packages, and the website API (21 Oct).
+- Neutral redesign of the shell, dashboard and lists (21 Oct).
 
 **Waiting**
-- **Deploy after the latest upload** (17 Oct, live-test fixes). Bilal needs to run the deploy script once, then confirm.
+- **Deploy after the latest upload** (21 Oct work: includes a new migration). Bilal needs to run the deploy script once, then confirm.
 - **Rest of the live test:** handover, return with cleaning, pay balance, deposit refund, yacht trip seat booking, clash check, and the `laravel.log` review. Needs a fresh CRM login in the built-in browser.
 - **Company details in Business settings** (phone, address, email, TRN, bank). They show on the quotation page and enable its "Reply on WhatsApp" button.
 - **GitHub push,** after approval.
@@ -492,7 +512,7 @@ All commits are local. Nothing has been pushed to GitHub yet (waiting for Bilal'
 - **Tasks and automation (A12)** and **Reports (A13)**: M2 items still to do.
 - **Booking extension** and **trip departure status**.
 - **Email sending:** no mail setup yet. Quotations and links go by WhatsApp.
-- **Website and the website-to-CRM connection (M3).**
+- **The website itself (M3).** The CRM side of the connection (API) is ready; see `docs/API.md`.
 
 **Known small items**
 - **Early handover:** a booking can be handed over days before its start date, with no warning. Needs a business decision.
@@ -513,7 +533,7 @@ These are not assumed anywhere. Each one can be set in Business settings, or nee
 | H-4 | VAT: on or off, the rate, inclusive or exclusive | Setting, off |
 | H-5 | Late-return charge rule | Setting, staff type it |
 | H-6 | Does Pending payment hold the car? | Yes (Bilal: "hold karay") |
-| H-7 | Website booking requests: always wait for staff? | M3 |
+| H-7 | Website booking requests: always wait for staff? | Built that way: a request is a lead, staff confirm |
 | H-8 | Refund approval threshold | Not built; refunds by permission only |
 | H-9 | Role matrix | Editable in settings |
 | H-10 | Default driver per car | Built ("usual drivers") |
@@ -547,3 +567,5 @@ These are excluded from scope, so do not add them without a new agreement:
 | `docs/CRM-Workflow.md` | Staff guide to the original booking flow (quotations section now outdated; see section 4 here) |
 | `docs/CHECKLIST-STATUS.md` | Status of every development checklist item |
 | `docs/DEVLOG.md` | Detailed log of every work session, the bugs found and the tests run |
+| `docs/API.md` | Public website API contract (v1) |
+| `docs/REDESIGN-AUDIT.md` | Audit behind the 21 Oct redesign and business-model correction |
