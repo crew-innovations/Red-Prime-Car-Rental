@@ -25,14 +25,14 @@ class EditCustomer extends EditRecord
             Actions\Action::make('whatsapp')
                 ->label('WhatsApp')
                 ->icon('heroicon-o-chat-bubble-left-right')
-                ->color('success')
+                ->color('gray')
                 ->url(Phone::whatsappUrl($customer->whatsapp ?: $customer->phone, \App\Support\Options::message('msg_greeting', ['name' => $customer->name])))
                 ->openUrlInNewTab()
                 ->visible(filled($customer->whatsapp ?: $customer->phone)),
             Actions\Action::make('call')
                 ->label('Call')
                 ->icon('heroicon-o-phone')
-                ->color('info')
+                ->color('gray')
                 ->url(Phone::telUrl($customer->phone))
                 ->visible(filled($customer->phone)),
             Actions\Action::make('newLead')

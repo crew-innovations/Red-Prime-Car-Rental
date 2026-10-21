@@ -95,6 +95,51 @@ class ScreensAndPermissionsTest extends TestCase
         $this->assertNotEquals('1.00', $car->fresh()->daily_price);
     }
 
+    public function test_menu_uses_the_new_groups_and_shortcuts(): void
+    {
+        $this->actingAs($this->user('Super Admin'));
+        $this->get('/crm')->assertOk()
+            ->assertSeeInOrder(['Overview', 'Sales', 'Operations', 'Finance', 'Administration'])
+            ->assertSee('Car readiness')
+            ->assertSee('To collect')
+            ->assertSee('Trips &amp; Packages', false)
+            ->assertDontSee('/crm/yachts"', false);
+    }
+
+    /** One role per test: switching users inside a test is caught by the session guard. */
+    #[\PHPUnit\Framework\Attributes\DataProvider('adminListAccess')]
+    public function test_documents_and_history_lists_follow_permissions(string $role, string $url, int $status): void
+    {
+        $this->actingAs($this->user($role));
+        $this->get($url)->assertStatus($status);
+    }
+
+    public static function adminListAccess(): array
+    {
+        return [
+            'sales opens documents' => ['Sales', '/crm/documents', 200],
+            'finance cannot open documents' => ['Finance', '/crm/documents', 403],
+            'manager opens history' => ['Manager', '/crm/history', 200],
+            'sales cannot open history' => ['Sales', '/crm/history', 403],
+        ];
+    }
+
+    public function test_a_document_is_approved_from_the_documents_list(): void
+    {
+        $this->actingAs($this->user('Operations'));
+        $doc = \App\Models\CustomerDocument::create([
+            'customer_id' => $this->customer()->id, 'type' => 'passport', 'path' => 'customers/1/p.pdf', 'original_name' => 'p.pdf',
+        ]);
+
+        \Livewire\Livewire::test(\App\Filament\Resources\DocumentResource\Pages\ListDocuments::class)
+            ->assertCanSeeTableRecords([$doc])
+            ->callTableAction('approve', $doc, ['expires_on' => today()->addYear()->toDateString()])
+            ->assertHasNoTableActionErrors();
+
+        $this->assertSame(\App\Enums\DocumentStatus::Approved, $doc->fresh()->status);
+        $this->assertNotNull($doc->fresh()->reviewed_by);
+    }
+
     public function test_sales_cannot_open_accounts_or_settings(): void
     {
         $this->actingAs($this->user('Sales'));

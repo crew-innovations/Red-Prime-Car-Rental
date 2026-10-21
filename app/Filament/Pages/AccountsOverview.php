@@ -11,9 +11,9 @@ class AccountsOverview extends Dashboard
 {
     protected static string $routePath = 'accounts';
 
-    protected static ?string $navigationGroup = 'Accounts';
+    protected static ?string $navigationGroup = 'Finance';
 
-    protected static ?string $navigationLabel = 'Overview';
+    protected static ?string $navigationLabel = 'Accounts overview';
 
     protected static ?string $navigationIcon = 'heroicon-o-chart-pie';
 

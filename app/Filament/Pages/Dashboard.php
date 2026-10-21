@@ -12,6 +12,8 @@ use Filament\Pages\Dashboard as BaseDashboard;
  */
 class Dashboard extends BaseDashboard
 {
+    protected static ?string $navigationGroup = 'Overview';
+
     public function getWidgets(): array
     {
         return [

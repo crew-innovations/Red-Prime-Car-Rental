@@ -12,6 +12,7 @@ use App\Support\Phone;
 use Filament\Forms;
 use Filament\Notifications\Actions\Action as NotificationAction;
 use Filament\Notifications\Notification;
+use Filament\Tables\Actions\Action as TableAction;
 
 /** Document actions shared by the customer page and the booking page. */
 class DocumentActions
@@ -120,6 +121,59 @@ class DocumentActions
         }
 
         return $data;
+    }
+
+    /** Open, approve and reject: used on the customer page and the Documents list. */
+    public static function reviewActions(): array
+    {
+        return [
+            TableAction::make('view')
+                ->iconButton()
+                ->icon('heroicon-o-eye')
+                ->tooltip('Open file')
+                ->url(fn (CustomerDocument $record): ?string => $record->viewUrl(), shouldOpenInNewTab: true),
+            TableAction::make('approve')
+                ->iconButton()
+                ->icon('heroicon-o-check-badge')
+                ->color('success')
+                ->tooltip('Approve')
+                ->authorize('review-documents')
+                ->form([
+                    Forms\Components\DatePicker::make('expires_on')->label('Expiry date (if any)')->native(false)->displayFormat('d M Y'),
+                ])
+                ->fillForm(fn (CustomerDocument $record): array => ['expires_on' => $record->expires_on])
+                ->modalWidth('sm')
+                ->visible(fn (CustomerDocument $record): bool => $record->status !== DocumentStatus::Approved)
+                ->action(function (CustomerDocument $record, array $data) {
+                    $record->update(['expires_on' => $data['expires_on'] ?? null]);
+                    $record->review(DocumentStatus::Approved);
+                    Notification::make()->title('Document approved')->success()->send();
+                }),
+            TableAction::make('reject')
+                ->iconButton()
+                ->icon('heroicon-o-arrow-path')
+                ->color('danger')
+                ->tooltip('Reject or ask for a new one')
+                ->authorize('review-documents')
+                ->modalWidth('md')
+                ->form([
+                    Forms\Components\ToggleButtons::make('status')
+                        ->hiddenLabel()
+                        ->options([DocumentStatus::Replacement->value => 'Ask for a new upload', DocumentStatus::Rejected->value => 'Reject'])
+                        ->default(DocumentStatus::Replacement->value)
+                        ->inline()
+                        ->required(),
+                    Forms\Components\TextInput::make('note')
+                        ->label('Reason')
+                        ->datalist(\App\Support\Options::list('doc_reject_reasons'))
+                        ->required(),
+                ])
+                ->visible(fn (CustomerDocument $record): bool => in_array($record->status, [DocumentStatus::Received, DocumentStatus::Approved], true))
+                ->action(function (CustomerDocument $record, array $data) {
+                    $record->review(DocumentStatus::from($data['status']), $data['note']);
+                    Notification::make()->title('Saved. Send the customer a new upload link if needed.')->success()->send();
+                }),
+        ];
     }
 
     public static function statusSummary(CustomerDocument $d): string

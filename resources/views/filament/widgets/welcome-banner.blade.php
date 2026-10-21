@@ -1,6 +1,5 @@
 <x-filament-widgets::widget>
     <section class="rp-console">
-        <img src="{{ asset('images/logo-mark.png') }}" alt="" class="rp-console-mark">
 
         <div class="rp-console-top">
             <div class="rp-console-hello">

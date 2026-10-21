@@ -56,7 +56,7 @@ class HistoryRelationManager extends RelationManager
             ->emptyStateHeading('No changes recorded yet');
     }
 
-    protected static function describe(AuditLog $log): string
+    public static function describe(AuditLog $log): string
     {
         $lines = [];
         if ($log->note) {

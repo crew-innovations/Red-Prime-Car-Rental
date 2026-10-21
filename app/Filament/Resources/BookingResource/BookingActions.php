@@ -36,7 +36,7 @@ class BookingActions
         return $class::make('deliver')
             ->label(fn (Booking $record): string => $record->isCar() ? 'Hand over car' : 'Start '.$record->serviceNoun())
             ->icon('heroicon-o-key')
-            ->color('success')
+            ->color('primary')
             ->modalHeading(fn (Booking $record): string => ($record->isCar() ? 'Hand over · ' : 'Start · ').$record->title())
             ->modalDescription(fn (Booking $record): string => $record->customer?->name.' · '.$record->start_at->format('d M, H:i').' → '.$record->end_at->format('d M, H:i'))
             ->modalSubmitActionLabel(fn (Booking $record): string => $record->isCar() ? 'Hand over' : 'Start')
@@ -137,7 +137,7 @@ class BookingActions
         return $class::make('receive')
             ->label(fn (Booking $record): string => $record->isCar() ? 'Receive car' : 'End '.$record->serviceNoun())
             ->icon('heroicon-o-arrow-uturn-left')
-            ->color('warning')
+            ->color('primary')
             ->modalHeading(fn (Booking $record): string => ($record->isCar() ? 'Receive back · ' : 'End · ').$record->title())
             ->modalDescription(fn (Booking $record): string => $record->customer?->name.' · due back '.$record->end_at->format('d M, H:i'))
             ->modalSubmitActionLabel(fn (Booking $record): string => $record->isCar() ? 'Complete return' : 'Complete '.$record->serviceNoun())
@@ -321,7 +321,7 @@ class BookingActions
             ->label('Record payment')
             ->authorize('record-payments')
             ->icon('heroicon-o-banknotes')
-            ->color('success')
+            ->color('gray')
             ->modalWidth('lg')
             ->visible(fn (Booking $record): bool => (float) $record->balance > 0 && ! $record->trashed())
             ->fillForm(fn (Booking $record): array => ['amount' => (float) $record->balance, 'method' => PaymentMethod::Card->value])
@@ -410,7 +410,7 @@ class BookingActions
         return $class::make('whatsapp')
             ->label('WhatsApp')
             ->icon('heroicon-o-chat-bubble-left-right')
-            ->color('success')
+            ->color('gray')
             ->url(fn (Booking $record): ?string => Phone::whatsappUrl(
                 $record->customer?->whatsapp ?: $record->customer?->phone,
                 \App\Support\Options::message('msg_booking', [

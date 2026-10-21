@@ -46,7 +46,7 @@ class TripResource extends Resource
 
     protected static ?string $modelLabel = 'yacht trip';
 
-    protected static ?int $navigationSort = 3;
+    protected static ?int $navigationSort = 4;
 
     protected static ?string $recordTitleAttribute = 'name';
 

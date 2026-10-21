@@ -35,7 +35,7 @@ class PagesSmokeTest extends TestCase
         $this->actingAs($this->user('Super Admin'));
 
         $urls = ['/crm', '/crm/pipeline', '/crm/accounts', '/crm/business-settings'];
-        foreach (['leads', 'quotations', 'bookings', 'customers', 'cars', 'yachts', 'trips', 'packages', 'drivers', 'transactions', 'users', 'categories', 'lead-sources'] as $r) {
+        foreach (['leads', 'quotations', 'bookings', 'customers', 'cars', 'yachts', 'trips', 'packages', 'drivers', 'transactions', 'users', 'categories', 'lead-sources', 'documents', 'history'] as $r) {
             $urls[] = "/crm/{$r}";
         }
         foreach (['leads', 'quotations', 'bookings', 'customers', 'cars', 'trips', 'packages', 'drivers', 'transactions', 'users'] as $r) {
@@ -89,6 +89,8 @@ class PagesSmokeTest extends TestCase
             'yachts' => ['available', 'attention', 'booked', 'maintenance'],
             'customers' => ['vip', 'documents', 'follow_up'],
             'quotations' => ['open', 'accepted', 'closed', 'all'],
+            'documents' => ['all', 'review', 'expired', 'replace'],
+            'transactions' => ['outstanding'],
         ] as $r => $tabs) {
             foreach ($tabs as $tab) {
                 $this->get("/crm/{$r}?activeTab={$tab}")->assertOk();

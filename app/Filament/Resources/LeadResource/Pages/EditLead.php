@@ -28,14 +28,14 @@ class EditLead extends EditRecord
             Actions\Action::make('whatsapp')
                 ->label('WhatsApp')
                 ->icon('heroicon-o-chat-bubble-left-right')
-                ->color('success')
+                ->color('gray')
                 ->url(Phone::whatsappUrl($lead->whatsapp ?: $lead->phone, \App\Support\Options::message('msg_greeting', ['name' => $lead->name])))
                 ->openUrlInNewTab()
                 ->visible(filled($lead->whatsapp ?: $lead->phone)),
             Actions\Action::make('call')
                 ->label('Call')
                 ->icon('heroicon-o-phone')
-                ->color('info')
+                ->color('gray')
                 ->url(Phone::telUrl($lead->phone))
                 ->visible(filled($lead->phone)),
             Actions\Action::make('quote')

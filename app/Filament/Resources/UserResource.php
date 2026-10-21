@@ -19,13 +19,13 @@ class UserResource extends Resource
 
     protected static ?string $navigationIcon = 'heroicon-o-user-group';
 
-    protected static ?string $navigationGroup = 'Settings';
+    protected static ?string $navigationGroup = 'Administration';
 
     protected static ?string $navigationLabel = 'Team & roles';
 
     protected static ?string $modelLabel = 'team member';
 
-    protected static ?int $navigationSort = 1;
+    protected static ?int $navigationSort = 3;
 
     public const ROLE_DESCRIPTIONS = [
         'Super Admin' => 'Full access, including settings and users',
