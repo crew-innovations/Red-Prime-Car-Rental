@@ -10,7 +10,7 @@ use App\Models\Car;
 use App\Models\Yacht;
 use Filament\Widgets\Widget;
 
-/** Cars and yachts by status as bars, plus documents needing attention. */
+/** Cars by status and by readiness, plus car documents needing attention. */
 class FleetStatus extends Widget
 {
     public static function canView(): bool
@@ -37,7 +37,8 @@ class FleetStatus extends Widget
     {
         $fleets = [
             ['label' => 'Cars', 'url' => CarResource::getUrl('index'), 'counts' => Car::query()->selectRaw('status, count(*) as total')->groupBy('status')->pluck('total', 'status'), 'cases' => CarStatus::cases()],
-            ['label' => 'Yachts', 'url' => YachtResource::getUrl('index'), 'counts' => Yacht::query()->selectRaw('status, count(*) as total')->groupBy('status')->pluck('total', 'status'), 'cases' => YachtStatus::cases()],
+            // Readiness is shown on its own line: a car can be Available but still need cleaning.
+            ['label' => 'Car readiness', 'url' => CarResource::getUrl('index', ['activeTab' => 'attention']), 'counts' => Car::query()->selectRaw('readiness, count(*) as total')->groupBy('readiness')->pluck('total', 'readiness'), 'cases' => \App\Enums\Readiness::cases()],
         ];
 
         $groups = collect($fleets)->map(function (array $fleet) {
@@ -51,7 +52,8 @@ class FleetStatus extends Widget
                     'label' => $case->getLabel(),
                     'count' => (int) ($fleet['counts'][$case->value] ?? 0),
                     'pct' => $total ? round(($fleet['counts'][$case->value] ?? 0) / $total * 100, 1) : 0,
-                    'color' => self::COLORS[$case->getColor()] ?? self::COLORS['gray'],
+                    // Cleaning and inspection share a colour elsewhere; split them here so the bar reads clearly.
+                    'color' => self::COLORS[$case === \App\Enums\Readiness::Inspection ? 'info' : $case->getColor()] ?? self::COLORS['gray'],
                 ])->all(),
             ];
         });
@@ -61,11 +63,6 @@ class FleetStatus extends Widget
                 'name' => $car->name,
                 'alerts' => implode(' · ', $car->documentAlerts()),
                 'url' => CarResource::getUrl('edit', ['record' => $car, 'tab' => '-documents-tab']),
-            ]))
-            ->merge(Yacht::documentsDueSoon()->get()->map(fn (Yacht $yacht) => [
-                'name' => $yacht->name,
-                'alerts' => implode(' · ', $yacht->documentAlerts()),
-                'url' => YachtResource::getUrl('edit', ['record' => $yacht, 'tab' => '-documents-tab']),
             ]))
             ->take(5);
 

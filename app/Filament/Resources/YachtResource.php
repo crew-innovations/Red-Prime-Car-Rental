@@ -39,7 +39,21 @@ class YachtResource extends Resource
 
     protected static ?string $navigationIcon = 'heroicon-o-lifebuoy';
 
-    protected static ?string $navigationGroup = 'Fleet';
+    protected static ?string $navigationGroup = 'Operations';
+
+    /*
+     * RED PRIME does not own yachts and no longer offers private charters (Oct 2026).
+     * This screen stays reachable only so old charter bookings can still open their yacht.
+     */
+    public static function shouldRegisterNavigation(): bool
+    {
+        return false;
+    }
+
+    public static function canCreate(): bool
+    {
+        return false;
+    }
 
     protected static ?int $navigationSort = 2;
 

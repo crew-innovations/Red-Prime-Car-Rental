@@ -52,7 +52,7 @@ class BookingsRelationManager extends RelationManager
         return $table
             ->recordTitleAttribute('reference')
             ->columns(BookingResource::tableColumns(
-                withItem: ! in_array($owner->getMorphClass(), ['car', 'yacht', 'trip'], true),
+                withItem: ! in_array($owner->getMorphClass(), ['car', 'yacht', 'trip', 'package'], true),
                 withCustomer: ! $owner instanceof Customer,
             ))
             ->modifyQueryUsing(fn ($query) => $query->with(['customer', 'bookable', 'driver']))

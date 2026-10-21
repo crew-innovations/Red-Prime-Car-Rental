@@ -26,7 +26,7 @@ class Quotation extends Model
 
     /** Fields that make up the agreed offer; locked while Sent / Accepted. */
     public const PRICE_FIELDS = [
-        'service_type', 'bookable_id', 'trip_date_id', 'drive_mode', 'start_at', 'end_at', 'guests',
+        'service_type', 'bookable_id', 'trip_date_id', 'package_departure_id', 'drive_mode', 'start_at', 'end_at', 'guests',
         'base_amount', 'extras', 'discount', 'tax_rate', 'tax_inclusive', 'security_deposit', 'advance_required',
     ];
 
@@ -153,6 +153,11 @@ class Quotation extends Model
     public function tripDate(): BelongsTo
     {
         return $this->belongsTo(TripDate::class);
+    }
+
+    public function packageDeparture(): BelongsTo
+    {
+        return $this->belongsTo(PackageDeparture::class);
     }
 
     public function creator(): BelongsTo

@@ -121,8 +121,9 @@ class TransactionResource extends Resource
                         ->label('For car, yacht or trip')
                         ->types([
                             MorphToSelect\Type::make(Car::class)->titleAttribute('name')->label('Car'),
-                            MorphToSelect\Type::make(Yacht::class)->titleAttribute('name')->label('Yacht'),
                             MorphToSelect\Type::make(Trip::class)->titleAttribute('name')->label('Yacht trip'),
+                            MorphToSelect\Type::make(\App\Models\Package::class)->titleAttribute('name')->label('Trip / package'),
+                            MorphToSelect\Type::make(Yacht::class)->titleAttribute('name')->label('Yacht (old)'),
                         ])
                         ->searchable()
                         ->preload()
@@ -176,7 +177,7 @@ class TransactionResource extends Resource
                 Tables\Filters\SelectFilter::make('category')->options(Transaction::categories())->multiple()->searchable(),
                 Tables\Filters\SelectFilter::make('status')->options(PaymentStatus::class)->multiple(),
                 Tables\Filters\SelectFilter::make('method')->label('Payment method')->options(PaymentMethod::class),
-                Tables\Filters\SelectFilter::make('related_type')->label('For')->options(['car' => 'Cars', 'yacht' => 'Yachts', 'trip' => 'Yacht trips']),
+                Tables\Filters\SelectFilter::make('related_type')->label('For')->options(['car' => 'Cars', 'trip' => 'Yacht trips', 'package' => 'Trips & packages', 'yacht' => 'Yacht charters (old)']),
                 Tables\Filters\SelectFilter::make('customer_id')->label('Customer')->relationship('customer', 'name')->searchable(),
                 Tables\Filters\Filter::make('date')
                     ->form([

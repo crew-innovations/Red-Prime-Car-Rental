@@ -35,12 +35,17 @@ class PagesSmokeTest extends TestCase
         $this->actingAs($this->user('Super Admin'));
 
         $urls = ['/crm', '/crm/pipeline', '/crm/accounts', '/crm/business-settings'];
-        foreach (['leads', 'quotations', 'bookings', 'customers', 'cars', 'yachts', 'trips', 'drivers', 'transactions', 'users', 'categories', 'lead-sources'] as $r) {
+        foreach (['leads', 'quotations', 'bookings', 'customers', 'cars', 'yachts', 'trips', 'packages', 'drivers', 'transactions', 'users', 'categories', 'lead-sources'] as $r) {
             $urls[] = "/crm/{$r}";
         }
-        foreach (['leads', 'quotations', 'bookings', 'customers', 'cars', 'yachts', 'trips', 'drivers', 'transactions', 'users'] as $r) {
+        foreach (['leads', 'quotations', 'bookings', 'customers', 'cars', 'trips', 'packages', 'drivers', 'transactions', 'users'] as $r) {
             $urls[] = "/crm/{$r}/create";
         }
+        foreach (\App\Models\Package::all() as $p) {
+            $urls[] = "/crm/packages/{$p->id}/edit";
+            $urls[] = "/crm/preview/package/{$p->id}";
+        }
+        $urls[] = '/crm/preview/yacht-trip/'.Trip::first()->id;
         $urls[] = '/crm/leads/'.Lead::first()->id.'/edit';
         $urls[] = '/crm/customers/'.Customer::first()->id.'/edit';
         $urls[] = '/crm/cars/'.Car::first()->id.'/edit';
@@ -66,6 +71,14 @@ class PagesSmokeTest extends TestCase
             }
             $this->assertSame(200, $res->status(), "{$url} returned {$res->status()}".($e ? ': '.$e->getMessage().' @ '.$e->getFile().':'.$e->getLine() : ''));
         }
+    }
+
+    public function test_new_yachts_cannot_be_added_but_old_ones_still_open(): void
+    {
+        // RED PRIME does not own yachts (Oct 2026): no new yacht records, old ones stay viewable.
+        $this->actingAs($this->user('Super Admin'));
+        $this->get('/crm/yachts/create')->assertForbidden();
+        $this->get('/crm/yachts/'.Yacht::first()->id.'/edit')->assertOk();
     }
 
     public function test_list_tabs_open(): void

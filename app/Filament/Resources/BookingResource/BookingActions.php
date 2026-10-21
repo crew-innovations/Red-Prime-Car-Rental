@@ -34,7 +34,7 @@ class BookingActions
     public static function deliver(string $class)
     {
         return $class::make('deliver')
-            ->label(fn (Booking $record): string => $record->isCar() ? 'Hand over car' : 'Start charter')
+            ->label(fn (Booking $record): string => $record->isCar() ? 'Hand over car' : 'Start '.$record->serviceNoun())
             ->icon('heroicon-o-key')
             ->color('success')
             ->modalHeading(fn (Booking $record): string => ($record->isCar() ? 'Hand over · ' : 'Start · ').$record->title())
@@ -124,8 +124,8 @@ class BookingActions
                 BookingFlow::deliver($record, $data);
 
                 Notification::make()
-                    ->title($record->isCar() ? 'Car handed over' : 'Charter started')
-                    ->body(($record->bookable?->name ?? 'Item').' is now marked '.($record->isCar() ? 'Rented' : 'Booked').'.')
+                    ->title($record->isCar() ? 'Car handed over' : ucfirst($record->serviceNoun()).' started')
+                    ->body(($record->bookable?->name ?? 'Item').' is now marked '.match (true) { $record->isCar() => 'Rented', $record->bookable_type === 'yacht' => 'Booked', default => 'in progress' }.'.')
                     ->success()
                     ->send();
             });
@@ -135,12 +135,12 @@ class BookingActions
     public static function receive(string $class)
     {
         return $class::make('receive')
-            ->label(fn (Booking $record): string => $record->isCar() ? 'Receive car' : 'End charter')
+            ->label(fn (Booking $record): string => $record->isCar() ? 'Receive car' : 'End '.$record->serviceNoun())
             ->icon('heroicon-o-arrow-uturn-left')
             ->color('warning')
             ->modalHeading(fn (Booking $record): string => ($record->isCar() ? 'Receive back · ' : 'End · ').$record->title())
             ->modalDescription(fn (Booking $record): string => $record->customer?->name.' · due back '.$record->end_at->format('d M, H:i'))
-            ->modalSubmitActionLabel(fn (Booking $record): string => $record->isCar() ? 'Complete return' : 'Complete charter')
+            ->modalSubmitActionLabel(fn (Booking $record): string => $record->isCar() ? 'Complete return' : 'Complete '.$record->serviceNoun())
             ->modalWidth('4xl')
             ->authorize('operate-fleet')
             ->visible(fn (Booking $record): bool => $record->status === BookingStatus::InProgress && ! $record->trashed())
@@ -306,7 +306,7 @@ class BookingActions
                 }
 
                 Notification::make()
-                    ->title($record->isCar() ? 'Car received' : 'Charter completed')
+                    ->title($record->isCar() ? 'Car received' : ucfirst($record->serviceNoun()).' completed')
                     ->body(implode(' ', $lines))
                     ->color($result['balance'] > 0 ? 'warning' : 'success')
                     ->icon($result['balance'] > 0 ? 'heroicon-o-exclamation-triangle' : 'heroicon-o-check-circle')

@@ -8,6 +8,7 @@ use App\Enums\Readiness;
 use App\Enums\YachtStatus;
 use App\Models\Booking;
 use App\Models\Car;
+use App\Models\PackageDeparture;
 use App\Models\Trip;
 use App\Models\TripDate;
 use App\Models\Yacht;
@@ -209,6 +210,18 @@ class Availability
         $seats = $date->available_slots ?? $date->trip?->guest_capacity;
 
         return $seats === null ? null : max(0, (int) $seats - $date->bookedGuests($ignoreBookingId));
+    }
+
+    /** Places still free on a package departure (null = no limit set). Locks the departure row in a transaction. */
+    public static function packageSeatsLeft(PackageDeparture $departure, ?int $ignoreBookingId = null): ?int
+    {
+        if (DB::transactionLevel() > 0) {
+            PackageDeparture::whereKey($departure->getKey())->lockForUpdate()->first();
+        }
+
+        $seats = $departure->seats();
+
+        return $seats === null ? null : max(0, (int) $seats - $departure->bookedGuests($ignoreBookingId));
     }
 
     /** The same driver on another holding booking at the same time. */

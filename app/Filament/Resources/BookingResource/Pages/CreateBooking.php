@@ -35,7 +35,10 @@ class CreateBooking extends CreateRecord
     {
         $lead = Lead::find($this->lead);
         $service = $this->service ?: $lead?->service_type?->value;
-        if (! in_array($service, [ServiceType::Car->value, ServiceType::Yacht->value, ServiceType::Trip->value], true)) {
+        if ($service === ServiceType::Yacht->value) {
+            $service = ServiceType::Trip->value; // private charters are no longer offered
+        }
+        if (! in_array($service, array_map(fn (ServiceType $s) => $s->value, ServiceType::offered()), true)) {
             $service = ServiceType::Car->value;
         }
 
@@ -49,12 +52,19 @@ class CreateBooking extends CreateRecord
             if ($lead->interested_in_type === $service) {
                 $data['bookable_id'] = $lead->interested_in_id;
             }
+            // Website requests can name the exact trip date / package departure.
+            if ($service === ServiceType::Trip->value && $lead->trip_date_id) {
+                $data['trip_date_id'] = $lead->trip_date_id;
+            }
+            if ($service === ServiceType::Package->value && $lead->package_departure_id) {
+                $data['package_departure_id'] = $lead->package_departure_id;
+            }
             if ($lead->preferred_date) {
                 $data['start_at'] = $lead->preferred_date->copy()->setTime(10, 0)->toDateTimeString();
                 $data['end_at'] = ($lead->end_date ?? $lead->preferred_date)->copy()->setTime(10, 0)
                     ->addDays($lead->end_date ? 0 : 1)->toDateTimeString();
                 if ($service !== ServiceType::Car->value) {
-                    $data['end_at'] = Carbon::parse($data['start_at'])->addHours(\App\Support\Rules::defaultHours($service))->toDateTimeString();
+                    $data['end_at'] = \App\Filament\Resources\BookingResource::defaultEnd($service, $data['bookable_id'] ?? null, $data['start_at']);
                 }
             }
             $data['notes'] = $lead->message;
@@ -75,8 +85,16 @@ class CreateBooking extends CreateRecord
         if (($item instanceof Car || $item instanceof Yacht) && $item->deposit) {
             $data['security_deposit'] = (float) $item->deposit;
         }
-        if ($item && ! empty($data['start_at'])) {
-            [$data['rate_type'], $data['quantity'], $data['rate'], $data['base_amount']] = Booking::quote($item, $data['start_at'], $data['end_at'], $data['drive_mode'] ?? null, (int) ($data['guests'] ?? 0)) ?? [null, null, null, 0];
+        $departure = ! empty($data['package_departure_id']) ? \App\Models\PackageDeparture::with('package')->find($data['package_departure_id']) : null;
+        if ($departure) {
+            $data['start_at'] = $departure->startsAt()->toDateTimeString();
+            $data['end_at'] = $departure->endsAt()->toDateTimeString();
+        }
+        if ($item instanceof \App\Models\Package && $item->meeting_point && empty($data['pickup_location'])) {
+            $data['pickup_location'] = $item->meeting_point;
+        }
+        if ($item && (! empty($data['start_at']) || $item instanceof \App\Models\Package)) {
+            [$data['rate_type'], $data['quantity'], $data['rate'], $data['base_amount']] = Booking::quote($item, $data['start_at'] ?? null, $data['end_at'] ?? null, $data['drive_mode'] ?? null, (int) ($data['guests'] ?? 0), $departure) ?? [null, null, null, 0];
         }
 
         foreach ($data as $key => $value) {

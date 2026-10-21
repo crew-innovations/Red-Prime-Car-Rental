@@ -84,6 +84,7 @@ class Booking extends Model implements HasMedia
             $booking->service_type ??= match ($booking->bookable_type) {
                 'yacht' => ServiceType::Yacht,
                 'trip' => ServiceType::Trip,
+                'package' => ServiceType::Package,
                 default => ServiceType::Car,
             };
             if ($booking->bookable_id) {
@@ -100,6 +101,9 @@ class Booking extends Model implements HasMedia
                 $booking->tax_rate !== null ? (float) $booking->tax_rate : null,
                 (bool) $booking->tax_inclusive,
             );
+            if ($booking->service_type !== ServiceType::Package) {
+                $booking->package_departure_id = null;
+            }
             $booking->assigned_to ??= auth()->id();
 
             $booking->guardAvailability();
@@ -137,7 +141,7 @@ class Booking extends Model implements HasMedia
      */
     public function guardAvailability(): void
     {
-        $relevant = ! $this->exists || $this->isDirty(['status', 'start_at', 'end_at', 'bookable_type', 'bookable_id', 'trip_date_id', 'guests']);
+        $relevant = ! $this->exists || $this->isDirty(['status', 'start_at', 'end_at', 'bookable_type', 'bookable_id', 'trip_date_id', 'package_departure_id', 'guests']);
         if (! $relevant) {
             return;
         }
@@ -155,6 +159,14 @@ class Booking extends Model implements HasMedia
             $left = $date ? Availability::seatsLeft($date, $this->getKey()) : null;
             if ($left !== null && (int) $this->guests > $left) {
                 throw ValidationException::withMessages(['data.guests' => "Only {$left} seat(s) left on this date."]);
+            }
+        }
+
+        if ($type === 'package' && $this->package_departure_id && in_array($this->status, BookingStatus::billable(), true)) {
+            $departure = PackageDeparture::with('package')->find($this->package_departure_id);
+            $left = $departure ? Availability::packageSeatsLeft($departure, $this->getKey()) : null;
+            if ($left !== null && (int) $this->guests > $left) {
+                throw ValidationException::withMessages(['data.guests' => "Only {$left} place(s) left on this departure."]);
             }
         }
     }
@@ -194,6 +206,11 @@ class Booking extends Model implements HasMedia
         return $this->belongsTo(TripDate::class);
     }
 
+    public function packageDeparture(): BelongsTo
+    {
+        return $this->belongsTo(PackageDeparture::class);
+    }
+
     public function driver(): BelongsTo
     {
         return $this->belongsTo(User::class, 'driver_id');
@@ -230,6 +247,7 @@ class Booking extends Model implements HasMedia
         $kinds = [match ($this->service_type) {
             ServiceType::Yacht => 'yacht',
             ServiceType::Trip => 'trip',
+            ServiceType::Package => 'package',
             default => $this->drive_mode === DriveMode::WithDriver ? 'with_driver' : 'self_drive',
         }];
         if ($this->customer && $this->customer->type !== \App\Enums\CustomerType::Individual) {
@@ -303,6 +321,12 @@ class Booking extends Model implements HasMedia
         return $this->service_type === ServiceType::Car;
     }
 
+    /** Word used on buttons for non-car bookings: "trip" (yacht trips, packages) or "charter" (old yacht charters). */
+    public function serviceNoun(): string
+    {
+        return $this->service_type === ServiceType::Yacht ? 'charter' : 'trip';
+    }
+
     public function amountDue(): float
     {
         return round((float) $this->total + (float) $this->extra_charges, 2);
@@ -322,6 +346,7 @@ class Booking extends Model implements HasMedia
         return match ($this->service_type) {
             ServiceType::Yacht => 'yacht_charter',
             ServiceType::Trip => 'yacht_trip',
+            ServiceType::Package => 'travel_package',
             default => $this->drive_mode === DriveMode::WithDriver ? 'chauffeur' : 'car_rental',
         };
     }
@@ -439,9 +464,13 @@ class Booking extends Model implements HasMedia
         $lead->advanceTo($lead->pipeline->stageForBooking($this->status, $this->payment_status === PaymentStatus::Paid));
     }
 
-    /** Price suggestion from the car / yacht / trip rates. Returns [rate_type, quantity, rate, amount]. */
-    public static function quote(?Model $item, $start, $end, ?string $driveMode = null, ?int $guests = null): ?array
+    /** Price suggestion from the car / yacht / trip / package rates. Returns [rate_type, quantity, rate, amount]. */
+    public static function quote(?Model $item, $start, $end, ?string $driveMode = null, ?int $guests = null, ?PackageDeparture $departure = null): ?array
     {
+        if ($item instanceof Package) {
+            return $item->priceFor($guests, $departure);
+        }
+
         if (! $item || ! $start) {
             return null;
         }
@@ -507,7 +536,7 @@ class Booking extends Model implements HasMedia
     {
         return [
             'hour' => 'hour', 'day' => 'day', 'week' => 'week', 'month' => 'month',
-            'half_day' => 'half day', 'full_day' => 'full day', 'guest' => 'guest', 'trip' => 'trip',
+            'half_day' => 'half day', 'full_day' => 'full day', 'guest' => 'guest', 'trip' => 'trip', 'package' => 'package',
         ][$type] ?? (string) $type;
     }
 

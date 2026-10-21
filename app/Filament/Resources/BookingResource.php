@@ -171,16 +171,8 @@ class BookingResource extends Resource
 
                 Forms\Components\ToggleButtons::make('service_type')
                     ->label('Service')
-                    ->options([
-                        ServiceType::Car->value => ServiceType::Car->getLabel(),
-                        ServiceType::Yacht->value => ServiceType::Yacht->getLabel(),
-                        ServiceType::Trip->value => ServiceType::Trip->getLabel(),
-                    ])
-                    ->icons([
-                        ServiceType::Car->value => ServiceType::Car->getIcon(),
-                        ServiceType::Yacht->value => ServiceType::Yacht->getIcon(),
-                        ServiceType::Trip->value => ServiceType::Trip->getIcon(),
-                    ])
+                    ->options(fn (?Booking $record): array => ServiceType::pickerOptions($record?->service_type))
+                    ->icons(ServiceType::pickerIcons())
                     ->default(ServiceType::Car->value)
                     ->inline()
                     ->required()
@@ -188,15 +180,12 @@ class BookingResource extends Resource
                     ->afterStateUpdated(function (Set $set) {
                         $set('bookable_id', null);
                         $set('trip_date_id', null);
+                        $set('package_departure_id', null);
                     })
                     ->columnSpanFull(),
 
                 Forms\Components\Select::make('bookable_id')
-                    ->label(fn (Get $get): string => match ($get('service_type')) {
-                        ServiceType::Yacht->value => 'Yacht',
-                        ServiceType::Trip->value => 'Yacht trip',
-                        default => 'Car',
-                    })
+                    ->label(fn (Get $get): string => self::itemLabel($get('service_type')))
                     ->options(fn (Get $get): array => self::itemOptions($get('service_type')))
                     ->searchable()
                     ->required()
@@ -211,6 +200,10 @@ class BookingResource extends Resource
                             $set('security_deposit', (float) $item->deposit);
                         }
                         $set('trip_date_id', null);
+                        $set('package_departure_id', null);
+                        if ($item instanceof \App\Models\Package && $item->meeting_point) {
+                            $set('pickup_location', $item->meeting_point);
+                        }
                         self::recalculate($get, $set);
                     })
                     ->helperText(fn (Get $get): ?HtmlString => self::itemHint($get))
@@ -274,7 +267,63 @@ class BookingResource extends Resource
                         : null)
                     ->visible(fn (Get $get): bool => $get('service_type') === ServiceType::Trip->value)
                     ->columnSpanFull(),
+
+                self::packageDepartureField(),
             ]);
+    }
+
+    /** Departure picker for Trips & Packages (shared with quotations). */
+    public static function packageDepartureField(): Forms\Components\Select
+    {
+        return Forms\Components\Select::make('package_departure_id')
+            ->label('Departure')
+            ->options(fn (Get $get, ?Model $record): array => self::packageDepartureOptions($get('bookable_id'), $record?->package_departure_id, $record instanceof Booking ? $record->getKey() : null))
+            ->required(fn (Get $get): bool => $get('service_type') === ServiceType::Package->value
+                && \App\Models\Package::find($get('bookable_id'))?->usesDepartures())
+            ->live()
+            ->afterStateUpdated(function (Get $get, Set $set) {
+                $departure = \App\Models\PackageDeparture::with('package')->find($get('package_departure_id'));
+                if ($departure) {
+                    $set('start_at', $departure->startsAt()->toDateTimeString());
+                    $set('end_at', $departure->endsAt()->toDateTimeString());
+                }
+                self::recalculate($get, $set);
+            })
+            ->helperText(fn (Get $get): ?string => match (true) {
+                ! $get('bookable_id') => null,
+                ! \App\Models\Package::find($get('bookable_id'))?->usesDepartures() => 'This package runs on request: set the dates below.',
+                ! self::packageDepartureOptions($get('bookable_id')) => 'No upcoming departures. Add them on the package first.',
+                default => null,
+            })
+            ->visible(fn (Get $get): bool => $get('service_type') === ServiceType::Package->value)
+            ->columnSpanFull();
+    }
+
+    public static function packageDepartureOptions($packageId, ?int $currentId = null, ?int $ignoreBookingId = null): array
+    {
+        if (! $packageId) {
+            return [];
+        }
+
+        return \App\Models\PackageDeparture::with('package')
+            ->where('package_id', $packageId)
+            ->where(fn (Builder $q) => $q->where(fn (Builder $q) => $q->where('start_date', '>=', today())->where('is_available', true))
+                ->when($currentId, fn (Builder $q, $id) => $q->orWhere('id', $id)))
+            ->orderBy('start_date')
+            ->limit(60)
+            ->get()
+            ->mapWithKeys(fn (\App\Models\PackageDeparture $d) => [$d->id => $d->label($ignoreBookingId)])
+            ->all();
+    }
+
+    public static function itemLabel(?string $service): string
+    {
+        return match ($service) {
+            ServiceType::Yacht->value => 'Yacht (old charter)',
+            ServiceType::Trip->value => 'Yacht trip',
+            ServiceType::Package->value => 'Trip / package',
+            default => 'Car',
+        };
     }
 
     protected static function datesSection(): Forms\Components\Section
@@ -295,7 +344,7 @@ class BookingResource extends Resource
                     ->live(onBlur: true)
                     ->afterStateUpdated(function (Get $get, Set $set, ?string $state) use ($isCar) {
                         if ($state && ! $get('end_at')) {
-                            $set('end_at', Carbon::parse($state)->addHours(\App\Support\Rules::defaultHours($get('service_type')))->toDateTimeString());
+                            $set('end_at', self::defaultEnd($get('service_type'), $get('bookable_id'), $state));
                         }
                         self::recalculate($get, $set);
                     }),
@@ -350,10 +399,17 @@ class BookingResource extends Resource
                 Forms\Components\TextInput::make('guests')
                     ->numeric()
                     ->minValue(1)
-                    ->required(fn (Get $get): bool => $get('service_type') === ServiceType::Trip->value)
+                    ->required(fn (Get $get): bool => in_array($get('service_type'), [ServiceType::Trip->value, ServiceType::Package->value], true))
                     ->live(onBlur: true)
                     ->afterStateUpdated(fn (Get $get, Set $set) => self::recalculate($get, $set))
                     ->rules([fn (Get $get, ?Booking $record): Closure => function (string $attribute, $value, Closure $fail) use ($get, $record) {
+                        if ($get('service_type') === ServiceType::Package->value) {
+                            if ($message = self::packageGuestProblem($get('bookable_id'), $get('package_departure_id'), (int) $value, $record?->getKey())) {
+                                $fail($message);
+                            }
+
+                            return;
+                        }
                         if ($get('service_type') === ServiceType::Trip->value && ($date = TripDate::with('trip')->find($get('trip_date_id')))) {
                             $left = Availability::seatsLeft($date, $record?->getKey()); // locks the date row
                             if ($left !== null && (int) $value > $left) {
@@ -585,8 +641,43 @@ class BookingResource extends Resource
             ServiceType::Car->value => Car::withTrashed()->find($id),
             ServiceType::Yacht->value => Yacht::withTrashed()->find($id),
             ServiceType::Trip->value => Trip::withTrashed()->find($id),
+            ServiceType::Package->value => \App\Models\Package::withTrashed()->find($id),
             default => null,
         };
+    }
+
+    /** End time filled in after picking the start: the package length, or the default from settings. */
+    public static function defaultEnd(?string $service, $itemId, string $start): string
+    {
+        $start = Carbon::parse($start);
+        if ($service === ServiceType::Package->value && ($package = \App\Models\Package::find($itemId)) && $package->duration_days) {
+            return ($package->duration_days > 1 ? $start->copy()->addDays($package->duration_days - 1)->setTime(18, 0) : $start->copy()->addHours(8))->toDateTimeString();
+        }
+
+        return $start->copy()->addHours(\App\Support\Rules::defaultHours($service))->toDateTimeString();
+    }
+
+    /** Guests over the package limits or the places left on the departure (locks the departure row). */
+    public static function packageGuestProblem($packageId, $departureId, int $guests, ?int $ignoreBookingId = null): ?string
+    {
+        $package = \App\Models\Package::find($packageId);
+        if (! $package) {
+            return null;
+        }
+        if ($package->min_guests && $guests < $package->min_guests) {
+            return "This package needs at least {$package->min_guests} guests.";
+        }
+        if ($package->max_guests && $guests > $package->max_guests) {
+            return "This package takes up to {$package->max_guests} guests per booking.";
+        }
+        if ($departureId && ($departure = \App\Models\PackageDeparture::with('package')->find($departureId))) {
+            $left = Availability::packageSeatsLeft($departure, $ignoreBookingId);
+            if ($left !== null && $guests > $left) {
+                return "Only {$left} place(s) left on this departure.";
+            }
+        }
+
+        return null;
     }
 
     public static function itemOptions(?string $service): array
@@ -596,6 +687,8 @@ class BookingResource extends Resource
                 ->mapWithKeys(fn (Yacht $y) => [$y->id => $y->name.' · '.$y->status?->getLabel().($y->hourly_price ? ' · AED '.number_format((float) $y->hourly_price).'/hr' : '')])->all(),
             ServiceType::Trip->value => Trip::orderBy('name')->get()
                 ->mapWithKeys(fn (Trip $t) => [$t->id => $t->name.($t->price ? ' · AED '.number_format((float) $t->price) : '')])->all(),
+            ServiceType::Package->value => \App\Models\Package::orderBy('name')->get()
+                ->mapWithKeys(fn (\App\Models\Package $p) => [$p->id => $p->name.(($u = $p->unitPrice()) !== null ? ' · '.$p->currency.' '.number_format($u).($p->isPerPerson() ? '/person' : '') : '')])->all(),
             ServiceType::Car->value => Car::orderBy('name')->get()
                 ->mapWithKeys(fn (Car $c) => [$c->id => $c->name.' · '.$c->status?->getLabel().($c->daily_price ? ' · AED '.number_format((float) $c->daily_price).'/day' : '')])->all(),
             default => [],
@@ -691,6 +784,7 @@ class BookingResource extends Resource
             $get('end_at'),
             $get('drive_mode'),
             (int) $get('guests'),
+            $get('package_departure_id') ? \App\Models\PackageDeparture::find($get('package_departure_id')) : null,
         );
 
         if ($quote) {
@@ -733,9 +827,7 @@ class BookingResource extends Resource
             ->filtersFormColumns(2)
             ->filters([
                 Tables\Filters\SelectFilter::make('status')->options(BookingStatus::class)->multiple(),
-                Tables\Filters\SelectFilter::make('service_type')->label('Service')->options([
-                    ServiceType::Car->value => 'Car rental', ServiceType::Yacht->value => 'Yacht rental', ServiceType::Trip->value => 'Yacht trip',
-                ]),
+                Tables\Filters\SelectFilter::make('service_type')->label('Service')->options(ServiceType::class),
                 Tables\Filters\SelectFilter::make('drive_mode')->label('Rental type')->options(DriveMode::class),
                 Tables\Filters\SelectFilter::make('payment_status')->label('Payment')->options(PaymentStatus::class)->multiple(),
                 Tables\Filters\SelectFilter::make('driver_id')->label('Driver')->relationship('driver', 'name'),

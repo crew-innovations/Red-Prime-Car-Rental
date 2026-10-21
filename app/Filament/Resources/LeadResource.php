@@ -114,10 +114,16 @@ class LeadResource extends Resource
                             ->schema([
                                 Forms\Components\ToggleButtons::make('service_type')
                                     ->label('Interested in')
-                                    ->options(ServiceType::class)
+                                    ->options(fn (?Lead $record): array => ServiceType::pickerOptions($record?->service_type) + [ServiceType::Other->value => ServiceType::Other->getLabel()])
+                                    ->icons(ServiceType::pickerIcons())
                                     ->inline()
                                     ->live()
                                     ->afterStateUpdated(function (Get $get, Set $set, ?string $state) {
+                                        // The specific item follows the service, so staff don't pick the type twice.
+                                        if (in_array($state, ['car', 'trip', 'package'], true) && $get('interested_in_type') !== $state) {
+                                            $set('interested_in_type', $state);
+                                            $set('interested_in_id', null);
+                                        }
                                         if ($get('pipeline') === Pipeline::B2b->value) {
                                             return;
                                         }
@@ -131,12 +137,14 @@ class LeadResource extends Resource
                                     })
                                     ->columnSpanFull(),
                                 MorphToSelect::make('interestedIn')
-                                    ->label('Specific car, yacht or trip')
-                                    ->types([
+                                    ->label('Specific car, trip or package')
+                                    ->types(fn (?Lead $record): array => array_values(array_filter([
                                         MorphToSelect\Type::make(Car::class)->titleAttribute('name')->label('Car'),
-                                        MorphToSelect\Type::make(Yacht::class)->titleAttribute('name')->label('Yacht'),
                                         MorphToSelect\Type::make(Trip::class)->titleAttribute('name')->label('Yacht trip'),
-                                    ])
+                                        MorphToSelect\Type::make(\App\Models\Package::class)->titleAttribute('name')->label('Trip / package'),
+                                        // Old charter enquiries keep showing their yacht.
+                                        $record?->interested_in_type === 'yacht' ? MorphToSelect\Type::make(Yacht::class)->titleAttribute('name')->label('Yacht (old charter)') : null,
+                                    ])))
                                     ->searchable()
                                     ->preload()
                                     ->columnSpanFull(),
@@ -153,7 +161,7 @@ class LeadResource extends Resource
                                 Forms\Components\TextInput::make('guests')
                                     ->numeric()
                                     ->minValue(1)
-                                    ->visible(fn (Get $get): bool => in_array($get('service_type'), [ServiceType::Yacht->value, ServiceType::Trip->value], true)),
+                                    ->visible(fn (Get $get): bool => in_array($get('service_type'), [ServiceType::Yacht->value, ServiceType::Trip->value, ServiceType::Package->value], true)),
                                 Forms\Components\TextInput::make('budget')
                                     ->numeric()
                                     ->minValue(0)

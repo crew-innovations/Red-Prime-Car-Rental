@@ -41,7 +41,8 @@ class TopEarners extends Widget
         $models = [
             'car' => [Car::class, CarResource::class, 'Car'],
             'yacht' => [Yacht::class, YachtResource::class, 'Yacht'],
-            'trip' => [Trip::class, TripResource::class, 'Trip'],
+            'trip' => [Trip::class, TripResource::class, 'Yacht trip'],
+            'package' => [\App\Models\Package::class, \App\Filament\Resources\PackageResource::class, 'Package'],
         ];
 
         $names = $rows->groupBy('type')->map(fn ($group, $type) => isset($models[$type])

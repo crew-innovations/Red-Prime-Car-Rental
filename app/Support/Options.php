@@ -50,7 +50,10 @@ class Options
         'yacht_brands' => ['Yacht builders', 'Suggested on the yacht form.', [
             'Azimut', 'Sunseeker', 'Princess', 'Ferretti', 'Majesty', 'Gulf Craft', 'Riva', 'Benetti', 'Lagoon',
         ]],
-        'marinas' => ['Marinas', 'Suggested on yachts and trips.', [
+        'package_types' => ['Trip & package types', 'Choices for the type of a trip or package.', [
+            'One-day trip', 'Multi-day tour', 'Desert safari', 'Full package', 'City tour',
+        ]],
+        'marinas' => ['Marinas', 'Suggested on yacht trips.', [
             'Dubai Marina', 'Dubai Harbour', 'Bluewaters', 'Palm Jumeirah', 'Port Rashid',
             'Dubai Creek Harbour', 'Jumeirah Fishing Harbour', 'Al Seef',
         ]],
@@ -80,7 +83,7 @@ class Options
 
     /** Money categories the CRM uses itself; their labels can change, they cannot be removed. */
     public const SYSTEM_CATEGORIES = [
-        'income' => ['car_rental', 'yacht_charter', 'yacht_trip', 'chauffeur', 'extras', 'deposit', 'fines_recovered', 'damage', 'other_income'],
+        'income' => ['car_rental', 'yacht_charter', 'yacht_trip', 'travel_package', 'chauffeur', 'extras', 'deposit', 'fines_recovered', 'damage', 'other_income'],
         'expense' => ['fuel', 'maintenance', 'marina', 'cleaning', 'salik_fines', 'deposit_refund', 'other_expense'],
     ];
 

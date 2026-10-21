@@ -40,7 +40,7 @@ class TripResource extends Resource
 
     protected static ?string $navigationIcon = 'heroicon-o-sun';
 
-    protected static ?string $navigationGroup = 'Fleet';
+    protected static ?string $navigationGroup = 'Operations';
 
     protected static ?string $navigationLabel = 'Yacht Trips';
 
@@ -130,19 +130,10 @@ class TripResource extends Resource
                         Forms\Components\Select::make('category')
                             ->options(self::CATEGORIES)
                             ->native(false),
-                        Forms\Components\Select::make('yacht_id')
-                            ->label('Yacht')
-                            ->relationship('yacht', 'name')
-                            ->searchable()
-                            ->preload()
-                            ->live()
-                            ->afterStateUpdated(function (Forms\Set $set, ?string $state) {
-                                // Prefill capacity and marina from the chosen yacht.
-                                if ($yacht = \App\Models\Yacht::find($state)) {
-                                    $set('guest_capacity', $yacht->max_guests);
-                                    $set('departure_marina', $yacht->marina);
-                                }
-                            }),
+                        Forms\Components\TextInput::make('operator_name')
+                            ->label('Operator / yacht provider')
+                            ->helperText('Optional. Who runs the trip; not shown on the website.')
+                            ->maxLength(255),
                         Forms\Components\Select::make('duration_minutes')
                             ->label('Duration')
                             ->options(self::DURATIONS)
@@ -171,6 +162,11 @@ class TripResource extends Resource
                             ->minValue(1),
                     ]),
 
+                Forms\Components\Placeholder::make('legacy_yacht')
+                    ->label('Linked yacht (old record)')
+                    ->content(fn (?Trip $record): string => $record?->yacht?->name ?? '')
+                    ->helperText('Kept from before. Trips no longer need a yacht record.')
+                    ->visible(fn (?Trip $record): bool => (bool) $record?->yacht_id),
                 Forms\Components\RichEditor::make('description')
                     ->toolbarButtons(['bold', 'italic', 'bulletList', 'orderedList', 'link', 'undo', 'redo']),
 
@@ -248,6 +244,10 @@ class TripResource extends Resource
                 Forms\Components\Textarea::make('booking_requirements')
                     ->placeholder('Passport / Emirates ID for all guests, arrive 30 minutes early...')
                     ->rows(3),
+                Forms\Components\Textarea::make('customer_instructions')
+                    ->label('Instructions for guests')
+                    ->placeholder('Meet at the marina gate 20 minutes before departure. Bring sunscreen and swimwear.')
+                    ->rows(3),
                 Forms\Components\Textarea::make('cancellation_terms')
                     ->placeholder('Free cancellation up to 24 hours before departure...')
                     ->rows(3),
@@ -302,7 +302,7 @@ class TripResource extends Resource
                     ->searchable(['name', 'location'])
                     ->sortable()
                     ->weight(FontWeight::SemiBold)
-                    ->description(fn (Trip $record): string => collect([$record->yacht?->name, $record->departure_marina])->filter()->implode(' · ')),
+                    ->description(fn (Trip $record): string => collect([$record->operator_name ?? $record->yacht?->name, $record->departure_marina])->filter()->implode(' · ')),
                 Tables\Columns\TextColumn::make('category')
                     ->badge()
                     ->color('gray')
@@ -344,16 +344,17 @@ class TripResource extends Resource
                 Tables\Filters\SelectFilter::make('category')
                     ->options(self::CATEGORIES)
                     ->multiple(),
-                Tables\Filters\SelectFilter::make('yacht')
-                    ->relationship('yacht', 'name')
-                    ->searchable()
-                    ->preload(),
                 WebsitePublishing::filter(),
                 Tables\Filters\TrashedFilter::make()->label('Deleted trips'),
             ])
             ->actions([
                 Tables\Actions\EditAction::make()->iconButton(),
                 Tables\Actions\ActionGroup::make([
+                    Tables\Actions\Action::make('preview')
+                        ->label('Preview')
+                        ->icon('heroicon-o-eye')
+                        ->url(fn (Trip $record): string => route('crm.preview', ['type' => 'yacht-trip', 'id' => $record->id]))
+                        ->openUrlInNewTab(),
                     WebsitePublishing::tableAction(),
                     Tables\Actions\ReplicateAction::make()
                         ->label('Duplicate')

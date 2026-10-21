@@ -106,23 +106,20 @@ class QuotationResource extends Resource
                             Forms\Components\Hidden::make('lead_id'),
                             Forms\Components\ToggleButtons::make('service_type')
                                 ->label('Service')
-                                ->options([
-                                    ServiceType::Car->value => ServiceType::Car->getLabel(),
-                                    ServiceType::Yacht->value => ServiceType::Yacht->getLabel(),
-                                    ServiceType::Trip->value => ServiceType::Trip->getLabel(),
-                                ])
+                                ->options(fn (?Quotation $record): array => ServiceType::pickerOptions($record?->service_type))
+                                ->icons(ServiceType::pickerIcons())
                                 ->default(ServiceType::Car->value)
                                 ->inline()
                                 ->required()
                                 ->live()
-                                ->afterStateUpdated(fn (Set $set) => $set('bookable_id', null))
+                                ->afterStateUpdated(function (Set $set) {
+                                    $set('bookable_id', null);
+                                    $set('trip_date_id', null);
+                                    $set('package_departure_id', null);
+                                })
                                 ->columnSpanFull(),
                             Forms\Components\Select::make('bookable_id')
-                                ->label(fn (Get $get): string => match ($get('service_type')) {
-                                    ServiceType::Yacht->value => 'Yacht',
-                                    ServiceType::Trip->value => 'Yacht trip',
-                                    default => 'Car',
-                                })
+                                ->label(fn (Get $get): string => BookingResource::itemLabel($get('service_type')))
                                 ->options(fn (Get $get): array => BookingResource::itemOptions($get('service_type')))
                                 ->searchable()
                                 ->required()
@@ -134,6 +131,10 @@ class QuotationResource extends Resource
                                     }
                                     if (($item instanceof Car || $item instanceof Yacht) && $item->deposit) {
                                         $set('security_deposit', (float) $item->deposit);
+                                    }
+                                    $set('package_departure_id', null);
+                                    if ($item instanceof \App\Models\Package && $item->meeting_point) {
+                                        $set('pickup_location', $item->meeting_point);
                                     }
                                     self::recalculate($get, $set);
                                 })
@@ -159,6 +160,7 @@ class QuotationResource extends Resource
                                     }
                                 })
                                 ->visible(fn (Get $get): bool => $get('service_type') === ServiceType::Trip->value),
+                            BookingResource::packageDepartureField(),
                         ]),
 
                     Forms\Components\Section::make('Dates')
@@ -172,7 +174,7 @@ class QuotationResource extends Resource
                                 ->live(onBlur: true)
                                 ->afterStateUpdated(function (Get $get, Set $set, ?string $state) use ($isCar) {
                                     if ($state && ! $get('end_at')) {
-                                        $set('end_at', Carbon::parse($state)->addHours(\App\Support\Rules::defaultHours($get('service_type')))->toDateTimeString());
+                                        $set('end_at', BookingResource::defaultEnd($get('service_type'), $get('bookable_id'), $state));
                                     }
                                     self::recalculate($get, $set);
                                 }),
@@ -195,6 +197,13 @@ class QuotationResource extends Resource
                                 }),
                             Forms\Components\TextInput::make('guests')
                                 ->numeric()->minValue(1)
+                                ->required(fn (Get $get): bool => $get('service_type') === ServiceType::Package->value)
+                                ->rules([fn (Get $get): \Closure => function (string $attribute, $value, \Closure $fail) use ($get) {
+                                    if ($get('service_type') === ServiceType::Package->value
+                                        && ($message = BookingResource::packageGuestProblem($get('bookable_id'), null, (int) $value))) {
+                                        $fail($message); // limits only: a quote does not hold places
+                                    }
+                                }])
                                 ->live(onBlur: true)
                                 ->afterStateUpdated(fn (Get $get, Set $set) => self::recalculate($get, $set))
                                 ->visible(fn (Get $get): bool => ! $isCar($get)),
@@ -326,6 +335,7 @@ class QuotationResource extends Resource
         $quote = Booking::quote(
             BookingResource::findItem($get('service_type'), $get('bookable_id')),
             $get('start_at'), $get('end_at'), $get('drive_mode'), (int) $get('guests'),
+            $get('package_departure_id') ? \App\Models\PackageDeparture::find($get('package_departure_id')) : null,
         );
         if ($quote) {
             [$type, $qty, $rate, $amount] = $quote;
@@ -351,7 +361,7 @@ class QuotationResource extends Resource
                     ->weight(FontWeight::SemiBold)
                     ->description(fn (Quotation $record): ?string => $record->customerName()),
                 Tables\Columns\TextColumn::make('bookable.name')
-                    ->label('Car / yacht / trip')
+                    ->label('Service')
                     ->placeholder('-')
                     ->description(fn (Quotation $record): ?string => $record->start_at ? $record->start_at->format('d M').' → '.$record->end_at?->format('d M') : null),
                 Tables\Columns\TextColumn::make('total')
@@ -373,9 +383,7 @@ class QuotationResource extends Resource
             ->defaultSort('created_at', 'desc')
             ->filters([
                 Tables\Filters\SelectFilter::make('status')->options(QuotationStatus::class)->multiple(),
-                Tables\Filters\SelectFilter::make('service_type')->label('Service')->options([
-                    ServiceType::Car->value => 'Car rental', ServiceType::Yacht->value => 'Yacht rental', ServiceType::Trip->value => 'Yacht trip',
-                ]),
+                Tables\Filters\SelectFilter::make('service_type')->label('Service')->options(ServiceType::class),
                 Tables\Filters\TrashedFilter::make(),
             ])
             ->actions([
@@ -522,6 +530,7 @@ class QuotationResource extends Resource
                             'bookable_type' => $record->bookable_type,
                             'bookable_id' => $record->bookable_id,
                             'trip_date_id' => $record->trip_date_id,
+                            'package_departure_id' => $record->package_departure_id,
                             'drive_mode' => $record->drive_mode,
                             'start_at' => $record->start_at,
                             'end_at' => $record->end_at,

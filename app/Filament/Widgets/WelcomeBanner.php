@@ -33,12 +33,12 @@ class WelcomeBanner extends Widget
         $followUps = Lead::followUpDue()->where('assigned_to', auth()->id())->count();
         $newUnhandled = Lead::where('status', LeadStatus::New)->count();
         $carsFree = Car::where('status', CarStatus::Available)->where('readiness', 'ready')->count();
-        $docs = Car::documentsDueSoon()->count() + Yacht::documentsDueSoon()->count();
+        $docs = Car::documentsDueSoon()->count();
         $outToday = \App\Models\Booking::whereIn('status', [\App\Enums\BookingStatus::Confirmed, \App\Enums\BookingStatus::PendingPayment])->whereDate('start_at', today())->count();
         $backToday = \App\Models\Booking::where('status', \App\Enums\BookingStatus::InProgress)->where('end_at', '<=', now()->endOfDay())->count();
         $docsToReview = \App\Models\CustomerDocument::where('status', \App\Enums\DocumentStatus::Received)->count();
         $quotesWaiting = \App\Models\Quotation::where('status', \App\Enums\QuotationStatus::Accepted)->whereNull('booking_id')->count();
-        $notReady = Car::where('readiness', '!=', 'ready')->count() + Yacht::where('readiness', '!=', 'ready')->count();
+        $notReady = Car::where('readiness', '!=', 'ready')->count();
         $revenue = Transaction::totals(Transaction::query()->betweenDates(now()->startOfMonth(), now()->endOfMonth()))['received'];
 
         $cars = Car::count();
@@ -63,7 +63,7 @@ class WelcomeBanner extends Widget
             $quotesWaiting ? ['value' => $quotesWaiting, 'label' => 'accepted quote'.($quotesWaiting > 1 ? 's' : '').' to book', 'url' => \App\Filament\Resources\QuotationResource::getUrl('index', ['activeTab' => 'accepted'])] : null,
             $notReady ? ['value' => $notReady, 'label' => 'waiting for cleaning / inspection', 'url' => CarResource::getUrl('index', ['activeTab' => 'attention'])] : null,
             $docsToReview ? ['value' => $docsToReview, 'label' => 'customer document'.($docsToReview > 1 ? 's' : '').' to review', 'url' => null] : null,
-            $docs ? ['value' => $docs, 'label' => 'car / yacht document'.($docs > 1 ? 's' : '').' due', 'url' => CarResource::getUrl('index')] : null,
+            $docs ? ['value' => $docs, 'label' => 'car document'.($docs > 1 ? 's' : '').' due', 'url' => CarResource::getUrl('index')] : null,
         ]));
 
         return [
@@ -87,7 +87,7 @@ class WelcomeBanner extends Widget
             ],
             'fleetActions' => [
                 ['label' => 'Car', 'icon' => 'heroicon-m-truck', 'url' => CarResource::getUrl('create')],
-                ['label' => 'Yacht', 'icon' => 'heroicon-m-lifebuoy', 'url' => YachtResource::getUrl('create')],
+                ['label' => 'Package', 'icon' => 'heroicon-m-map', 'url' => \App\Filament\Resources\PackageResource::getUrl('create')],
                 ['label' => 'Trip', 'icon' => 'heroicon-m-sun', 'url' => TripResource::getUrl('create')],
             ],
         ];

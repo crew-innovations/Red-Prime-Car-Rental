@@ -24,7 +24,7 @@ class RevenueByService extends ChartWidget
 
     protected function getData(): array
     {
-        $labels = ['car' => 'Cars', 'yacht' => 'Yachts', 'trip' => 'Yacht trips', '' => 'Other'];
+        $labels = ['car' => 'Cars', 'yacht' => 'Yacht charters (old)', 'trip' => 'Yacht trips', 'package' => 'Trips & packages', '' => 'Other'];
 
         $rows = Transaction::query()
             ->when($this->filter === 'month', fn ($q) => $q->where('date', '>=', now()->startOfMonth()))

@@ -46,8 +46,9 @@ class BusinessSettings extends Page implements HasForms
     public const KINDS = [
         'self_drive' => 'Car, self-drive',
         'with_driver' => 'Car, with driver',
-        'yacht' => 'Yacht charter',
+        'yacht' => 'Yacht charter (old bookings only)',
         'trip' => 'Yacht trip',
+        'package' => 'Trip / package',
         'corporate' => 'Extra for company / agency customers',
     ];
 
@@ -116,6 +117,15 @@ class BusinessSettings extends Page implements HasForms
         return Forms\Components\Tabs\Tab::make('Company & messages')
             ->icon('heroicon-o-building-office-2')
             ->schema([
+                Forms\Components\Section::make('Website connection')
+                    ->description('The website reads published Yacht Trips and Trips & Packages from the CRM and sends enquiries to it.')
+                    ->schema([
+                        Forms\Components\TagsInput::make('website_origins')
+                            ->label('Website addresses allowed to use the CRM API')
+                            ->placeholder('https://www.redprimerentals.com')
+                            ->helperText('Type the full address and press Enter. Only these sites can send enquiries from a browser. Leave empty until the website is live.')
+                            ->nestedRecursiveRules(['url', 'max:255']),
+                    ]),
                 Forms\Components\Section::make('Company details')
                     ->description('Shown on quotations, upload pages and messages.')
                     ->columns(2)
@@ -146,11 +156,11 @@ class BusinessSettings extends Page implements HasForms
                     ->columns(2)
                     ->schema([
                         Forms\Components\Toggle::make('pending_payment_holds')
-                            ->label('"Pending payment" bookings keep the car / yacht')
+                            ->label('"Pending payment" bookings keep the car')
                             ->helperText('Off = the dates stay open for others until the booking is confirmed.')
                             ->columnSpanFull(),
                         Forms\Components\TextInput::make('booking_buffer_minutes')
-                            ->label('Gap between bookings of the same car / yacht')
+                            ->label('Gap between bookings of the same car')
                             ->helperText('Time kept free for delivery, cleaning, etc. 0 = back-to-back allowed.')
                             ->numeric()->minValue(0)->maxValue(1440)->suffix('minutes')->required(),
                         Forms\Components\TextInput::make('trip_default_minutes')
@@ -160,14 +170,13 @@ class BusinessSettings extends Page implements HasForms
                             ->label('New car booking / quote length')
                             ->helperText('Return time filled in after picking the start.')
                             ->numeric()->minValue(1)->maxValue(720)->suffix('hours')->required(),
-                        Forms\Components\TextInput::make('yacht_default_hours')
-                            ->label('New yacht booking / quote length')
-                            ->numeric()->minValue(1)->maxValue(72)->suffix('hours')->required(),
+
                     ]),
                 Forms\Components\Section::make('Price suggestions')
                     ->description('Which rate the CRM suggests on bookings and quotations. Staff can always change the price.')
                     ->columns(3)
-                    ->schema(collect(Rules::PRICING)->map(fn ($meta, $key) => Forms\Components\TextInput::make($key)
+                    // Yacht charter thresholds are no longer shown (charters stopped); stored values stay.
+                    ->schema(collect(Rules::PRICING)->reject(fn ($meta, $key) => str_starts_with($key, 'yacht_'))->map(fn ($meta, $key) => Forms\Components\TextInput::make($key)
                         ->label($meta[0])
                         ->numeric()->minValue(1)->maxValue(365)->suffix($meta[1])->required())->values()->all()),
                 Forms\Components\Section::make('Late return')
@@ -302,7 +311,7 @@ class BusinessSettings extends Page implements HasForms
 
     protected function listsTab(): Forms\Components\Tabs\Tab
     {
-        $keys = ['lost_reasons', 'cancel_reasons', 'pickup_locations', 'car_types', 'car_brands', 'car_locations', 'yacht_types', 'yacht_brands', 'marinas'];
+        $keys = ['lost_reasons', 'cancel_reasons', 'pickup_locations', 'car_types', 'car_brands', 'car_locations', 'package_types', 'marinas'];
 
         return Forms\Components\Tabs\Tab::make('Lists')
             ->icon('heroicon-o-list-bullet')
@@ -410,6 +419,9 @@ class BusinessSettings extends Page implements HasForms
         }
 
         foreach (array_keys(Options::LISTS) as $key) {
+            if (! array_key_exists('list_'.$key, $data)) {
+                continue; // list not shown on the page (e.g. old yacht lists): keep what is stored
+            }
             $out['list_'.$key] = array_values(array_unique(array_filter(array_map('trim', (array) ($data['list_'.$key] ?? [])))));
         }
 
@@ -431,8 +443,12 @@ class BusinessSettings extends Page implements HasForms
             'pending_payment_holds', 'booking_buffer_minutes', 'trip_default_minutes', 'car_default_hours', 'yacht_default_hours',
             'late_grace_minutes', 'late_charge_mode', 'late_charge_amount',
             ...array_keys(Rules::PRICING),
+            'website_origins',
         ] as $key) {
-            $out[$key] = $data[$key] ?? null;
+            if (! array_key_exists($key, $data)) {
+                continue; // field not shown on the page (old yacht settings): keep what is stored
+            }
+            $out[$key] = $data[$key];
         }
         if (empty($out['vat_enabled'])) {
             $out['vat_rate'] = null;

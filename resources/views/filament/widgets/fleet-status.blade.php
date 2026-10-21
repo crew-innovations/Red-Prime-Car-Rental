@@ -1,5 +1,5 @@
 <x-filament-widgets::widget>
-    <x-filament::section heading="Fleet status" description="Live status of every car and yacht" icon="heroicon-o-chart-bar">
+    <x-filament::section heading="Fleet status" description="Booking status and readiness of every car" icon="heroicon-o-chart-bar">
         <div class="rp-fleet">
             @foreach ($groups as $group)
                 <div>

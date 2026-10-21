@@ -22,6 +22,7 @@ class Transaction extends Model
         'car_rental' => 'Car rental',
         'yacht_charter' => 'Yacht charter',
         'yacht_trip' => 'Yacht trip tickets',
+        'travel_package' => 'Trips & packages',
         'chauffeur' => 'Chauffeur service',
         'delivery' => 'Delivery & pick-up',
         'extras' => 'Add-ons & extras',

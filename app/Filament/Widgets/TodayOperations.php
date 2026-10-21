@@ -32,7 +32,7 @@ class TodayOperations extends Widget
             'title' => $b->bookable?->name ?? $b->service_type?->getLabel(),
             'sub' => collect([$b->customer?->name, $b->drive_mode?->getLabel(), $b->pickup_location])->filter()->implode(' · '),
             'balance' => (float) $b->balance,
-            'notReady' => $out && ($b->bookable instanceof Car || $b->bookable instanceof Yacht) && ! $b->bookable->isReady(),
+            'notReady' => $out && $b->bookable instanceof Car && ! $b->bookable->isReady(),
             'url' => BookingResource::getUrl('edit', ['record' => $b]),
         ];
 
@@ -52,7 +52,7 @@ class TodayOperations extends Widget
             ->get()
             ->map(fn (Booking $b) => $map($b, false));
 
-        $attention = collect([Car::class => CarResource::class, Yacht::class => YachtResource::class])
+        $attention = collect([Car::class => CarResource::class])
             ->flatMap(fn ($resource, $model) => $model::where('readiness', '!=', Readiness::Ready)->orderBy('updated_at')->limit(8)->get()
                 ->map(fn ($item) => [
                     'title' => $item->name,

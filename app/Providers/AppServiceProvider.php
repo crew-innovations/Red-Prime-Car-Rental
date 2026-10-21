@@ -28,6 +28,7 @@ class AppServiceProvider extends ServiceProvider
             'car' => Car::class,
             'yacht' => Yacht::class,
             'trip' => Trip::class,
+            'package' => \App\Models\Package::class,
             'customer' => Customer::class,
             'lead' => Lead::class,
             'user' => User::class,
@@ -45,6 +46,20 @@ class AppServiceProvider extends ServiceProvider
             fn (User $user) => $user->hasRole('Super Admin') ? true : null
         );
         \App\Support\Access::register();
+
+        // Public website API: limits per visitor IP (catalogue reads, enquiries).
+        \Illuminate\Support\Facades\RateLimiter::for('api-catalog', fn (\Illuminate\Http\Request $request) => \Illuminate\Cache\RateLimiting\Limit::perMinute(120)->by($request->ip()));
+        \Illuminate\Support\Facades\RateLimiter::for('api-booking-requests', fn (\Illuminate\Http\Request $request) => [
+            \Illuminate\Cache\RateLimiting\Limit::perMinute(5)->by($request->ip()),
+            \Illuminate\Cache\RateLimiting\Limit::perDay(50)->by($request->ip()),
+        ]);
+
+        // Websites allowed to call the API from a browser: .env plus Business settings.
+        try {
+            config(['cors.allowed_origins' => \App\Support\Website::allowedOrigins()]);
+        } catch (\Throwable) {
+            // Settings table not there yet (fresh install / migrating): keep the .env list.
+        }
 
         // Private files are opened through a short-lived signed link (see routes/web.php).
         // The signature covers the path only (not scheme or host), so it also works behind
