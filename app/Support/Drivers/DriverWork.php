@@ -159,7 +159,7 @@ class DriverWork
                 'description' => mb_substr(trim($description), 0, 2000),
                 'status' => 'open',
             ]);
-            foreach (array_filter($photos) as $path) {
+            foreach (\App\Support\PrivateFiles::freshUploads(array_filter($photos), 'tmp') as $path) {
                 $report->addMediaFromDisk($path, 'private')->toMediaCollection('photos');
             }
 
@@ -184,7 +184,7 @@ class DriverWork
         $errors = [];
         $km = isset($data['km']) && $data['km'] !== '' ? (int) $data['km'] : null;
         $fuel = $data['fuel'] ?? null;
-        $photos = array_values(array_filter((array) ($data['photos'] ?? [])));
+        $photos = \App\Support\PrivateFiles::freshUploads(array_values(array_filter((array) ($data['photos'] ?? []))), 'tmp');
         $list = (array) Setting::read($stage.'_checklist', []);
         $ticked = array_values(array_intersect((array) ($data['checklist'] ?? []), $list));
 

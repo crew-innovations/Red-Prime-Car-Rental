@@ -74,6 +74,8 @@ class Documents extends Page implements HasForms
         abort_unless(self::canUpload(), 403);
         $data = $this->form->getState();
         abort_unless(array_key_exists($data['type'], Options::requestableDocumentTypes()), 422);
+        // Only a file just uploaded into this customer's own folder is accepted.
+        abort_unless(\App\Support\PrivateFiles::freshUploads([(string) $data['path']], 'customers/'.CustomerArea::customerId()) !== [], 422);
 
         $doc = CustomerDocument::create([
             'customer_id' => CustomerArea::customerId(),

@@ -132,6 +132,20 @@ class AccountsAndAgentsTest extends TestCase
         $this->get($doc->viewUrl())->assertOk();
     }
 
+    public function test_upload_fields_cannot_point_at_someone_elses_file(): void
+    {
+        Storage::disk('private')->put('customers/999/theirs.pdf', 'x');
+        $this->assertSame([], \App\Support\PrivateFiles::freshUploads(['customers/999/theirs.pdf'], 'customers/1'));
+        $this->assertSame([], \App\Support\PrivateFiles::freshUploads(['tmp/../customers/999/theirs.pdf'], 'tmp'));
+
+        Storage::disk('private')->put('tmp/old.jpg', 'x');
+        CustomerDocument::create(['customer_id' => $this->customer()->id, 'type' => 'passport', 'path' => 'tmp/old.jpg']);
+        $this->assertSame([], \App\Support\PrivateFiles::freshUploads(['tmp/old.jpg'], 'tmp'), 'already belongs to a document');
+
+        Storage::disk('private')->put('tmp/new.jpg', 'x');
+        $this->assertSame(['tmp/new.jpg'], \App\Support\PrivateFiles::freshUploads(['tmp/new.jpg'], 'tmp'));
+    }
+
     /* ---------- private files ---------- */
 
     public function test_private_files_only_open_for_their_owner_or_staff(): void

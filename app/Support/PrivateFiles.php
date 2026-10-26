@@ -49,6 +49,26 @@ class PrivateFiles
         return false;
     }
 
+    /**
+     * Paths sent back by an upload field must be fresh uploads in the expected
+     * folder, never an existing file of someone else (the browser could send any text).
+     */
+    public static function freshUploads(array $paths, string $folder, int $minutes = 120): array
+    {
+        $disk = \Illuminate\Support\Facades\Storage::disk('private');
+        $folder = rtrim($folder, '/').'/';
+
+        return array_values(array_filter($paths, function ($path) use ($disk, $folder, $minutes) {
+            return is_string($path)
+                && str_starts_with($path, $folder)
+                && ! str_contains($path, '..')
+                && $disk->exists($path)
+                && $disk->lastModified($path) >= time() - $minutes * 60 // the real clock: file times are real too
+                && ! \App\Models\CustomerDocument::withTrashed()->where('path', $path)->exists()
+                && ! \App\Models\DriverDocument::where('path', $path)->exists();
+        }));
+    }
+
     /** Media files live in "<media id>/..." (also conversions/ and responsive-images/ below it). */
     protected static function media(string $path): ?Media
     {

@@ -105,9 +105,10 @@ Contract mapping: **change request**. This replaces the earlier "never build cus
 - Email for invites and notifications needs the mail settings in `.env`. Until then, use WhatsApp or copy the link.
 
 ### Tests
-- New `DriverWorkflowTest` (14 tests) and `AccountsAndAgentsTest` (8).
+- New `DriverWorkflowTest` (14 tests) and `AccountsAndAgentsTest` (9).
 - Smoke tests cover the driver and customer screens and the Drivers settings.
-- **Full suite: 124 tests, all passing.**
+- **Full suite: 125 tests, 939 assertions, all passing.**
+- Upload fields only accept fresh uploads in the expected folder (a changed path in the browser cannot attach someone else's file).
 - Screens checked at 390 px (light and dark) and 1366 px: no sideways scrolling and no JavaScript errors.
 - **Not tested here:** real phone cameras, slow mobile networks, email delivery and the Hostinger cron. Check these on staging.
 

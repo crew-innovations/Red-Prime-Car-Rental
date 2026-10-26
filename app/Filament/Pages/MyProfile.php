@@ -106,7 +106,9 @@ class MyProfile extends Page implements HasForms
             $profile->update($profileData);
         }
         if (in_array('photo', $fields, true) && filled($data['photo'] ?? null)) {
-            $profile->addMediaFromDisk(is_array($data['photo']) ? array_values($data['photo'])[0] : $data['photo'], 'private')->toMediaCollection('photo');
+            foreach (\App\Support\PrivateFiles::freshUploads((array) $data['photo'], 'tmp') as $path) {
+                $profile->addMediaFromDisk($path, 'private')->toMediaCollection('photo');
+            }
         }
 
         Notification::make()->title('Your details are saved')->success()->send();
