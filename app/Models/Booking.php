@@ -93,7 +93,8 @@ class Booking extends Model implements HasMedia
             if ($booking->service_type !== ServiceType::Car) {
                 $booking->drive_mode = null;
             }
-            if ($booking->drive_mode !== DriveMode::WithDriver) {
+            // Any car booking can have a driver: with driver he drives, self-drive he delivers and collects.
+            if ($booking->service_type !== ServiceType::Car) {
                 $booking->driver_id = null;
             }
             [$booking->tax_amount, $booking->total] = Tax::apply(
@@ -123,14 +124,20 @@ class Booking extends Model implements HasMedia
             }
 
             $booking->advanceLead();
+
+            \App\Support\Drivers\DriverJobs::sync($booking);
         });
 
         static::deleted(function (Booking $booking) {
             $booking->transactions()->where('is_balance', true)->get()->each->forceDelete();
             $booking->bookable?->refreshBookingStatus();
+            \App\Support\Drivers\DriverJobs::sync($booking);
         });
 
-        static::restored(fn (Booking $booking) => $booking->syncBalance());
+        static::restored(function (Booking $booking) {
+            $booking->syncBalance();
+            \App\Support\Drivers\DriverJobs::sync($booking);
+        });
     }
 
     /**
@@ -141,6 +148,8 @@ class Booking extends Model implements HasMedia
      */
     public function guardAvailability(): void
     {
+        $this->guardDriver();
+
         $relevant = ! $this->exists || $this->isDirty(['status', 'start_at', 'end_at', 'bookable_type', 'bookable_id', 'trip_date_id', 'package_departure_id', 'guests']);
         if (! $relevant) {
             return;
@@ -167,6 +176,45 @@ class Booking extends Model implements HasMedia
             $left = $departure ? Availability::packageSeatsLeft($departure, $this->getKey()) : null;
             if ($left !== null && (int) $this->guests > $left) {
                 throw ValidationException::withMessages(['data.guests' => "Only {$left} place(s) left on this departure."]);
+            }
+        }
+    }
+
+    /**
+     * Driver checks on every save: only active drivers can be given new work,
+     * optionally only with complete papers, and never two jobs at once.
+     */
+    public function guardDriver(): void
+    {
+        if (! $this->driver_id || $this->service_type !== ServiceType::Car) {
+            return;
+        }
+        if ($this->exists && ! $this->isDirty(['driver_id', 'start_at', 'end_at', 'status', 'drive_mode'])) {
+            return;
+        }
+
+        $driver = \Illuminate\Support\Facades\DB::transactionLevel() > 0
+            ? User::whereKey($this->driver_id)->lockForUpdate()->first()
+            : User::find($this->driver_id);
+
+        if (! $this->exists || $this->isDirty('driver_id')) {
+            if (! $driver || ! $driver->hasRole('Driver')) {
+                throw ValidationException::withMessages(['data.driver_id' => 'Pick a driver from the list.']);
+            }
+            if (! $driver->is_active) {
+                throw ValidationException::withMessages(['data.driver_id' => $driver->name.' is switched off (inactive) and cannot get new jobs.']);
+            }
+            if (Setting::read('driver_block_incomplete') && ($missing = \App\Support\Drivers\DriverPapers::problems($driver))) {
+                throw ValidationException::withMessages(['data.driver_id' => $driver->name.' cannot get jobs until these are sorted: '.implode(', ', $missing).'.']);
+            }
+        }
+
+        $newlyHolding = ! $this->exists
+            || $this->isDirty(['driver_id', 'start_at', 'end_at', 'drive_mode'])
+            || ! Availability::holds($this->getOriginal('status') instanceof BookingStatus ? $this->getOriginal('status') : BookingStatus::tryFrom((string) $this->getOriginal('status')));
+        if ($driver && $newlyHolding && Availability::holds($this->status)) {
+            if ($clash = Availability::driverConflict($driver->id, $this->start_at, $this->end_at, $this->getKey(), $this->drive_mode)) {
+                throw ValidationException::withMessages(['data.driver_id' => $driver->name.' is already busy on '.$clash->reference.' ('.$clash->start_at->format('d M H:i').' – '.$clash->end_at->format('d M H:i').').']);
             }
         }
     }
@@ -214,6 +262,17 @@ class Booking extends Model implements HasMedia
     public function driver(): BelongsTo
     {
         return $this->belongsTo(User::class, 'driver_id');
+    }
+
+    /** Delivery and collection for the driver (kept in step by DriverJobs). */
+    public function jobs(): HasMany
+    {
+        return $this->hasMany(BookingJob::class);
+    }
+
+    public function damageReports(): HasMany
+    {
+        return $this->hasMany(DamageReport::class);
     }
 
     public function assignee(): BelongsTo

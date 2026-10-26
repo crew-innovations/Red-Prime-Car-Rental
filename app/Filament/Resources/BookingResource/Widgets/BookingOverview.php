@@ -19,12 +19,12 @@ class BookingOverview extends StatsOverviewWidget
 
     protected function getStats(): array
     {
-        $out = Booking::whereIn('status', [BookingStatus::Confirmed, BookingStatus::PendingPayment])->whereDate('start_at', today())->count();
-        $back = Booking::where('status', BookingStatus::InProgress)->whereDate('end_at', today())->count();
-        $late = Booking::where('status', BookingStatus::InProgress)->where('end_at', '<', now())->count();
-        $onRent = Booking::where('status', BookingStatus::InProgress)->count();
-        $week = Booking::whereIn('status', BookingStatus::blocking())->whereBetween('start_at', [now(), now()->addDays(7)->endOfDay()])->count();
-        $balance = (float) Booking::whereIn('status', BookingStatus::billable())->sum('balance');
+        $out = \App\Support\Access::scopeOwn(\App\Models\Booking::query(), 'booking')->whereIn('status', [BookingStatus::Confirmed, BookingStatus::PendingPayment])->whereDate('start_at', today())->count();
+        $back = \App\Support\Access::scopeOwn(\App\Models\Booking::query(), 'booking')->where('status', BookingStatus::InProgress)->whereDate('end_at', today())->count();
+        $late = \App\Support\Access::scopeOwn(\App\Models\Booking::query(), 'booking')->where('status', BookingStatus::InProgress)->where('end_at', '<', now())->count();
+        $onRent = \App\Support\Access::scopeOwn(\App\Models\Booking::query(), 'booking')->where('status', BookingStatus::InProgress)->count();
+        $week = \App\Support\Access::scopeOwn(\App\Models\Booking::query(), 'booking')->whereIn('status', BookingStatus::blocking())->whereBetween('start_at', [now(), now()->addDays(7)->endOfDay()])->count();
+        $balance = (float) \App\Support\Access::scopeOwn(\App\Models\Booking::query(), 'booking')->whereIn('status', BookingStatus::billable())->sum('balance');
 
         return [
             Stat::make('Going out today', $out)

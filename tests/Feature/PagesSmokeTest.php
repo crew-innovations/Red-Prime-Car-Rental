@@ -35,7 +35,7 @@ class PagesSmokeTest extends TestCase
         $this->actingAs($this->user('Super Admin'));
 
         $urls = ['/crm', '/crm/pipeline', '/crm/accounts', '/crm/business-settings'];
-        foreach (['leads', 'quotations', 'bookings', 'customers', 'cars', 'yachts', 'trips', 'packages', 'drivers', 'transactions', 'users', 'categories', 'lead-sources', 'documents', 'history'] as $r) {
+        foreach (['leads', 'quotations', 'bookings', 'customers', 'cars', 'yachts', 'trips', 'packages', 'drivers', 'transactions', 'users', 'categories', 'lead-sources', 'documents', 'history', 'damage-reports'] as $r) {
             $urls[] = "/crm/{$r}";
         }
         foreach (['leads', 'quotations', 'bookings', 'customers', 'cars', 'trips', 'packages', 'drivers', 'transactions', 'users'] as $r) {
@@ -70,6 +70,33 @@ class PagesSmokeTest extends TestCase
                 $e = $e->getPrevious();
             }
             $this->assertSame(200, $res->status(), "{$url} returned {$res->status()}".($e ? ': '.$e->getMessage().' @ '.$e->getFile().':'.$e->getLine() : ''));
+        }
+    }
+
+    public function test_driver_and_customer_screens_open(): void
+    {
+        $driver = User::role('Driver')->first();
+        $booking = Booking::where('service_type', 'car')->first();
+        $booking->update(['driver_id' => $driver->id]);
+        $job = $booking->jobs()->first();
+        $this->assertNotNull($job);
+
+        $this->actingAs($driver);
+        foreach (['/crm/my-jobs', '/crm/my-jobs?tab=upcoming', '/crm/my-jobs?tab=done', '/crm/my-profile', \App\Filament\Pages\DriverJob::getUrl(['job' => $job->id])] as $url) {
+            $this->get($url)->assertOk();
+        }
+    }
+
+    public function test_customer_account_screens_open(): void
+    {
+        $customer = Booking::whereNotNull('customer_id')->where('status', '!=', 'inquiry')->first()->customer;
+        $account = \App\Support\Accounts::customerAccount($customer, 'smoke@example.com');
+        $this->actingAs($account);
+        foreach (['/account', '/account/bookings', '/account/quotations', '/account/documents', '/account/payments', '/account/profile'] as $url) {
+            $this->get($url)->assertOk();
+        }
+        foreach (\App\Support\CustomerArea::bookings()->get() as $b) {
+            $this->get(\App\Filament\Account\Pages\BookingDetail::getUrl(['booking' => $b->id], panel: 'account'))->assertOk();
         }
     }
 

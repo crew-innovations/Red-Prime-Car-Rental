@@ -3,8 +3,8 @@
 namespace App\Filament\Resources\DriverResource\Pages;
 
 use App\Filament\Resources\DriverResource;
-use Illuminate\Support\Str;
 use Filament\Resources\Pages\CreateRecord;
+use Illuminate\Support\Str;
 
 class CreateDriver extends CreateRecord
 {
@@ -12,8 +12,8 @@ class CreateDriver extends CreateRecord
 
     protected function mutateFormDataBeforeCreate(array $data): array
     {
-        // A driver who will not log in still needs a password; set an unguessable one.
-        $data['password'] ??= Str::password(24);
+        // Nobody knows this password; the driver chooses their own through a login link.
+        $data['password'] = Str::password(32);
 
         return $data;
     }
@@ -21,5 +21,10 @@ class CreateDriver extends CreateRecord
     protected function afterCreate(): void
     {
         $this->getRecord()->assignRole('Driver');
+    }
+
+    protected function getRedirectUrl(): string
+    {
+        return DriverResource::getUrl('edit', ['record' => $this->getRecord()]);
     }
 }

@@ -43,6 +43,11 @@ class HistoryResource extends Resource
         'trip' => ['Yacht trip', TripResource::class],
         'package' => ['Trip / package', PackageResource::class],
         'customer_document' => ['Document', null],
+        'user' => ['Login / team member', null],
+        'driver_profile' => ['Driver profile', null],
+        'driver_document' => ['Driver document', null],
+        'booking_job' => ['Driver job', null],
+        'damage_report' => ['Damage report', null],
         'yacht' => ['Yacht (old)', YachtResource::class],
     ];
 

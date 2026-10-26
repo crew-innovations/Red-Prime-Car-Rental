@@ -105,6 +105,7 @@ class BusinessSettings extends Page implements HasForms
                         $this->documentsTab(),
                         $this->listsTab(),
                         $this->moneyTab(),
+                        $this->driversTab(),
                         $this->rolesTab(),
                     ]),
             ]);
@@ -344,13 +345,123 @@ class BusinessSettings extends Page implements HasForms
             ]);
     }
 
+    protected function driversTab(): Forms\Components\Tabs\Tab
+    {
+        $statusNote = 'Changing these never removes jobs, bookings or history.';
+
+        return Forms\Components\Tabs\Tab::make('Drivers')
+            ->icon('heroicon-o-truck')
+            ->schema([
+                Forms\Components\Section::make('Driver access')
+                    ->description($statusNote)
+                    ->columns(2)
+                    ->schema([
+                        Forms\Components\Toggle::make('driver_login_enabled')
+                            ->label('Drivers can log in')
+                            ->helperText('Off = no driver can open the CRM. Their jobs stay on the bookings; staff do the handovers.'),
+                        Forms\Components\Toggle::make('driver_sees_customer_phone')
+                            ->label('Drivers see the customer\'s phone number'),
+                        Forms\Components\Toggle::make('driver_sees_instructions')
+                            ->label('Drivers see the booking\'s driver instructions'),
+                        Forms\Components\CheckboxList::make('driver_steps')
+                            ->label('Job steps drivers can set')
+                            ->options(\App\Models\BookingJob::DRIVER_STEPS)
+                            ->helperText('Handover and collection are set below.'),
+                        Forms\Components\Toggle::make('driver_can_handover')->label('Drivers can hand over cars (with the handover check)'),
+                        Forms\Components\Toggle::make('driver_can_return')->label('Drivers can collect cars (with the return check)'),
+                        Forms\Components\Toggle::make('driver_can_report_damage')->label('Drivers can report damage'),
+                        Forms\Components\Placeholder::make('money_note')->hiddenLabel()
+                            ->content('Drivers never record payments, deposits, refunds or charges, and cannot change prices. The office completes every return.'),
+                    ]),
+                Forms\Components\Section::make('Driver self-service')
+                    ->columns(2)
+                    ->schema([
+                        Forms\Components\Toggle::make('driver_self_service')
+                            ->label('Drivers can update some of their own details')
+                            ->live(),
+                        Forms\Components\CheckboxList::make('driver_editable_fields')
+                            ->label('Which details')
+                            ->options(\App\Models\DriverProfile::SELF_SERVICE_FIELDS)
+                            ->visible(fn (Get $get): bool => (bool) $get('driver_self_service')),
+                    ]),
+                Forms\Components\Section::make('Handover and collection checks')
+                    ->description('What the driver must fill in before a handover or collection is saved. Staff forms are not changed.')
+                    ->columns(2)
+                    ->schema([
+                        Forms\Components\Toggle::make('handover_require_km')->label('Handover: odometer required'),
+                        Forms\Components\Toggle::make('return_require_km')->label('Collection: odometer required'),
+                        Forms\Components\Toggle::make('handover_require_fuel')->label('Handover: fuel level required'),
+                        Forms\Components\Toggle::make('return_require_fuel')->label('Collection: fuel level required'),
+                        Forms\Components\TextInput::make('handover_min_photos')->label('Handover: minimum photos')->numeric()->minValue(0)->maxValue(20)->required(),
+                        Forms\Components\TextInput::make('return_min_photos')->label('Collection: minimum photos')->numeric()->minValue(0)->maxValue(20)->required(),
+                        Forms\Components\TagsInput::make('handover_checklist')->label('Handover checklist')->placeholder('Add item')->reorderable(),
+                        Forms\Components\TagsInput::make('return_checklist')->label('Collection checklist')->placeholder('Add item')->reorderable(),
+                        Forms\Components\Toggle::make('checklist_all_required')->label('Every checklist item must be ticked')->columnSpanFull(),
+                    ]),
+                Forms\Components\Section::make('Assigning drivers')
+                    ->columns(2)
+                    ->schema([
+                        Forms\Components\TextInput::make('driver_job_gap_minutes')
+                            ->label('Minimum time between two jobs of the same driver')
+                            ->helperText('A delivery or collection closer than this to another job counts as a clash. With-driver bookings keep the driver for the whole time.')
+                            ->numeric()->minValue(0)->maxValue(1440)->suffix('minutes')->required(),
+                        Forms\Components\Toggle::make('driver_block_incomplete')
+                            ->label('Only assign drivers whose required documents are complete and not expired'),
+                    ]),
+                Forms\Components\Section::make('Driver profile and documents')
+                    ->columns(2)
+                    ->schema([
+                        Forms\Components\CheckboxList::make('driver_required_fields')
+                            ->label('Required profile fields')
+                            ->options(\App\Models\DriverProfile::FIELDS)
+                            ->columns(2)
+                            ->helperText('Name, phone and email are always required.'),
+                        Forms\Components\CheckboxList::make('driver_required_documents')
+                            ->label('Required documents')
+                            ->options(\App\Models\DriverDocument::TYPES)
+                            ->columns(2)
+                            ->helperText('Missing or expired ones show on the driver list and the driver\'s profile.'),
+                        Forms\Components\TextInput::make('driver_doc_warn_days')
+                            ->label('Warn before a document expires')
+                            ->numeric()->minValue(0)->maxValue(365)->suffix('days')->required(),
+                        Forms\Components\Toggle::make('driver_doc_reminders')
+                            ->label('Send expiry reminders (to the driver and the people who manage drivers)')
+                            ->helperText('Sent once a day by the scheduled task on the server.'),
+                    ]),
+                Forms\Components\Section::make('Notifications')
+                    ->description('Messages always appear under the bell in the CRM. Email needs email sending set up on the server.')
+                    ->columns(2)
+                    ->schema([
+                        Forms\Components\Toggle::make('notify_drivers_by_email')->label('Also email drivers about new or changed jobs'),
+                        Forms\Components\Toggle::make('notify_staff_by_email')->label('Also email staff about handovers, collections and damage'),
+                    ]),
+            ]);
+    }
+
     protected function rolesTab(): Forms\Components\Tabs\Tab
     {
         return Forms\Components\Tabs\Tab::make('Roles & permissions')
             ->icon('heroicon-o-shield-check')
             ->schema([
+                Forms\Components\Section::make('Agents and customer accounts')
+                    ->columns(2)
+                    ->schema([
+                        Forms\Components\Toggle::make('agent_own_records_only')
+                            ->label('Agents only see their own leads, customers, quotations and bookings')
+                            ->helperText('Records assigned to them or created by them. Off = agents see everything their permissions allow.')
+                            ->columnSpanFull(),
+                        Forms\Components\Toggle::make('customer_accounts_enabled')
+                            ->label('Customers can log in to their account')
+                            ->helperText('Invite a customer from their page. Off = no customer can log in; nothing is deleted.'),
+                        Forms\Components\TextInput::make('invite_link_hours')
+                            ->label('Login links work for')
+                            ->numeric()->minValue(1)->maxValue(720)->suffix('hours')->required(),
+                        Forms\Components\Toggle::make('customer_sees_quotations')->label('Customers see their quotations'),
+                        Forms\Components\Toggle::make('customer_sees_payments')->label('Customers see their payments and balance'),
+                        Forms\Components\Toggle::make('customer_can_upload_documents')->label('Customers can upload documents from their account'),
+                    ]),
                 Forms\Components\Section::make('Who can do what')
-                    ->description('Super Admin can always do everything. Admin always keeps access to these settings. Drivers only see their own bookings.')
+                    ->description('Super Admin can always do everything. Admin always keeps access to these settings. Drivers only see their own jobs and profile; customers only their own account.')
                     ->columns(2)
                     ->schema(collect(Access::LABELS)->map(fn ($label, $ability) => Forms\Components\CheckboxList::make('perm_'.self::permKey($ability))
                         ->label($label)
@@ -370,6 +481,16 @@ class BusinessSettings extends Page implements HasForms
             ->reorderable()
             ->placeholder('Add item');
     }
+
+    public const DRIVER_AND_ACCOUNT_KEYS = [
+        'agent_own_records_only', 'customer_accounts_enabled', 'customer_can_upload_documents', 'customer_sees_payments', 'customer_sees_quotations', 'invite_link_hours',
+        'driver_login_enabled', 'driver_self_service', 'driver_editable_fields', 'driver_sees_customer_phone', 'driver_sees_instructions', 'driver_steps',
+        'driver_can_handover', 'driver_can_return', 'driver_can_report_damage',
+        'handover_require_km', 'handover_require_fuel', 'handover_min_photos', 'return_require_km', 'return_require_fuel', 'return_min_photos',
+        'checklist_all_required', 'handover_checklist', 'return_checklist',
+        'driver_job_gap_minutes', 'driver_required_fields', 'driver_required_documents', 'driver_block_incomplete',
+        'driver_doc_warn_days', 'driver_doc_reminders', 'notify_drivers_by_email', 'notify_staff_by_email',
+    ];
 
     public function save(): void
     {
@@ -444,6 +565,7 @@ class BusinessSettings extends Page implements HasForms
             'late_grace_minutes', 'late_charge_mode', 'late_charge_amount',
             ...array_keys(Rules::PRICING),
             'website_origins',
+            ...self::DRIVER_AND_ACCOUNT_KEYS,
         ] as $key) {
             if (! array_key_exists($key, $data)) {
                 continue; // field not shown on the page (old yacht settings): keep what is stored
@@ -460,6 +582,22 @@ class BusinessSettings extends Page implements HasForms
         foreach (['pending_payment_holds', 'vat_enabled', 'vat_inclusive', 'doc_block_handover'] as $bool) {
             $out[$bool] = (bool) $out[$bool];
         }
+        foreach (self::DRIVER_AND_ACCOUNT_KEYS as $key) {
+            if (! array_key_exists($key, $out)) {
+                continue;
+            }
+            $default = Setting::DEFAULTS[$key] ?? null;
+            $out[$key] = match (true) {
+                is_bool($default) => (bool) $out[$key],
+                is_int($default) => (int) $out[$key],
+                is_array($default) => array_values(array_unique(array_filter(array_map(fn ($v) => is_string($v) ? trim($v) : $v, (array) $out[$key])))),
+                default => $out[$key],
+            };
+        }
+        $out['driver_steps'] = array_values(array_intersect($out['driver_steps'] ?? [], array_keys(\App\Models\BookingJob::DRIVER_STEPS)));
+        $out['driver_editable_fields'] = array_values(array_intersect($out['driver_editable_fields'] ?? [], array_keys(\App\Models\DriverProfile::SELF_SERVICE_FIELDS)));
+        $out['driver_required_fields'] = array_values(array_intersect($out['driver_required_fields'] ?? [], array_keys(\App\Models\DriverProfile::FIELDS)));
+        $out['driver_required_documents'] = array_values(array_intersect($out['driver_required_documents'] ?? [], array_keys(\App\Models\DriverDocument::TYPES)));
 
         $before = Setting::values();
         Setting::write($out);

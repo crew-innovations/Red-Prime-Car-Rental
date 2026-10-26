@@ -63,6 +63,9 @@ class AdminPanelProvider extends PanelProvider
             ->font('Poppins')
             ->maxContentWidth(MaxWidth::Full)
             ->sidebarCollapsibleOnDesktop()
+            // The bell: new driver jobs, handovers, collections, damage and document reminders.
+            ->databaseNotifications()
+            ->databaseNotificationsPolling('60s')
             ->sidebarWidth('16.5rem')
             ->defaultAvatarProvider(\App\Support\InitialsAvatar::class)
             ->navigationGroups([

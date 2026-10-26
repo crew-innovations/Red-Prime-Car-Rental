@@ -14,6 +14,19 @@ class Dashboard extends BaseDashboard
 {
     protected static ?string $navigationGroup = 'Overview';
 
+    /** Drivers start on their own jobs instead. */
+    public static function shouldRegisterNavigation(): bool
+    {
+        return ! \App\Support\Access::isDriverOnly();
+    }
+
+    public function mount(): void
+    {
+        if (\App\Support\Access::isDriverOnly()) {
+            $this->redirect(MyJobs::getUrl());
+        }
+    }
+
     public function getWidgets(): array
     {
         return [

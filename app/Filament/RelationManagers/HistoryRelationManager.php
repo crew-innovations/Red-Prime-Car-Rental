@@ -64,6 +64,11 @@ class HistoryRelationManager extends RelationManager
         }
         foreach ((array) $log->new_values as $field => $new) {
             $old = $log->old_values[$field] ?? null;
+            if ($field === 'number' && $log->auditable_type === 'driver_document') {
+                $lines[] = '<b>number</b>: changed (hidden)'; // stored encrypted, never shown in history
+
+                continue;
+            }
             $lines[] = '<b>'.e(str_replace('_', ' ', $field)).'</b>: '.e(self::show($old)).' → '.e(self::show($new));
         }
         if (! $lines) {

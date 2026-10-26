@@ -21,17 +21,17 @@ class LeadOverview extends StatsOverviewWidget
     {
         $since = now()->subDays(30);
 
-        $today = Lead::whereDate('created_at', today())->count();
-        $yesterday = Lead::whereDate('created_at', today()->subDay())->count();
-        $open = Lead::open()->count();
-        $due = Lead::followUpDue()->count();
+        $today = \App\Support\Access::scopeOwn(\App\Models\Lead::query(), 'lead')->whereDate('created_at', today())->count();
+        $yesterday = \App\Support\Access::scopeOwn(\App\Models\Lead::query(), 'lead')->whereDate('created_at', today()->subDay())->count();
+        $open = \App\Support\Access::scopeOwn(\App\Models\Lead::query(), 'lead')->open()->count();
+        $due = \App\Support\Access::scopeOwn(\App\Models\Lead::query(), 'lead')->followUpDue()->count();
 
-        $last30 = Lead::where('created_at', '>=', $since);
+        $last30 = \App\Support\Access::scopeOwn(\App\Models\Lead::query(), 'lead')->where('created_at', '>=', $since);
         $total30 = (clone $last30)->count();
         $converted30 = (clone $last30)->where('status', LeadStatus::Converted)->count();
         $rate = $total30 ? round($converted30 / $total30 * 100) : 0;
 
-        $topSource = Lead::where('leads.created_at', '>=', $since)
+        $topSource = \App\Support\Access::scopeOwn(\App\Models\Lead::query(), 'lead')->where('leads.created_at', '>=', $since)
             ->join('lead_sources', 'lead_sources.id', '=', 'leads.lead_source_id')
             ->selectRaw('lead_sources.name, count(*) as total')
             ->groupBy('lead_sources.name')
@@ -39,7 +39,7 @@ class LeadOverview extends StatsOverviewWidget
             ->first();
 
         // Leads per day for the last 14 days, for the sparkline.
-        $daily = Lead::where('created_at', '>=', today()->subDays(13))
+        $daily = \App\Support\Access::scopeOwn(\App\Models\Lead::query(), 'lead')->where('created_at', '>=', today()->subDays(13))
             ->selectRaw('date(created_at) as day, count(*) as total')
             ->groupBy('day')
             ->pluck('total', 'day');

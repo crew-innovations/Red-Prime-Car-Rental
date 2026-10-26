@@ -49,10 +49,10 @@ class BookingResource extends Resource
         return 'delete-records';
     }
 
-    /** Drivers can open the bookings they drive (read-only). */
+    /** Drivers work from "My jobs" (no prices or payments there), not from the bookings list. */
     public static function canViewAny(): bool
     {
-        return true;
+        return ! Access::isDriverOnly();
     }
 
     protected static ?string $model = Booking::class;
@@ -232,21 +232,36 @@ class BookingResource extends Resource
 
                 Forms\Components\Select::make('driver_id')
                     ->label('Driver')
-                    ->options(fn (Get $get): array => BookingActions::driverOptions($get('bookable_id') ? (int) $get('bookable_id') : null))
+                    ->options(fn (Get $get, ?Booking $record): array => BookingActions::driverOptions(
+                        $get('bookable_id') ? (int) $get('bookable_id') : null,
+                        $get('start_at'), $get('end_at'), $get('drive_mode'), $record?->getKey(),
+                    ))
+                    ->disableOptionWhen(fn (string $label): bool => str_contains($label, BookingActions::BUSY))
                     ->searchable()
                     ->live()
                     ->placeholder('Assign later')
-                    ->helperText(fn (Get $get): ?string => BookingActions::driverOptions() ? self::driverHint($get) : 'Add drivers under Fleet › Drivers.')
+                    ->helperText(fn (Get $get): ?string => BookingActions::driverOptions()
+                        ? ($get('drive_mode') === DriveMode::WithDriver->value
+                            ? 'Drives the customer for the whole booking.'
+                            : 'Delivers the car at the start and collects it at the end. Leave empty if the customer picks up and returns it at the office.').' '.self::driverHint($get)
+                        : 'Add drivers under Operations › Drivers.')
                     ->rules([fn (Get $get, ?Booking $record): Closure => function (string $attribute, $value, Closure $fail) use ($get, $record) {
                         if (! $value || ! $get('start_at') || ! $get('end_at') || ! in_array($get('status'), array_map(fn ($s) => $s->value, BookingStatus::blocking()), true)) {
                             return;
                         }
-                        $clash = Availability::driverConflict((int) $value, $get('start_at'), $get('end_at'), $record?->getKey());
+                        $clash = Availability::driverConflict((int) $value, $get('start_at'), $get('end_at'), $record?->getKey(), $get('drive_mode'));
                         if ($clash) {
-                            $fail("This driver is already on {$clash->reference} (".$clash->start_at->format('d M H:i').' – '.$clash->end_at->format('d M H:i').').');
+                            $fail("This driver is already busy on {$clash->reference} (".$clash->start_at->format('d M H:i').' – '.$clash->end_at->format('d M H:i').').');
                         }
                     }])
-                    ->visible(fn (Get $get): bool => $get('service_type') === ServiceType::Car->value && $get('drive_mode') === DriveMode::WithDriver->value),
+                    ->visible(fn (Get $get): bool => $get('service_type') === ServiceType::Car->value),
+
+                Forms\Components\Textarea::make('driver_instructions')
+                    ->label('Instructions for the driver')
+                    ->placeholder('Gate code, parking, who to call, child seat…')
+                    ->rows(2)
+                    ->visible(fn (Get $get): bool => $get('service_type') === ServiceType::Car->value && filled($get('driver_id')))
+                    ->columnSpanFull(),
 
                 Forms\Components\Select::make('trip_date_id')
                     ->label('Trip date')
@@ -755,7 +770,7 @@ class BookingResource extends Resource
         }
 
         foreach ($car->drivers()->where('is_active', true)->get() as $driver) {
-            if (! $get('start_at') || ! Availability::driverConflict($driver->id, $get('start_at'), $get('end_at') ?: $get('start_at'))) {
+            if (! $get('start_at') || ! Availability::driverConflict($driver->id, $get('start_at'), $get('end_at') ?: $get('start_at'), null, $get('drive_mode'))) {
                 $set('driver_id', $driver->id);
 
                 return;
@@ -771,7 +786,7 @@ class BookingResource extends Resource
         $cars = $driver?->assignedCars()->pluck('name')->implode(', ');
 
         return collect([
-            $usual ? 'Usual driver(s) for this car: '.$usual.'. You can pick anyone.' : null,
+            $usual ? 'Usual driver(s) for this car: '.$usual.'.' : null,
             $driver ? $driver->name.' usually drives: '.($cars ?: 'no cars assigned yet').'.' : null,
         ])->filter()->implode(' ') ?: null;
     }
@@ -938,8 +953,7 @@ class BookingResource extends Resource
 
     public static function getEloquentQuery(): Builder
     {
-        return parent::getEloquentQuery()
-            ->withoutGlobalScopes([SoftDeletingScope::class])
+        return Access::scopeOwn(parent::getEloquentQuery()->withoutGlobalScopes([SoftDeletingScope::class]), 'booking')
             ->when(Access::isDriverOnly(), fn (Builder $q) => $q->where('driver_id', auth()->id()));
     }
 
@@ -963,7 +977,7 @@ class BookingResource extends Resource
 
     public static function getNavigationBadge(): ?string
     {
-        $count = static::getModel()::query()
+        $count = static::getEloquentQuery()->withoutTrashed()
             ->where(fn (Builder $q) => $q
                 ->where(fn (Builder $q) => $q->whereIn('status', [BookingStatus::Confirmed, BookingStatus::PendingPayment])->whereDate('start_at', today()))
                 ->orWhere(fn (Builder $q) => $q->where('status', BookingStatus::InProgress)->where('end_at', '<=', now()->endOfDay())))

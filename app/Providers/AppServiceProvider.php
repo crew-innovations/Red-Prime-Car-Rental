@@ -36,7 +36,18 @@ class AppServiceProvider extends ServiceProvider
             'booking' => Booking::class,
             'quotation' => \App\Models\Quotation::class,
             'customer_document' => \App\Models\CustomerDocument::class,
+            'driver_profile' => \App\Models\DriverProfile::class,
+            'driver_document' => \App\Models\DriverDocument::class,
+            'booking_job' => \App\Models\BookingJob::class,
+            'damage_report' => \App\Models\DamageReport::class,
         ]);
+
+        // Last login time on the driver / customer / team lists (a quiet save, not in the history).
+        \Illuminate\Support\Facades\Event::listen(\Illuminate\Auth\Events\Login::class, function ($event) {
+            if ($event->user instanceof User) {
+                $event->user->forceFill(['last_login_at' => now()])->saveQuietly();
+            }
+        });
 
         // Fail loudly in development if a value is written to a column that does not exist.
         Model::preventSilentlyDiscardingAttributes(! $this->app->isProduction());

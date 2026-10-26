@@ -66,7 +66,7 @@ class PipelineBoard extends Page
     {
         $pipeline = $this->getPipeline();
 
-        $leads = Lead::query()
+        $leads = \App\Support\Access::scopeOwn(\App\Models\Lead::query(), 'lead')
             ->with(['assignee', 'interestedIn', 'leadSource'])
             ->where('pipeline', $pipeline->value)
             ->where('stage', '<>', Pipeline::LOST)
@@ -94,7 +94,7 @@ class PipelineBoard extends Page
 
     public function getCounts(): array
     {
-        return Lead::query()
+        return \App\Support\Access::scopeOwn(\App\Models\Lead::query(), 'lead')
             ->open()
             ->when($this->mine, fn ($q) => $q->where('assigned_to', auth()->id()))
             ->selectRaw('pipeline, count(*) as total')
@@ -111,7 +111,7 @@ class PipelineBoard extends Page
             return;
         }
 
-        $lead = Lead::find($id);
+        $lead = \App\Support\Access::scopeOwn(\App\Models\Lead::query(), 'lead')->find($id);
         $pipeline = $this->getPipeline();
 
         if (! $lead || $lead->pipeline !== $pipeline || ! $pipeline->hasStage($stage) || $lead->stage === $stage) {
@@ -158,7 +158,7 @@ class PipelineBoard extends Page
             ])
             ->authorize('manage-leads')
             ->action(function (array $data, array $arguments): void {
-                Lead::find($arguments['lead'] ?? null)?->update(['stage' => Pipeline::LOST, 'lost_reason' => $data['lost_reason']]);
+                \App\Support\Access::scopeOwn(\App\Models\Lead::query(), 'lead')->find($arguments['lead'] ?? null)?->update(['stage' => Pipeline::LOST, 'lost_reason' => $data['lost_reason']]);
 
                 Notification::make()->title('Lead marked as lost')->send();
             });

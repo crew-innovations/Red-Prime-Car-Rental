@@ -29,20 +29,20 @@ class WelcomeBanner extends Widget
         $hour = (int) now()->format('G');
         $name = str(auth()->user()?->name ?? '')->before('(')->trim()->toString();
 
-        $newToday = Lead::whereDate('created_at', today())->count();
-        $followUps = Lead::followUpDue()->where('assigned_to', auth()->id())->count();
-        $newUnhandled = Lead::where('status', LeadStatus::New)->count();
+        $newToday = \App\Support\Access::scopeOwn(\App\Models\Lead::query(), 'lead')->whereDate('created_at', today())->count();
+        $followUps = \App\Support\Access::scopeOwn(\App\Models\Lead::query(), 'lead')->followUpDue()->where('assigned_to', auth()->id())->count();
+        $newUnhandled = \App\Support\Access::scopeOwn(\App\Models\Lead::query(), 'lead')->where('status', LeadStatus::New)->count();
         $carsFree = Car::where('status', CarStatus::Available)->where('readiness', 'ready')->count();
         $docs = Car::documentsDueSoon()->count();
-        $outToday = \App\Models\Booking::whereIn('status', [\App\Enums\BookingStatus::Confirmed, \App\Enums\BookingStatus::PendingPayment])->whereDate('start_at', today())->count();
-        $backToday = \App\Models\Booking::where('status', \App\Enums\BookingStatus::InProgress)->where('end_at', '<=', now()->endOfDay())->count();
+        $outToday = \App\Support\Access::scopeOwn(\App\Models\Booking::query(), 'booking')->whereIn('status', [\App\Enums\BookingStatus::Confirmed, \App\Enums\BookingStatus::PendingPayment])->whereDate('start_at', today())->count();
+        $backToday = \App\Support\Access::scopeOwn(\App\Models\Booking::query(), 'booking')->where('status', \App\Enums\BookingStatus::InProgress)->where('end_at', '<=', now()->endOfDay())->count();
         $docsToReview = \App\Models\CustomerDocument::where('status', \App\Enums\DocumentStatus::Received)->count();
-        $quotesWaiting = \App\Models\Quotation::where('status', \App\Enums\QuotationStatus::Accepted)->whereNull('booking_id')->count();
+        $quotesWaiting = \App\Support\Access::scopeOwn(\App\Models\Quotation::query(), 'quotation')->where('status', \App\Enums\QuotationStatus::Accepted)->whereNull('booking_id')->count();
         $notReady = Car::where('readiness', '!=', 'ready')->count();
         $revenue = Transaction::totals(Transaction::query()->betweenDates(now()->startOfMonth(), now()->endOfMonth()))['received'];
 
         $cars = Car::count();
-        $lateBack = \App\Models\Booking::where('status', \App\Enums\BookingStatus::InProgress)->where('end_at', '<', now())->count();
+        $lateBack = \App\Support\Access::scopeOwn(\App\Models\Booking::query(), 'booking')->where('status', \App\Enums\BookingStatus::InProgress)->where('end_at', '<', now())->count();
         $bookings = \App\Filament\Resources\BookingResource::class;
         $canFinance = \App\Support\Access::allows('manage-finance');
 

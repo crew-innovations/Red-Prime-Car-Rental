@@ -4,6 +4,7 @@ namespace App\Support;
 
 use App\Enums\BookingStatus;
 use App\Enums\CarStatus;
+use App\Enums\DriveMode;
 use App\Enums\Readiness;
 use App\Enums\YachtStatus;
 use App\Models\Booking;
@@ -224,15 +225,65 @@ class Availability
         return $seats === null ? null : max(0, (int) $seats - $departure->bookedGuests($ignoreBookingId));
     }
 
-    /** The same driver on another holding booking at the same time. */
-    public static function driverConflict(int $driverId, $start, $end, ?int $ignoreBookingId = null): ?Booking
+    /**
+     * The same driver busy on another holding booking. A with-driver booking keeps
+     * the driver for the whole time; a self-drive booking only at the delivery
+     * (start) and the collection (end). Jobs closer than the gap set in Business
+     * settings (minutes) count as a clash, so the driver can get from one to the next.
+     */
+    public static function driverConflict(int $driverId, $start, $end, ?int $ignoreBookingId = null, DriveMode|string|null $driveMode = DriveMode::WithDriver): ?Booking
     {
-        return self::latest(Booking::query())->blocking()
+        if (! $start) {
+            return null;
+        }
+        $start = Carbon::parse($start);
+        $end = $end ? Carbon::parse($end) : $start->copy();
+        $gap = max(0, (int) \App\Models\Setting::read('driver_job_gap_minutes', 90));
+        $mine = self::driverWindows($start, $end, $driveMode);
+
+        $others = self::latest(Booking::query())->blocking()
             ->where('driver_id', $driverId)
-            ->where('start_at', '<', $end)
-            ->where('end_at', '>', $start)
+            ->where('service_type', 'car')
+            ->where('start_at', '<', $end->copy()->addMinutes($gap))
+            ->where('end_at', '>', $start->copy()->subMinutes($gap))
             ->when($ignoreBookingId, fn (Builder $q) => $q->whereKeyNot($ignoreBookingId))
-            ->first();
+            ->orderBy('start_at')
+            ->get();
+
+        foreach ($others as $other) {
+            foreach (self::driverWindows($other->start_at, $other->end_at, $other->drive_mode) as $b) {
+                foreach ($mine as $a) {
+                    if (self::windowsClash($a, $b, $gap)) {
+                        return $other;
+                    }
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /** [[from, to], …] when the driver is needed. A point (delivery / collection) has from = to. */
+    public static function driverWindows($start, $end, DriveMode|string|null $driveMode): array
+    {
+        $mode = $driveMode instanceof DriveMode ? $driveMode : DriveMode::tryFrom((string) $driveMode);
+
+        return $mode === DriveMode::WithDriver
+            ? [[$start, $end]]
+            : [[$start, $start], [$end, $end]];
+    }
+
+    protected static function windowsClash(array $a, array $b, int $gap): bool
+    {
+        $aIsSpan = $a[0]->ne($a[1]);
+        $bIsSpan = $b[0]->ne($b[1]);
+
+        if ($aIsSpan && $bIsSpan) {
+            return $a[0]->lt($b[1]) && $b[0]->lt($a[1]);
+        }
+
+        // A point is free only when it is at least $gap minutes away from the other window.
+        return $a[0]->copy()->subMinutes($gap)->lt($b[1]) && $b[0]->lt($a[1]->copy()->addMinutes($gap));
     }
 
     public static function holds(?BookingStatus $status): bool

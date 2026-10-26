@@ -3,6 +3,7 @@
 namespace App\Filament\Resources\DriverResource\Pages;
 
 use App\Filament\Resources\DriverResource;
+use App\Filament\Support\AccountActions;
 use Filament\Resources\Pages\EditRecord;
 
 class EditDriver extends EditRecord
@@ -14,5 +15,13 @@ class EditDriver extends EditRecord
         abort_unless(DriverResource::canEdit($this->getRecord()), 403);
 
         parent::save($shouldRedirect, $shouldSendSavedNotification);
+    }
+
+    protected function getHeaderActions(): array
+    {
+        return [
+            AccountActions::sendLink(fn () => $this->getRecord(), 'Send login link', fn (): bool => $this->getRecord()->is_active && $this->getRecord()->login_enabled),
+            AccountActions::toggleLogin(fn () => $this->getRecord()),
+        ];
     }
 }

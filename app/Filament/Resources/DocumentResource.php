@@ -64,7 +64,7 @@ class DocumentResource extends Resource
         if (! static::canViewAny()) {
             return null;
         }
-        $count = CustomerDocument::where('status', DocumentStatus::Received)->count();
+        $count = static::getEloquentQuery()->where('status', DocumentStatus::Received)->count();
 
         return $count ? (string) $count : null;
     }
@@ -110,7 +110,7 @@ class DocumentResource extends Resource
                     ->toggleable(),
                 Tables\Columns\TextColumn::make('uploaded_via')
                     ->label('From')
-                    ->formatStateUsing(fn (string $state): string => $state === 'link' ? 'Customer link' : 'Staff')
+                    ->formatStateUsing(fn (string $state): string => match ($state) { 'link' => 'Customer link', 'account' => 'Customer account', default => 'Staff' })
                     ->toggleable(),
                 Tables\Columns\TextColumn::make('created_at')
                     ->label('Received')
@@ -124,12 +124,17 @@ class DocumentResource extends Resource
                     ->options(fn (): array => \App\Support\Options::documentTypes()),
                 Tables\Filters\SelectFilter::make('uploaded_via')
                     ->label('From')
-                    ->options(['link' => 'Customer link', 'staff' => 'Staff']),
+                    ->options(['link' => 'Customer link', 'account' => 'Customer account', 'staff' => 'Staff']),
             ])
             ->actions(DocumentActions::reviewActions())
             ->emptyStateIcon('heroicon-o-identification')
             ->emptyStateHeading('No documents here')
             ->emptyStateDescription('Documents arrive from customer upload links or are uploaded on the customer page.');
+    }
+
+    public static function getEloquentQuery(): Builder
+    {
+        return \App\Support\Access::scopeOwn(parent::getEloquentQuery(), 'document');
     }
 
     public static function getPages(): array

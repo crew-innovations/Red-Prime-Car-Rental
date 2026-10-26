@@ -27,7 +27,7 @@ class LeadsBySource extends Widget
     {
         $days = array_key_exists($this->filter, self::FILTERS) ? (int) $this->filter : 30;
 
-        $rows = Lead::query()
+        $rows = \App\Support\Access::scopeOwn(\App\Models\Lead::query(), 'lead')
             ->where('leads.created_at', '>=', now()->subDays($days))
             ->join('lead_sources', 'lead_sources.id', '=', 'leads.lead_source_id')
             ->selectRaw('lead_sources.name as source, count(*) as total')

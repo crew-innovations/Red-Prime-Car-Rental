@@ -36,7 +36,7 @@ class TodayOperations extends Widget
             'url' => BookingResource::getUrl('edit', ['record' => $b]),
         ];
 
-        $out = Booking::with(['bookable', 'customer'])
+        $out = \App\Support\Access::scopeOwn(\App\Models\Booking::query(), 'booking')->with(['bookable', 'customer'])
             ->whereIn('status', [BookingStatus::Confirmed, BookingStatus::PendingPayment])
             ->whereDate('start_at', today())
             ->orderBy('start_at')
@@ -44,7 +44,7 @@ class TodayOperations extends Widget
             ->get()
             ->map(fn (Booking $b) => $map($b, true));
 
-        $back = Booking::with(['bookable', 'customer'])
+        $back = \App\Support\Access::scopeOwn(\App\Models\Booking::query(), 'booking')->with(['bookable', 'customer'])
             ->where('status', BookingStatus::InProgress)
             ->where('end_at', '<=', now()->endOfDay())
             ->orderBy('end_at')

@@ -71,7 +71,7 @@ class ScreensAndPermissionsTest extends TestCase
 
     public static function roles(): array
     {
-        return array_map(fn ($r) => [$r], ['Super Admin', 'Admin', 'Manager', 'Sales', 'Operations', 'Finance', 'Staff', 'Driver']);
+        return array_map(fn ($r) => [$r], ['Super Admin', 'Admin', 'Manager', 'Sales', 'Agent', 'Operations', 'Finance', 'Staff']);
     }
 
     #[\PHPUnit\Framework\Attributes\DataProvider('roles')]
@@ -158,16 +158,14 @@ class ScreensAndPermissionsTest extends TestCase
         $this->get('/crm/business-settings')->assertForbidden();
     }
 
-    public function test_driver_sees_only_their_own_bookings(): void
+    public function test_driver_starts_on_my_jobs_and_cannot_open_the_bookings_list(): void
     {
         $driver = User::role('Driver')->first();
-        $mine = Booking::where('driver_id', $driver->id)->first();
-        $this->assertNotNull($mine);
         $this->actingAs($driver);
 
-        Livewire::test(Resources\BookingResource\Pages\ListBookings::class)
-            ->assertCanSeeTableRecords([$mine])
-            ->assertCanNotSeeTableRecords(Booking::where('driver_id', '!=', $driver->id)->orWhereNull('driver_id')->get());
+        $this->get('/crm')->assertRedirect(\App\Filament\Pages\MyJobs::getUrl());
+        $this->get('/crm/my-jobs')->assertOk();
+        $this->get('/crm/bookings')->assertForbidden();
     }
 
     public function test_driver_cannot_open_someone_elses_booking(): void
@@ -175,7 +173,7 @@ class ScreensAndPermissionsTest extends TestCase
         $driver = User::role('Driver')->first();
         $other = Booking::whereNull('driver_id')->first();
         $this->actingAs($driver);
-        $this->get('/crm/bookings/'.$other->id.'/edit')->assertNotFound();
+        $this->assertContains($this->get('/crm/bookings/'.$other->id.'/edit')->status(), [403, 404]);
     }
 
     public function test_drivers_page_creates_a_driver_with_usual_cars(): void
@@ -215,6 +213,12 @@ class ScreensAndPermissionsTest extends TestCase
         $docs = array_values($state['document_types']);
         $docs[] = ['key' => null, 'label' => 'Hotel booking', 'on_link' => true];
         $state['document_types'] = $docs;
+        $state['driver_job_gap_minutes'] = 45;
+        $state['handover_min_photos'] = 3;
+        $state['driver_steps'] = ['acknowledged', 'arrived'];
+        $state['handover_checklist'] = ['Keys handed over', ' Salik tag checked '];
+        $state['driver_required_documents'] = ['passport', 'licence'];
+        $state['agent_own_records_only'] = false;
         $state['perm_manage_quotations'] = ['Admin', 'Manager', 'Sales', 'Finance'];
         $state['perm_manage_team'] = []; // Admin is kept anyway
 
@@ -229,6 +233,12 @@ class ScreensAndPermissionsTest extends TestCase
         $this->assertSame(5.0, \App\Support\Tax::defaultRate());
         $this->assertArrayHasKey('hotel_booking', Options::requestableDocumentTypes());
         $this->assertContains('Admin', \App\Support\Access::rolesFor('manage-team'));
+        $this->assertSame(45, Setting::read('driver_job_gap_minutes'));
+        $this->assertSame(3, Setting::read('handover_min_photos'));
+        $this->assertSame(['acknowledged', 'arrived'], Setting::read('driver_steps'));
+        $this->assertSame(['Keys handed over', 'Salik tag checked'], Setting::read('handover_checklist'));
+        $this->assertSame(['passport', 'licence'], Setting::read('driver_required_documents'));
+        $this->assertFalse(Setting::read('agent_own_records_only'));
 
         $this->actingAs($this->user('Finance'));
         $this->get('/crm/quotations/create')->assertOk();

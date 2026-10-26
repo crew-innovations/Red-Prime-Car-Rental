@@ -139,18 +139,26 @@ class BookingActions
             ->icon('heroicon-o-arrow-uturn-left')
             ->color('primary')
             ->modalHeading(fn (Booking $record): string => ($record->isCar() ? 'Receive back · ' : 'End · ').$record->title())
-            ->modalDescription(fn (Booking $record): string => $record->customer?->name.' · due back '.$record->end_at->format('d M, H:i'))
+            ->modalDescription(fn (Booking $record): string => $record->customer?->name.' · due back '.$record->end_at->format('d M, H:i')
+                .(($job = $record->jobs()->where('type', 'collection')->where('status', 'done')->first()) ? ' · collected by '.($job->doneBy?->name ?? 'the driver').' '.$job->done_at?->format('d M, H:i').': their check is filled in below' : ''))
             ->modalSubmitActionLabel(fn (Booking $record): string => $record->isCar() ? 'Complete return' : 'Complete '.$record->serviceNoun())
             ->modalWidth('4xl')
             ->authorize('operate-fleet')
             ->visible(fn (Booking $record): bool => $record->status === BookingStatus::InProgress && ! $record->trashed())
             ->fillForm(function (Booking $record): array {
+                // The driver already checked the car on collection: start from what they recorded.
+                $check = $record->jobs()->where('type', 'collection')->where('status', 'done')->value('inspection') ?? [];
+                $check = is_array($check) ? $check : (json_decode((string) $check, true) ?: []);
+                $condition = $check['condition'] ?? 'good';
+
                 return [
-                    'returned_at' => now(),
-                    'return_fuel' => $record->delivery_fuel ?? 'full',
-                    'return_condition' => 'good',
-                    'after_return' => 'ready',
-                    'charges' => array_filter(['late' => \App\Support\Rules::lateCharge($record, now())]),
+                    'returned_at' => isset($check['at']) ? \Illuminate\Support\Carbon::parse($check['at']) : now(),
+                    'return_km' => $check['km'] ?? null,
+                    'return_fuel' => $check['fuel'] ?? $record->delivery_fuel ?? 'full',
+                    'return_condition' => $condition,
+                    'return_notes' => isset($check['notes']) ? 'Driver: '.$check['notes'] : null,
+                    'after_return' => match ($condition) { 'damaged' => 'maintenance', 'minor' => 'inspection', default => 'ready' },
+                    'charges' => array_filter(['late' => \App\Support\Rules::lateCharge($record, isset($check['at']) ? \Illuminate\Support\Carbon::parse($check['at']) : now())]),
                     'deduct_from_deposit' => false,
                     'refund_deposit' => false,
                     'payment_method' => PaymentMethod::Card->value,
@@ -447,14 +455,24 @@ class BookingActions
         return $blockers;
     }
 
-    /** Active users with the Driver role. */
-    public static function driverOptions(?int $carId = null): array
+    /** Marker in a driver option label when the driver is busy at that time (option disabled). */
+    public const BUSY = ' · busy on ';
+
+    /** Active drivers; usual drivers of the car first; busy ones marked when the times are known. */
+    public static function driverOptions(?int $carId = null, $start = null, $end = null, $driveMode = null, ?int $ignoreBookingId = null): array
     {
         $usual = $carId ? Car::find($carId)?->drivers()->pluck('users.id')->all() ?? [] : [];
 
         return User::role('Driver')->where('is_active', true)->orderBy('name')->get()
             ->sortBy(fn (User $u) => in_array($u->id, $usual, true) ? 0 : 1, SORT_REGULAR)
-            ->mapWithKeys(fn (User $u) => [$u->id => $u->name.(in_array($u->id, $usual, true) ? ' ★ usual driver' : '').($u->phone ? ' · '.$u->phone : '')])
+            ->mapWithKeys(function (User $u) use ($usual, $start, $end, $driveMode, $ignoreBookingId) {
+                $clash = $start ? Availability::driverConflict($u->id, $start, $end ?: $start, $ignoreBookingId, $driveMode ?: DriveMode::SelfDrive->value) : null;
+
+                return [$u->id => $u->name
+                    .(in_array($u->id, $usual, true) ? ' ★ usual driver' : '')
+                    .($u->phone ? ' · '.$u->phone : '')
+                    .($clash ? self::BUSY.$clash->reference.' '.$clash->start_at->format('d M H:i') : '')];
+            })
             ->all();
     }
 }

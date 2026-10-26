@@ -32,10 +32,11 @@ class UserResource extends Resource
         'Admin' => 'Manages the CRM and team',
         'Manager' => 'Oversees sales and operations',
         'Sales' => 'Leads, customers and quotations',
+        'Agent' => 'Their own enquiries, customers, quotations and bookings',
         'Operations' => 'Fleet, bookings and deliveries',
         'Finance' => 'Payments and reports',
         'Staff' => 'Limited day-to-day access',
-        'Driver' => 'Sees only their own bookings (handover / return)',
+        'Driver' => 'Only their own jobs and profile (add drivers under Operations › Drivers)',
     ];
 
     public static function canViewAny(): bool
@@ -75,7 +76,7 @@ class UserResource extends Resource
                     ->columnSpan(1)
                     ->schema([
                         Forms\Components\CheckboxList::make('roles')
-                            ->relationship('roles', 'name')
+                            ->relationship('roles', 'name', fn ($query) => $query->where('name', '!=', 'Customer'))
                             ->descriptions(self::ROLE_DESCRIPTIONS)
                             ->required(),
                         Forms\Components\Toggle::make('is_active')
@@ -119,6 +120,12 @@ class UserResource extends Resource
             ->actions([
                 Tables\Actions\EditAction::make()->iconButton(),
             ]);
+    }
+
+    /** Customer logins are managed from the customer's page, not here. */
+    public static function getEloquentQuery(): \Illuminate\Database\Eloquent\Builder
+    {
+        return parent::getEloquentQuery()->whereNull('customer_id');
     }
 
     public static function canDelete(Model $record): bool

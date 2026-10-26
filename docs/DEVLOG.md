@@ -1,5 +1,122 @@
 # Development log — RED PRIME RENTALS CRM
 
+## 2026-10-26 · One shared CRM: agents, driver accounts, mobile driver screens, customer accounts
+
+Brief: "Updated requirements: shared system, driver management and mobile dashboard" (26 Oct). Bilal's answers:
+- build drivers **and** customer accounts now
+- one driver per booking does delivery, collection and (with driver) the driving
+- drivers never record money; the office does
+- a new "Agent" role (separate from Sales)
+
+Contract mapping: **change request**. This replaces the earlier "never build customer portal / driver app" rule, because Bilal asked for both inside the same CRM. There is still no separate app.
+
+### One system, role-based views
+- Same Laravel app, `users` table, login and design for everyone:
+  - Staff, agents and drivers use `/crm`.
+  - Customers use `/account` (a second Filament panel in the same app).
+- `User::canAccessPanel()` runs on every request:
+  - Customer-only logins never reach `/crm`.
+  - Drivers are blocked when "Drivers can log in" is off.
+  - "Can log in" (`login_enabled`) switches one person off without deleting anything.
+- New roles: **Agent** and **Customer**. Agents start with lead, booking, quotation, document and payment rights; Admin can change them.
+- "Agents only see their own work" (on by default): leads and customers assigned to them, plus their quotations, bookings, money and documents. This covers the lists, open-by-URL, badges, dashboard widgets and the pipeline.
+- Private files (`/crm/private-file`, `App\Support\PrivateFiles`):
+  - Staff can open everything, as before.
+  - Drivers can open only their own papers and the photos of their own bookings.
+  - Customers can open only their own documents.
+
+### Logins without passwords being typed or sent
+- "Send login link" on driver and customer pages. The link is signed and works once (it is tied to the current password).
+- It expires after "Login links work for" hours (default 72) and can go by WhatsApp or email.
+- The same link also works when someone forgot their password.
+- The driver form no longer has a password field.
+
+### Driver profiles and documents (Operations › Drivers)
+- `driver_profiles` holds the legal name, photo, date of birth, nationality, gender, address, emergency contact, driver ID and joining date.
+- Admin chooses which fields are required.
+- `driver_documents`: passport, Emirates ID, visa, licence (with classes), permit and other.
+  - Each has a number (stored encrypted, lists show the last 4 characters), issuer, dates and a private file.
+  - "Replace" keeps the old copy as history.
+  - Expiry shows as valid, expiring (within X days) or expired.
+- Required documents are configurable. Optionally, drivers with missing or expired required documents cannot be assigned.
+- Daily reminder `crm:driver-document-reminders` at 08:00 goes to the driver and to the people who manage drivers. It needs the Hostinger cron (see below).
+- Profile, document and job changes go to History. Document numbers are never shown there.
+- New abilities: `manage-accounts`, `manage-drivers` and `review-damage`.
+
+### Assignment and jobs
+- Any car booking can have a driver:
+  - with driver: they drive the whole time
+  - self-drive: they deliver at the start and collect at the end
+- "Instructions for the driver" field on the booking.
+- `booking_jobs` (delivery and collection) are kept in step with the booking automatically:
+  - New, changed, moved and cancelled jobs notify the driver (bell, plus email if switched on).
+  - Who assigned a job and when is kept.
+- Clash rules:
+  - With-driver bookings block the whole time.
+  - Self-drive bookings block only the delivery and collection.
+  - Jobs closer than "Minimum time between two jobs" (default 90 min, **to confirm**) clash.
+- The check runs on the form and again on every save. Inactive drivers cannot be given new jobs.
+- The driver picker marks busy drivers and does not let staff choose them.
+
+### Driver screens (phone first, inside /crm)
+- **My jobs:** today, in progress, upcoming and done, as cards (no wide tables). Document expiry warnings appear on top. It refreshes every minute.
+- **Job page:** time, car and plate, address with a maps link, customer with Call and WhatsApp (setting), instructions (setting) and the checklist. Big buttons:
+  - Accepted, On the way and Arrived (which ones are allowed is a setting)
+  - **Hand over** (odometer, fuel, checklist, photos and notes). The booking becomes In progress; no money is recorded.
+  - **Collect** (odometer, fuel, condition, damage, photos and notes). The office then completes the return; the staff Receive form is pre-filled from the driver's check.
+  - **Report damage**
+- Checks are enforced on the server.
+- Nothing is marked done until the server has saved it. If saving fails, the form stays open with what was typed. Tapping outside does not close it.
+- Photos: camera or gallery, several at once, resized on the phone before upload.
+- **My profile:** details and documents (read only), the fields the admin allows them to edit, and a password change.
+- Drivers no longer see the bookings list, so they see no prices or payments.
+
+### Damage reports (Operations › Damage reports)
+- Reported by drivers, with photos. Staff record "no charge" or "charge added on the booking".
+- Charges themselves are still added through the normal return or payment flow.
+
+### Customer account (/account)
+- Invite from the customer page (Account › Invite to customer account).
+- Pages:
+  - Home: next booking, balance due, quotations waiting, documents to fix
+  - Bookings, and the detail of each (price, paid, balance, deposit, document checklist)
+  - Quotations (sent ones only; they open the existing quote page)
+  - Documents (status and upload)
+  - Payments and balance (with the bank details from settings)
+  - Password change
+- Everything is filtered by the customer's own record (`App\Support\CustomerArea`). Another customer's booking returns "not found".
+- Settings control the whole area, quotations, payments and uploads.
+- There is no tax invoice document yet: payments are shown as received money. A formal invoice needs the VAT/TRN decisions.
+
+### Business settings
+- New **Drivers** tab: access, self-service, handover and collection checks (required odometer and fuel, minimum photos, checklists), the clash gap, required fields and documents, expiry warning days and reminders, and email notifications.
+- Roles tab: Agent scoping, customer accounts and login link hours.
+
+### Database (`2026_10_26_000001_add_driver_and_customer_accounts`)
+- Additive and reversible. Rollback and re-run were tested locally.
+- `users` gains `customer_id`, `login_enabled`, `invited_at` and `last_login_at`.
+- New tables: `driver_profiles`, `driver_documents`, `booking_jobs`, `damage_reports` and `notifications`.
+- `bookings` gains `driver_instructions`.
+- Roles Agent and Customer. Agent is also added to saved permissions.
+
+### Deploy notes
+- Run `bash scripts/deploy-hostinger.sh` (migration, new routes and the new panel).
+- For expiry reminders, add a cron job in hPanel: `php artisan schedule:run` every minute, from the app folder.
+- Email for invites and notifications needs the mail settings in `.env`. Until then, use WhatsApp or copy the link.
+
+### Tests
+- New `DriverWorkflowTest` (14 tests) and `AccountsAndAgentsTest` (8).
+- Smoke tests cover the driver and customer screens and the Drivers settings.
+- **Full suite: 124 tests, all passing.**
+- Screens checked at 390 px (light and dark) and 1366 px: no sideways scrolling and no JavaScript errors.
+- **Not tested here:** real phone cameras, slow mobile networks, email delivery and the Hostinger cron. Check these on staging.
+
+### Starting values to confirm (not business policy, all editable)
+- Gap between two jobs of a driver: 90 min.
+- Minimum photos: handover 1, collection 1.
+- Document warning: 30 days.
+- Default checklists.
+
 ## 2026-10-21 · Master prompt: business-model correction, Trips & Packages, website API, redesign
 
 Brief: the master implementation prompt of 21 Oct. Bilal's answers:

@@ -35,12 +35,12 @@ class LeadsTrend extends ChartWidget
         $days = (int) $this->filter;
         $from = today()->subDays($days - 1);
 
-        $received = Lead::where('created_at', '>=', $from)
+        $received = \App\Support\Access::scopeOwn(\App\Models\Lead::query(), 'lead')->where('created_at', '>=', $from)
             ->selectRaw('date(created_at) as day, count(*) as total')
             ->groupBy('day')
             ->pluck('total', 'day');
 
-        $converted = Lead::where('status', LeadStatus::Converted)
+        $converted = \App\Support\Access::scopeOwn(\App\Models\Lead::query(), 'lead')->where('status', LeadStatus::Converted)
             ->where('converted_at', '>=', $from)
             ->selectRaw('date(converted_at) as day, count(*) as total')
             ->groupBy('day')

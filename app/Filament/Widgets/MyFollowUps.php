@@ -27,7 +27,7 @@ class MyFollowUps extends BaseWidget
     {
         return $table
             ->query(
-                Lead::query()
+                \App\Support\Access::scopeOwn(\App\Models\Lead::query(), 'lead')
                     ->open()
                     ->where('assigned_to', auth()->id())
                     ->whereNotNull('next_follow_up_at')

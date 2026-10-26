@@ -21,7 +21,7 @@ class RecentLeads extends Widget
 
     protected function getViewData(): array
     {
-        $leads = Lead::query()
+        $leads = \App\Support\Access::scopeOwn(\App\Models\Lead::query(), 'lead')
             ->with(['leadSource', 'interestedIn'])
             ->latest()
             ->limit(6)

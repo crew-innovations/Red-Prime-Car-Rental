@@ -588,12 +588,12 @@ class QuotationResource extends Resource
 
     public static function getEloquentQuery(): Builder
     {
-        return parent::getEloquentQuery()->withoutGlobalScopes([SoftDeletingScope::class]);
+        return \App\Support\Access::scopeOwn(parent::getEloquentQuery()->withoutGlobalScopes([SoftDeletingScope::class]), 'quotation');
     }
 
     public static function getNavigationBadge(): ?string
     {
-        $count = static::getModel()::where('status', QuotationStatus::Sent)->count();
+        $count = static::getEloquentQuery()->withoutTrashed()->where('status', QuotationStatus::Sent)->count();
 
         return $count ? (string) $count : null;
     }

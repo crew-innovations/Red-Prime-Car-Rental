@@ -311,12 +311,12 @@ class TransactionResource extends Resource
 
     public static function getEloquentQuery(): Builder
     {
-        return parent::getEloquentQuery()->withoutGlobalScopes([SoftDeletingScope::class]);
+        return \App\Support\Access::scopeOwn(parent::getEloquentQuery()->withoutGlobalScopes([SoftDeletingScope::class]), 'transaction');
     }
 
     public static function getNavigationBadge(): ?string
     {
-        $overdue = static::getModel()::where('status', PaymentStatus::Overdue)->count();
+        $overdue = static::getEloquentQuery()->withoutTrashed()->where('status', PaymentStatus::Overdue)->count();
 
         return $overdue ? (string) $overdue : null;
     }

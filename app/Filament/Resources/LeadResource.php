@@ -535,7 +535,7 @@ class LeadResource extends Resource
 
     public static function getEloquentQuery(): Builder
     {
-        return parent::getEloquentQuery()->withoutGlobalScopes([SoftDeletingScope::class]);
+        return \App\Support\Access::scopeOwn(parent::getEloquentQuery()->withoutGlobalScopes([SoftDeletingScope::class]), 'lead');
     }
 
     public static function getGloballySearchableAttributes(): array
@@ -550,7 +550,7 @@ class LeadResource extends Resource
 
     public static function getNavigationBadge(): ?string
     {
-        return (string) (static::getModel()::where('status', LeadStatus::New)->count() ?: '') ?: null;
+        return (string) (static::getEloquentQuery()->withoutTrashed()->where('status', LeadStatus::New)->count() ?: '') ?: null;
     }
 
     public static function getNavigationBadgeColor(): ?string

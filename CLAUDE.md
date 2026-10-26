@@ -20,7 +20,7 @@ The full brief is `docs/MASTER-PROMPT.md`. The current audit and phase plan are 
 6. **Ask Bilal before every `git push`.** Commit locally freely.
 7. **Never type passwords or secrets into any field**, and never repeat secrets that appear in chat.
 8. **"Done" means tested.** Report what was actually run and verified, and say what wasn't.
-9. **Keep it simple for staff.** Use few statuses, show only relevant fields, and add no unrequested modules. Never build: customer portal, driver app, payroll, commissions, general ledger.
+9. **Keep it simple for staff.** Use few statuses, show only relevant fields, and add no unrequested modules. Never build: a separate customer or driver application, payroll, commissions, general ledger. (Since 26 Oct, the driver screens inside `/crm` and the customer account area `/account` are approved; both live in this same app.)
 
 ## Business rules already built (keep unless a change is approved)
 
@@ -31,6 +31,10 @@ The full brief is `docs/MASTER-PROMPT.md`. The current audit and phase plan are 
 - **Bookings** (`App\Models\Booking`):
   - Statuses follow A7.
   - Holding statuses: Pending payment, Confirmed, In progress (pending decision H-6).
+- **Drivers:**
+  - Any car booking can have a driver. `App\Support\Drivers\DriverJobs::sync()` keeps its delivery and collection jobs in step.
+  - Drivers never record money. Handover and collection are in `App\Support\Drivers\DriverWork`.
+- **Accounts:** customers only reach their own records through `App\Support\CustomerArea`. Private files are checked by `App\Support\PrivateFiles`. Login links come from `App\Support\Accounts`; nobody types a password for someone else.
 - **Car and yacht status** is updated from bookings by `refreshBookingStatus()`. Maintenance and Unavailable are never overwritten by it.
 - **Money** (`App\Models\Transaction`):
   - Security deposits are not revenue, and deposit refunds are not costs.
@@ -81,4 +85,5 @@ If Packagist is blocked in the agent environment, install packages from GitHub c
 - Milestone 1 modules are complete: cars, yachts, trips, customers, leads.
 - Also built early, at the client side's request: bookings, handover and return, accounts, pipelines and the dashboard. These are Milestone 2 modules.
 - Audit fixes plus quotations, documents, readiness, drivers and history were built on 2026-10-16. See `docs/DEVLOG.md`, including the live test checklist and the open decisions.
+- 26 Oct: one shared system: Agent and Customer roles, driver profiles and documents, driver jobs with mobile handover and collection, damage reports, and the customer account area (`/account`). See DEVLOG.
 - **Earlier note:** waiting for approval of Phase 1 in `docs/CRM-Audit-and-Plan.md` (security and integrity fixes), and for answers to decisions H-1 to H-12.

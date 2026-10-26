@@ -16,6 +16,23 @@ class EditCustomer extends EditRecord
 
     protected static string $resource = CustomerResource::class;
 
+    /** The customer's login, if any (created on first invite). */
+    protected function customerLogin(bool $create = false): ?\App\Models\User
+    {
+        $existing = \App\Models\User::where('customer_id', $this->getRecord()->getKey())->first();
+        if ($existing || ! $create) {
+            return $existing;
+        }
+
+        try {
+            return \App\Support\Accounts::customerAccount($this->getRecord());
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            \Filament\Notifications\Notification::make()->title('Cannot create the login')->body(collect($e->errors())->flatten()->implode(' '))->danger()->send();
+
+            throw new \Filament\Support\Exceptions\Halt;
+        }
+    }
+
     protected function getHeaderActions(): array
     {
         /** @var Customer $customer */
@@ -39,6 +56,19 @@ class EditCustomer extends EditRecord
                 ->label('New enquiry')
                 ->icon('heroicon-o-plus')
                 ->url(LeadResource::getUrl('create', ['customer' => $customer->getKey()])),
+            Actions\ActionGroup::make([
+                \App\Filament\Support\AccountActions::sendLink(
+                    fn () => $this->customerLogin(create: true),
+                    $this->customerLogin() ? 'Send new login link' : 'Invite to customer account',
+                    fn (): bool => (bool) \App\Models\Setting::read('customer_accounts_enabled', true) && ! $customer->trashed() && ($this->customerLogin()?->login_enabled ?? true),
+                ),
+                \App\Filament\Support\AccountActions::toggleLogin(fn () => $this->customerLogin()),
+            ])
+                ->label('Account')
+                ->icon('heroicon-o-key')
+                ->color('gray')
+                ->button()
+                ->visible(fn (): bool => \App\Support\Access::allows('manage-accounts')),
             Actions\ActionGroup::make([
                 Actions\DeleteAction::make(),
                 Actions\RestoreAction::make(),

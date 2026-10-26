@@ -74,7 +74,7 @@ class DocumentsRelationManager extends RelationManager
                     ->placeholder('-'),
                 Tables\Columns\TextColumn::make('uploaded_via')
                     ->label('From')
-                    ->formatStateUsing(fn (string $state): string => $state === 'link' ? 'Customer link' : 'Staff'),
+                    ->formatStateUsing(fn (string $state): string => match ($state) { 'link' => 'Customer link', 'account' => 'Customer account', default => 'Staff' }),
                 Tables\Columns\TextColumn::make('created_at')
                     ->label('Received')
                     ->since()

@@ -67,8 +67,21 @@
 | Pick or override the driver on a booking | Built | Tested |
 | Car selected → its usual drivers | Built | Listed first with "★ usual driver"; suggested automatically. Tested. |
 | Driver selected → their usual cars | Built | Shown under the driver field. |
-| Driver availability and conflicts | Working | Tested |
-| No pay, payroll or app | Respected | |
+| Driver availability and conflicts | Working | Tested. Since 26 Oct: self-drive blocks only delivery and collection, with a gap setting; also checked on every save. |
+| Full profile and documents with expiry (26 Oct) | Built | Tested: encrypted numbers, replace keeps history, required fields and documents, reminders. |
+| Driver login by link, switch off without deleting (26 Oct) | Built | Tested: single-use, expiring link; per-driver and global switch. |
+| Mobile "My jobs", handover and collection checks, damage reports (26 Oct) | Built | Tested; screenshots at 390 px. Real phones and slow networks still to check on staging. |
+| No money by drivers | Respected | Tested: a handover records no transactions; the office completes returns. |
+| No pay, payroll or separate app | Respected | Driver screens are inside the CRM. |
+
+## 4b. Agents and customer accounts (change request, 26 Oct)
+
+| Item | Status | Evidence / note |
+|---|---|---|
+| Agent role, own records only (setting) | Built | Tested: lists, open-by-URL, badges, widgets. |
+| Customer account (/account): bookings, quotations, documents, payments | Built | Tested: only own records, others return "not found". |
+| Private files limited to their owner | Built | Tested for customer, driver and staff. |
+| Formal tax invoice for customers | Not built | Needs VAT / TRN decisions; payments are shown instead. |
 
 ## 5. Quotations
 

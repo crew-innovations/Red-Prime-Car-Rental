@@ -9,7 +9,7 @@ use Spatie\Permission\PermissionRegistrar;
 class RoleSeeder extends Seeder
 {
     /** Internal user roles from Schedule A14. Permissions are attached in Milestone 2. */
-    public const ROLES = ['Super Admin', 'Admin', 'Manager', 'Sales', 'Operations', 'Finance', 'Staff', 'Driver'];
+    public const ROLES = ['Super Admin', 'Admin', 'Manager', 'Sales', 'Agent', 'Operations', 'Finance', 'Staff', 'Driver', 'Customer'];
 
     public function run(): void
     {
