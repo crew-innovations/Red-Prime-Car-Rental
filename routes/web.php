@@ -6,9 +6,8 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Storage;
 
-Route::get('/', function () {
-    return view('welcome');
-});
+// Landing page of the CRM domain: what this system is, plus Team and Customer login buttons.
+Route::get('/', fn () => view('public.home'))->name('home');
 
 // Private files (customer and driver documents, handover / return photos): a valid
 // signed link AND a logged-in user allowed to see that file (App\Support\PrivateFiles).

@@ -130,6 +130,24 @@ class PagesSmokeTest extends TestCase
         $this->get('/crm/bookings')->assertRedirect();
     }
 
+    public function test_landing_page_shows_the_right_login_buttons(): void
+    {
+        $this->get('/')->assertOk()
+            ->assertSee('Team login')->assertSee(url('/crm/login'), false)
+            ->assertSee('Customer login')->assertSee(url('/account/login'), false)
+            ->assertSee('noindex', false);
+
+        \App\Models\Setting::write(['customer_accounts_enabled' => false]);
+        $this->get('/')->assertOk()->assertSee('Team login')->assertDontSee('Customer login');
+
+        $this->actingAs($this->user('Super Admin'));
+        $this->get('/')->assertOk()->assertSee('Open the CRM')->assertDontSee('Team login');
+
+        $customer = Booking::whereNotNull('customer_id')->first()->customer;
+        $this->actingAs(\App\Support\Accounts::customerAccount($customer, 'landing@example.com'));
+        $this->get('/')->assertOk()->assertSee('Open my account');
+    }
+
     public function test_public_quotation_page_only_after_sending(): void
     {
         $q = Quotation::where('status', QuotationStatus::Draft)->first();
