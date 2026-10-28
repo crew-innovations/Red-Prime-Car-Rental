@@ -29,7 +29,7 @@ use Illuminate\Validation\ValidationException;
  */
 class PriceEstimateController extends Controller
 {
-    public const TYPES = ['car', 'yacht', 'yacht_trip', 'package'];
+    public const TYPES = ['car', 'yacht', 'yacht_trip', 'package', 'transfer'];
 
     public function __invoke(Request $request): JsonResponse
     {
@@ -46,6 +46,10 @@ class PriceEstimateController extends Controller
             'extras' => ['sometimes', 'array', 'max:20'],
             'extras.*' => ['string', 'max:80'],
         ]);
+
+        if ($data['product_type'] === 'transfer') {
+            return response()->json(['data' => TransferQuote::quote($request)]);
+        }
 
         $item = self::product($data['product_type'], $data['product_slug']);
         $service = match (true) {

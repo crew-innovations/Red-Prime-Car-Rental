@@ -48,7 +48,8 @@ class Setting extends Model
         'yacht_full_day_from_hours' => 8,
         // Pricing (28 Oct)
         'hourly_increment_minutes' => 60,     // hourly rates bill in steps of this many minutes
-        'price_max_discount_percent' => null, // empty = no limit (Bilal, 28 Oct: no approval step)
+        'price_max_discount_percent' => null, // empty = no limit (Bilal, 28 Oct)
+        'price_approval_required' => false,   // 28 Oct-2: above the limit, wait for a manager instead of refusing (off)
         // Sales workflow (28 Oct). Off keeps the way staff worked before.
         'booking_requires_accepted_quote' => false,
         'doc_block_confirm' => false,

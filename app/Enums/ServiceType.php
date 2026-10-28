@@ -16,6 +16,8 @@ enum ServiceType: string implements HasLabel, HasColor, HasIcon
     case Yacht = 'yacht';
     case Trip = 'trip';
     case Package = 'package';
+    // Limousine, airport transfers and chauffeur hire (28 Oct-2). The vehicle is a car of the fleet.
+    case Transfer = 'transfer';
     case Other = 'other';
 
     public function getLabel(): string
@@ -25,6 +27,7 @@ enum ServiceType: string implements HasLabel, HasColor, HasIcon
             self::Yacht => 'Yacht Charter',
             self::Trip => 'Yacht Trip',
             self::Package => 'Trip / Package',
+            self::Transfer => 'Limousine & Transfer',
             self::Other => 'Other',
         };
     }
@@ -36,6 +39,7 @@ enum ServiceType: string implements HasLabel, HasColor, HasIcon
             self::Yacht => 'info',
             self::Trip => 'success',
             self::Package => 'warning',
+            self::Transfer => 'danger',
             self::Other => 'gray',
         };
     }
@@ -47,6 +51,7 @@ enum ServiceType: string implements HasLabel, HasColor, HasIcon
             self::Yacht => 'heroicon-m-lifebuoy',
             self::Trip => 'heroicon-m-sun',
             self::Package => 'heroicon-m-map',
+            self::Transfer => 'heroicon-m-map-pin',
             self::Other => 'heroicon-m-question-mark-circle',
         };
     }
@@ -54,7 +59,7 @@ enum ServiceType: string implements HasLabel, HasColor, HasIcon
     /** Services staff can pick for a new lead / quotation / booking. */
     public static function offered(): array
     {
-        return [self::Car, self::Yacht, self::Trip, self::Package];
+        return [self::Car, self::Yacht, self::Trip, self::Package, self::Transfer];
     }
 
     /** Options for a picker: the offered services, plus the record's own (legacy) service. */

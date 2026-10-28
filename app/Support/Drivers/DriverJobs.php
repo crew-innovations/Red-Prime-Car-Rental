@@ -25,6 +25,11 @@ class DriverJobs
 
             return;
         }
+        if ($booking->service_type === \App\Enums\ServiceType::Transfer) {
+            self::syncTransfer($booking);
+
+            return;
+        }
 
         $jobs = $booking->jobs()->where('type', '!=', 'charter')->get()->keyBy('type');
         $live = $booking->isCar() && in_array($booking->status, self::ACTIVE, true) && ! $booking->trashed();
@@ -172,6 +177,51 @@ class DriverJobs
                     'status' => $wasCancelled ? 'assigned' : $job->status, 'status_at' => $wasCancelled ? now() : $job->status_at])->save();
                 Notify::driver($job->driver, ($wasCancelled ? 'Charter back on: ' : 'Charter changed: ').$booking->reference, $job->scheduled_at->format('D d M, H:i').($where ? ' · '.$where : ''), self::url($job), 'warning');
             }
+        }
+    }
+
+    /** Limousine / transfer (28 Oct-2): one job for the chauffeur, from pickup to drop-off. */
+    public static function syncTransfer(Booking $booking): void
+    {
+        $jobs = $booking->jobs()->where('type', 'transfer')->get();
+        $active = in_array($booking->status, self::ACTIVE, true) && ! $booking->trashed() && $booking->driver_id;
+        $where = $booking->pickup_location;
+
+        foreach ($jobs as $job) {
+            if ((! $active || (int) $job->driver_id !== (int) $booking->driver_id) && $job->isOpen()) {
+                $job->update(['status' => 'cancelled', 'status_at' => now()]);
+                Notify::driver($job->driver, 'Transfer cancelled for you: '.$booking->reference, $job->scheduled_at->format('D d M, H:i').' is no longer yours.', null, 'gray');
+            }
+        }
+        if (! $active) {
+            return;
+        }
+
+        /** @var BookingJob|null $job */
+        $job = $jobs->first(fn (BookingJob $j) => (int) $j->driver_id === (int) $booking->driver_id);
+        if (! $job) {
+            $job = $booking->jobs()->create([
+                'type' => 'transfer', 'driver_id' => $booking->driver_id,
+                'scheduled_at' => $booking->start_at, 'ends_at' => $booking->end_at, 'address' => $where,
+                'status' => $booking->returned_at ? 'done' : 'assigned', 'status_at' => now(),
+                'assigned_by' => auth()->id(), 'assigned_at' => now(), 'done_at' => $booking->returned_at,
+            ]);
+            if (! $booking->returned_at) {
+                self::tellNew($job, $booking);
+            }
+
+            return;
+        }
+        if ($job->status === 'done') {
+            return;
+        }
+        $changed = ! $job->scheduled_at->equalTo($booking->start_at) || ! optional($job->ends_at)->equalTo($booking->end_at)
+            || (string) $job->address !== (string) $where || $job->status === 'cancelled';
+        if ($changed) {
+            $wasCancelled = $job->status === 'cancelled';
+            $job->fill(['scheduled_at' => $booking->start_at, 'ends_at' => $booking->end_at, 'address' => $where,
+                'status' => $wasCancelled ? 'assigned' : $job->status, 'status_at' => $wasCancelled ? now() : $job->status_at])->save();
+            Notify::driver($job->driver, ($wasCancelled ? 'Transfer back on: ' : 'Transfer changed: ').$booking->reference, $job->scheduled_at->format('D d M, H:i').($where ? ' · '.$where : ''), self::url($job), 'warning');
         }
     }
 

@@ -74,6 +74,7 @@ class AdminPanelProvider extends PanelProvider
                 NavigationGroup::make('Bookings & drivers'),
                 NavigationGroup::make('Fleet'),
                 NavigationGroup::make('Yachts & trips'),
+                NavigationGroup::make('Limousine'),
                 NavigationGroup::make('Accounts & reports'),
                 NavigationGroup::make('Pricing'),
                 NavigationGroup::make('Settings'),
@@ -87,6 +88,13 @@ class AdminPanelProvider extends PanelProvider
                     ->url(fn (): string => \App\Filament\Resources\CarResource::getUrl('index', ['activeTab' => 'attention']))
                     ->isActiveWhen(fn (): bool => request()->routeIs('filament.admin.resources.cars.index') && request()->query('activeTab') === 'attention')
                     ->visible(fn (): bool => \App\Filament\Resources\CarResource::canViewAny()),
+                NavigationItem::make('Transfer bookings')
+                    ->group('Limousine')
+                    ->sort(1)
+                    ->icon('heroicon-o-map-pin')
+                    ->url(fn (): string => \App\Filament\Resources\BookingResource::getUrl('index', ['activeTab' => 'all', 'tableFilters' => ['service_type' => ['value' => 'transfer']]]))
+                    ->isActiveWhen(fn (): bool => request()->routeIs('filament.admin.resources.bookings.index') && data_get(request()->query('tableFilters'), 'service_type.value') === 'transfer')
+                    ->visible(fn (): bool => \App\Filament\Resources\BookingResource::canViewAny()),
                 NavigationItem::make('To collect')
                     ->group('Accounts & reports')
                     ->sort(3)

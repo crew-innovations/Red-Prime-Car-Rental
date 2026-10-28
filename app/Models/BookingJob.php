@@ -22,6 +22,7 @@ class BookingJob extends Model
         'delivery' => 'Delivery',
         'collection' => 'Collection',
         'charter' => 'Charter',
+        'transfer' => 'Transfer',
     ];
 
     /** Steps a driver can be allowed to set (Business settings › Drivers). */

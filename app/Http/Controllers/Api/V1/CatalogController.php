@@ -168,4 +168,31 @@ class CatalogController extends Controller
 
         return (new FleetResource($yacht))->additional(['detail' => true]);
     }
+
+    /* ---------- Limousine & transfers (28 Oct-2, 4.5) ---------- */
+
+    public function transferServices(): JsonResponse
+    {
+        $services = \App\Models\TransferService::query()->where('is_active', true)->where('is_published', true)->orderBy('sort_order')->orderBy('name')->get()
+            ->map(fn ($s) => [
+                'slug' => $s->slug, 'name' => $s->name, 'description' => $s->description,
+                'pricing' => $s->journey_type === 'hourly' ? 'hourly' : 'route',
+                'needs' => array_values(array_filter(['pickup', $s->needs_destination && $s->journey_type !== 'hourly' ? 'dropoff' : null, $s->journey_type === 'hourly' ? 'end_at' : null, $s->is_airport ? 'flight_number' : null])),
+                'return_journey' => $s->journey_type !== 'hourly',
+            ]);
+
+        return response()->json(['data' => $services]);
+    }
+
+    public function vehicleCategories(): JsonResponse
+    {
+        $categories = \App\Models\VehicleCategory::query()->where('is_active', true)->where('is_published', true)->orderBy('sort_order')->orderBy('name')->get()
+            ->map(fn ($c) => [
+                'slug' => $c->slug, 'name' => $c->name, 'description' => $c->description,
+                'passengers' => $c->passengers, 'luggage' => $c->luggage,
+                'from_price' => ($rate = \App\Models\TransferRate::for($c->id, null)) && $rate->min_fare ? ['amount' => (float) $rate->min_fare, 'currency' => 'AED', 'label' => 'minimum fare'] : null,
+            ]);
+
+        return response()->json(['data' => $categories]);
+    }
 }

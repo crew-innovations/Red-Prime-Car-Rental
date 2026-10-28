@@ -30,7 +30,7 @@ use Illuminate\Validation\ValidationException;
  */
 class BookingRequestController extends Controller
 {
-    public const TYPES = ['yacht_trip', 'package', 'car', 'yacht'];
+    public const TYPES = ['yacht_trip', 'package', 'car', 'yacht', 'transfer'];
 
     public function store(Request $request): JsonResponse
     {
@@ -51,6 +51,15 @@ class BookingRequestController extends Controller
             'start_at' => ['nullable', 'date_format:Y-m-d H:i', 'after_or_equal:today'],
             'end_at' => ['nullable', 'date_format:Y-m-d H:i', 'after:start_at'],
             'drive_mode' => ['nullable', Rule::in(['self_drive', 'with_driver'])],
+            // Limousine & transfers (28 Oct-2): product_slug = vehicle category, service = transfer service.
+            'service' => ['required_if:product_type,transfer', 'nullable', 'string', 'max:255'],
+            'pickup' => ['required_if:product_type,transfer', 'nullable', 'string', 'min:3', 'max:255'],
+            'dropoff' => ['nullable', 'string', 'min:3', 'max:255'],
+            'stops' => ['sometimes', 'array', 'max:5'],
+            'stops.*' => ['string', 'min:3', 'max:255'],
+            'return_at' => ['nullable', 'date_format:Y-m-d H:i', 'after:start_at'],
+            'flight_number' => ['nullable', 'string', 'max:20', 'regex:/^[A-Za-z0-9 \-]{2,20}$/'],
+            'luggage' => ['nullable', 'integer', 'min:0', 'max:60'],
             'name' => ['required', 'string', 'max:120'],
             'phone' => ['required', 'string', 'max:30', 'regex:/^[0-9+()\-\s]{6,30}$/'],
             'email' => ['nullable', 'email:rfc', 'max:255'],
@@ -67,6 +76,12 @@ class BookingRequestController extends Controller
 
         return DB::transaction(function () use ($data, $externalId, $type) {
             [$service, $item] = $this->product($data['product_type'], $data['product_slug']);
+            if ($item instanceof \App\Models\VehicleCategory) {
+                $transferService = TransferQuote::resolve((string) $data['service'], $item->slug)[0];
+                if (empty($data['start_at'])) {
+                    throw ValidationException::withMessages(['start_at' => 'Choose the pickup date and time.']);
+                }
+            }
             $guests = (int) ($data['guests'] ?? 0) ?: null;
             [$departure, $tripDate, $start, $end] = $this->dates($item, $data, $guests);
 
@@ -121,13 +136,14 @@ class BookingRequestController extends Controller
             'package' => Package::query()->publiclyVisible()->active()->where('slug', $slug)->first(),
             'car' => Car::query()->publiclyVisible()->where('slug', $slug)->first(),
             'yacht' => \App\Models\Yacht::query()->publiclyVisible()->where('slug', $slug)->first(),
+            'transfer' => \App\Models\VehicleCategory::query()->where('is_active', true)->where('is_published', true)->where('slug', $slug)->first(),
         };
 
         if (! $item) {
             throw ValidationException::withMessages(['product_slug' => 'This product is not available.']);
         }
 
-        return [match ($type) { 'yacht_trip' => ServiceType::Trip, 'package' => ServiceType::Package, 'yacht' => ServiceType::Yacht, default => ServiceType::Car }, $item];
+        return [match ($type) { 'yacht_trip' => ServiceType::Trip, 'package' => ServiceType::Package, 'yacht' => ServiceType::Yacht, 'transfer' => ServiceType::Transfer, default => ServiceType::Car }, $item];
     }
 
     /** Departure / date checks, done with the latest data (and rows locked) on the server. */
@@ -195,6 +211,13 @@ class BookingRequestController extends Controller
     /** Server-side price estimate (never confirmed here). */
     protected function estimate($item, ?int $guests, ?PackageDeparture $departure, array $data = []): array
     {
+        // Limousine / transfer: the same quote as POST /price-estimate (route from the CRM, never the browser).
+        if ($item instanceof \App\Models\VehicleCategory) {
+            $q = rescue(fn () => TransferQuote::quote(request()), null, false);
+            $total = $q['price']['total'] ?? null;
+
+            return $total ? ['amount' => (float) $total, 'currency' => 'AED', 'unit_amount' => (float) $total, 'unit' => 'per_transfer'] : [];
+        }
         // Car or charter with exact times: the CRM's own price engine.
         if (($item instanceof Car || $item instanceof \App\Models\Yacht) && ! empty($data['start_at']) && ! empty($data['end_at'])) {
             $q = \App\Support\Pricing\PriceEngine::calculate([
@@ -229,6 +252,13 @@ class BookingRequestController extends Controller
             $type === 'booking_request' ? '[Website booking request]' : '[Website enquiry]',
             $item->name.($date instanceof PackageDeparture ? ' · departure '.$date->start_date->format('d M Y') : '').($date instanceof TripDate ? ' · '.$date->date->format('d M Y') : ''),
             ! empty($data['start_at']) ? 'From '.$data['start_at'].(! empty($data['end_at']) ? ' to '.$data['end_at'] : '').(! empty($data['drive_mode']) ? ' · '.str_replace('_', '-', $data['drive_mode']) : '') : null,
+            ! empty($data['service']) ? 'Service: '.$data['service'] : null,
+            ! empty($data['pickup']) ? 'Pickup: '.$data['pickup'] : null,
+            ! empty($data['stops']) ? 'Stops: '.implode(' · ', (array) $data['stops']) : null,
+            ! empty($data['dropoff']) ? 'Drop-off: '.$data['dropoff'] : null,
+            ! empty($data['return_at']) ? 'Return pickup: '.$data['return_at'] : null,
+            ! empty($data['flight_number']) ? 'Flight: '.$data['flight_number'] : null,
+            ! empty($data['luggage']) ? $data['luggage'].' bag(s)' : null,
             $guests ? $guests.' guest(s)' : null,
             ! empty($estimate['amount']) ? 'Website price estimate: '.$estimate['currency'].' '.number_format($estimate['amount'], 2).' (to be confirmed)' : null,
             filled($text) ? "\n".trim($text) : null,

@@ -43,6 +43,11 @@ class AppServiceProvider extends ServiceProvider
             'price_rule' => \App\Models\PriceRule::class,
             'price_extra' => \App\Models\PriceExtra::class,
             'invoice' => \App\Models\Invoice::class,
+            'transfer_service' => \App\Models\TransferService::class,
+            'vehicle_category' => \App\Models\VehicleCategory::class,
+            'transfer_rate' => \App\Models\TransferRate::class,
+            'transfer_fixed_route' => \App\Models\TransferFixedRoute::class,
+            'integration' => \App\Models\Integration::class,
         ]);
 
         // Last login time on the driver / customer / team lists (a quiet save, not in the history),

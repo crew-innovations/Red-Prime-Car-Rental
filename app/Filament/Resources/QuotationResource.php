@@ -120,9 +120,10 @@ class QuotationResource extends Resource
                                 ->columnSpanFull(),
                             Forms\Components\Select::make('bookable_id')
                                 ->label(fn (Get $get): string => BookingResource::itemLabel($get('service_type')))
-                                ->options(fn (Get $get): array => BookingResource::itemOptions($get('service_type')))
+                                ->options(fn (Get $get): array => BookingResource::itemOptions($get('service_type'), $get('vehicle_category_id')))
                                 ->searchable()
-                                ->required()
+                                ->required(fn (Get $get): bool => $get('service_type') !== ServiceType::Transfer->value)
+                                ->placeholder(fn (Get $get): string => $get('service_type') === ServiceType::Transfer->value ? 'Any car of the category' : 'Select an option')
                                 ->live()
                                 ->afterStateUpdated(function (Get $get, Set $set) {
                                     $item = BookingResource::findItem($get('service_type'), $get('bookable_id'));
@@ -171,6 +172,8 @@ class QuotationResource extends Resource
                             BookingResource::packageDepartureField(),
                         ]),
 
+                    \App\Filament\Concerns\TransferFields::section(),
+
                     Forms\Components\Section::make('Dates')
                         ->icon('heroicon-o-calendar')
                         ->columns(2)
@@ -187,9 +190,10 @@ class QuotationResource extends Resource
                                     self::recalculate($get, $set);
                                 }),
                             Forms\Components\DateTimePicker::make('end_at')
-                                ->label(fn (Get $get): string => $isCar($get) ? 'Return' : 'End')
+                                ->label(fn (Get $get): string => $isCar($get) ? 'Return' : ($get('service_type') === ServiceType::Transfer->value ? 'Hire ends' : 'End'))
                                 ->native(false)->seconds(false)->minutesStep(15)->displayFormat('D, d M Y · H:i')
-                                ->required()
+                                ->required(fn (Get $get): bool => $get('service_type') !== ServiceType::Transfer->value || \App\Models\TransferService::find($get('transfer_service_id'))?->isHourly())
+                                ->visible(fn (Get $get): bool => $get('service_type') !== ServiceType::Transfer->value || (bool) \App\Models\TransferService::find($get('transfer_service_id'))?->isHourly())
                                 ->after('start_at')
                                 ->live(onBlur: true)
                                 ->afterStateUpdated(fn (Get $get, Set $set) => self::recalculate($get, $set))
@@ -204,6 +208,7 @@ class QuotationResource extends Resource
                                     return $text ? new HtmlString($text) : null;
                                 }),
                             Forms\Components\TextInput::make('guests')
+                                ->label(fn (Get $get): string => $get('service_type') === ServiceType::Transfer->value ? 'Passengers' : 'Guests')
                                 ->numeric()->minValue(1)
                                 ->required(fn (Get $get): bool => $get('service_type') === ServiceType::Package->value)
                                 ->rules([fn (Get $get): \Closure => function (string $attribute, $value, \Closure $fail) use ($get) {
@@ -216,7 +221,10 @@ class QuotationResource extends Resource
                                 ->afterStateUpdated(fn (Get $get, Set $set) => self::recalculate($get, $set))
                                 ->visible(fn (Get $get): bool => ! $isCar($get)),
                             Forms\Components\TextInput::make('pickup_location')
-                                ->label(fn (Get $get): string => $isCar($get) ? 'Delivery / pick-up address' : 'Meeting point')
+                                ->label(fn (Get $get): string => $get('service_type') === ServiceType::Transfer->value ? 'Pickup address' : ($isCar($get) ? 'Delivery / pick-up address' : 'Meeting point'))
+                                ->required(fn (Get $get): bool => $get('service_type') === ServiceType::Transfer->value)
+                                ->live(onBlur: true)
+                                ->afterStateUpdated(fn (Get $get, Set $set) => $get('service_type') === ServiceType::Transfer->value ? self::recalculate($get, $set) : null)
                                 ->maxLength(255),
                             ...\App\Filament\Concerns\PriceFields::handoverChoice(),
                         ]),
@@ -372,6 +380,7 @@ class QuotationResource extends Resource
     public static function workflowActions(string $class): array
     {
         return [
+            self::approvePriceAction($class),
             self::sendAction($class),
             $class::make('revise')
                 ->label('Revise (negotiation)')
@@ -440,6 +449,20 @@ class QuotationResource extends Resource
         ];
     }
 
+    /** Optional price approval (28 Oct-2): shown only while a price waits. */
+    public static function approvePriceAction(string $class)
+    {
+        return $class::make('approvePrice')
+            ->label('Approve price')
+            ->icon('heroicon-o-check-badge')
+            ->color('warning')
+            ->authorize('approve-prices')
+            ->visible(fn (Model $record): bool => $record->priceWaiting())
+            ->requiresConfirmation()
+            ->modalDescription(fn (Model $record): string => 'Agreed AED '.number_format((float) $record->total, 2).' against AED '.number_format((float) $record->standard_amount, 2).' on the price list. Reason: '.($record->adjustment_reason ?: '-'))
+            ->action(fn (Model $record) => $record->approvePrice());
+    }
+
     public static function sendAction(string $class)
     {
         return $class::make('send')
@@ -458,6 +481,11 @@ class QuotationResource extends Resource
                     ->disabled(! $record->customerEmail()),
             ])
             ->action(function (Quotation $record, array $data) {
+                if ($record->priceWaiting()) {
+                    Notification::make()->title('This price waits for a manager\'s OK before it can be sent.')->warning()->send();
+
+                    return;
+                }
                 if ($record->valid_until && $record->valid_until->isPast() && ! $record->valid_until->isToday()) {
                     Notification::make()->title('This quotation has expired. Change "Valid until" first.')->danger()->send();
 
@@ -567,6 +595,7 @@ class QuotationResource extends Resource
                             'tax_rate' => $record->tax_rate,
                             'tax_inclusive' => $record->tax_inclusive,
                             'security_deposit' => $record->security_deposit,
+                            ...collect(\App\Support\Transfers\TransferJourney::FIELDS)->mapWithKeys(fn ($f) => [$f => $record->getAttribute($f)])->all(),
                             'notes' => trim('From quotation '.$record->number."\n".($record->internal_notes ?? '')),
                         ]);
 

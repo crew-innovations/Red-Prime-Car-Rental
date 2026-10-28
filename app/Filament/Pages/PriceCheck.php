@@ -69,7 +69,7 @@ class PriceCheck extends Page implements HasForms
             ->schema([
                 Forms\Components\ToggleButtons::make('service_type')
                     ->label('Service')
-                    ->options(ServiceType::pickerOptions(ServiceType::Yacht))
+                    ->options(collect(ServiceType::pickerOptions(ServiceType::Yacht))->except(ServiceType::Transfer->value)->all()) // transfers: priced on the quotation (route needed)
                     ->icons(ServiceType::pickerIcons())
                     ->inline()->live()
                     ->afterStateUpdated(fn (Set $set) => $set('bookable_id', null))

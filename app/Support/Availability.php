@@ -245,7 +245,7 @@ class Availability
 
         $others = self::latest(Booking::query())->blocking()
             ->where(fn (Builder $q) => $q->where('driver_id', $driverId)->orWhere('return_driver_id', $driverId))
-            ->where('service_type', 'car')
+            ->whereIn('service_type', ['car', 'transfer'])
             ->where('start_at', '<', $end->copy()->addMinutes($gap))
             ->where('end_at', '>', $start->copy()->subMinutes($gap))
             ->when($ignoreBookingId, fn (Builder $q) => $q->whereKeyNot($ignoreBookingId))
@@ -304,7 +304,7 @@ class Availability
     /** When this person works on that booking: the whole span with driver, else delivery and / or collection. */
     protected static function windowsFor(Booking $b, int $personId): array
     {
-        if ($b->drive_mode === DriveMode::WithDriver) {
+        if ($b->drive_mode === DriveMode::WithDriver || $b->service_type?->value === 'transfer') {
             return (int) $b->driver_id === $personId ? [[$b->start_at, $b->end_at]] : [];
         }
         $windows = [];

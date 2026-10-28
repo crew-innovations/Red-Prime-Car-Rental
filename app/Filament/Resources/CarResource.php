@@ -119,6 +119,12 @@ class CarResource extends Resource
                         Forms\Components\Select::make('type')
                             ->options(fn (?Model $record): array => \App\Support\Options::choices('car_types', $record?->type))
                             ->native(false),
+                        Forms\Components\Select::make('vehicle_category_id')
+                            ->label('Limousine category')
+                            ->relationship('vehicleCategory', 'name')
+                            ->placeholder('Not used for transfers')
+                            ->helperText('Cars with a category can be given limousine / transfer jobs.')
+                            ->native(false),
                         Forms\Components\TextInput::make('colour')
                             ->label('Exterior colour')
                             ->maxLength(50),

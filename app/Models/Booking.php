@@ -72,6 +72,16 @@ class Booking extends Model implements HasMedia
             'discount' => 'decimal:2',
             'standard_amount' => 'decimal:2',
             'price_breakdown' => 'array',
+            // Limousine & transfers (28 Oct-2)
+            'stops' => 'array',
+            'route' => 'array',
+            'return_at' => 'datetime',
+            'route_km' => 'decimal:2',
+            'return_route_km' => 'decimal:2',
+            'route_minutes' => 'integer',
+            'waiting_minutes' => 'integer',
+            'luggage' => 'integer',
+            'child_seats' => 'integer',
             'tax_rate' => 'decimal:2',
             'tax_inclusive' => 'boolean',
             'tax_amount' => 'decimal:2',
@@ -92,18 +102,24 @@ class Booking extends Model implements HasMedia
                 'package' => ServiceType::Package,
                 default => ServiceType::Car,
             };
+            $isTransfer = $booking->service_type === ServiceType::Transfer;
             if ($booking->bookable_id) {
-                $booking->bookable_type = $booking->service_type->value; // morph aliases match: car / yacht / trip
+                // Morph aliases match the service (car / yacht / trip); a transfer's vehicle is a car of the fleet.
+                $booking->bookable_type = $isTransfer ? 'car' : $booking->service_type->value;
             }
             if ($booking->service_type !== ServiceType::Car) {
                 $booking->drive_mode = null;
             }
             // Any car booking can have a driver: with driver he drives, self-drive he delivers and collects.
-            if ($booking->service_type !== ServiceType::Car) {
+            // A transfer's driver (chauffeur) drives it from pickup to drop-off.
+            if (! in_array($booking->service_type, [ServiceType::Car, ServiceType::Transfer], true)) {
                 $booking->driver_id = null;
+            }
+            if ($booking->service_type !== ServiceType::Car) {
                 $booking->delivery_method = null;
                 $booking->return_method = null;
             }
+            \App\Support\Transfers\TransferJourney::prepare($booking);
             // With driver: the same person drives from start to end. Collected by the customer: no collection driver.
             if ($booking->service_type !== ServiceType::Car || $booking->drive_mode === DriveMode::WithDriver || $booking->return_method === 'office'
                 || (int) $booking->return_driver_id === (int) $booking->driver_id) {
@@ -130,6 +146,9 @@ class Booking extends Model implements HasMedia
             // as they are; any other new booking or price change is worked out again.
             if (! ($booking->quotation_id && ! $booking->exists && $booking->price_breakdown)) {
                 $booking->applyPricing();
+            }
+            if ($booking->priceWaiting() && in_array($booking->status, BookingStatus::billable(), true)) {
+                throw ValidationException::withMessages(['data.status' => 'This price is below the discount limit and waits for a manager\'s OK. Save it as an Inquiry until then.']);
             }
             [$booking->tax_amount, $booking->total] = Tax::apply(
                 (float) $booking->base_amount + (float) $booking->extras_amount - (float) $booking->discount,
@@ -198,9 +217,10 @@ class Booking extends Model implements HasMedia
         }
 
         $type = $this->service_type?->value;
+        $assetType = $type === 'transfer' ? 'car' : $type; // a transfer holds its car like a rental does
 
-        if (Availability::holds($this->status) && in_array($type, ['car', 'yacht'], true) && $this->bookable_id) {
-            if ($message = Availability::assetConflict($type, (int) $this->bookable_id, $this->start_at, $this->end_at, $this->getKey())) {
+        if (Availability::holds($this->status) && in_array($assetType, ['car', 'yacht'], true) && $this->bookable_id) {
+            if ($message = Availability::assetConflict($assetType, (int) $this->bookable_id, $this->start_at, $this->end_at, $this->getKey())) {
                 throw ValidationException::withMessages(['data.end_at' => $message]);
             }
         }
@@ -235,7 +255,7 @@ class Booking extends Model implements HasMedia
      */
     public function guardDriver(): void
     {
-        if (! $this->driver_id || $this->service_type !== ServiceType::Car) {
+        if (! $this->driver_id || ! in_array($this->service_type, [ServiceType::Car, ServiceType::Transfer], true)) {
             return;
         }
         if ($this->exists && ! $this->isDirty(['driver_id', 'start_at', 'end_at', 'status', 'drive_mode'])) {
@@ -267,9 +287,10 @@ class Booking extends Model implements HasMedia
         if ($driver && $newlyHolding && Availability::holds($this->status)) {
             // With a separate collection driver this driver only does the delivery.
             $until = $this->return_driver_id && $this->drive_mode !== DriveMode::WithDriver ? $this->start_at : $this->end_at;
-            if ($clash = Availability::personConflict($driver->id, $this->start_at, $until, $this->getKey(), $this->drive_mode)) {
+            $mode = $this->service_type === ServiceType::Transfer ? DriveMode::WithDriver : $this->drive_mode; // a chauffeur works the whole transfer
+            if ($clash = Availability::personConflict($driver->id, $this->start_at, $until, $this->getKey(), $mode)) {
                 throw ValidationException::withMessages(['data.driver_id' => $driver->name.' is already busy on '.$clash->reference.' ('.$clash->start_at->format('d M H:i').' – '.$clash->end_at->format('d M H:i').').'
-                    .Availability::freeText('driver', $this->start_at, $until, $this->getKey(), $this->drive_mode, $driver->id)]);
+                    .Availability::freeText('driver', $this->start_at, $until, $this->getKey(), $mode, $driver->id)]);
             }
         }
     }
@@ -433,6 +454,7 @@ class Booking extends Model implements HasMedia
             ServiceType::Yacht => 'yacht',
             ServiceType::Trip => 'trip',
             ServiceType::Package => 'package',
+            ServiceType::Transfer => 'transfer',
             default => $mode === DriveMode::WithDriver ? 'with_driver' : 'self_drive',
         }];
         if ($service === ServiceType::Yacht && $crewMode === 'bareboat') {
@@ -545,6 +567,7 @@ class Booking extends Model implements HasMedia
             ServiceType::Yacht => 'yacht_charter',
             ServiceType::Trip => 'yacht_trip',
             ServiceType::Package => 'travel_package',
+            ServiceType::Transfer => 'transfer',
             default => $this->drive_mode === DriveMode::WithDriver ? 'chauffeur' : 'car_rental',
         };
     }
@@ -713,5 +736,15 @@ class Booking extends Model implements HasMedia
         }
 
         return null;
+    }
+
+    public function transferService(): \Illuminate\Database\Eloquent\Relations\BelongsTo
+    {
+        return $this->belongsTo(\App\Models\TransferService::class)->withTrashed();
+    }
+
+    public function vehicleCategory(): \Illuminate\Database\Eloquent\Relations\BelongsTo
+    {
+        return $this->belongsTo(\App\Models\VehicleCategory::class)->withTrashed();
     }
 }

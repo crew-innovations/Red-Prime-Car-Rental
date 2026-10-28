@@ -90,15 +90,21 @@ class DriverWork
     /** Captain starts the charter (guests on board): the booking becomes In progress. */
     public static function canStartCharter(BookingJob $job): bool
     {
-        return $job->type === 'charter' && $job->role === 'captain' && $job->isOpen()
+        return self::leads($job) && $job->isOpen()
             && in_array($job->booking?->status, [BookingStatus::Confirmed, BookingStatus::PendingPayment], true);
     }
 
     /** Captain ends the charter; the office then closes it (extra charges, payment, deposit). */
     public static function canFinishCharter(BookingJob $job): bool
     {
-        return $job->type === 'charter' && $job->role === 'captain' && $job->isOpen()
+        return self::leads($job) && $job->isOpen()
             && $job->booking?->status === BookingStatus::InProgress;
+    }
+
+    /** The captain of a charter, or the chauffeur of a transfer (28 Oct-2), starts and ends the job. */
+    protected static function leads(BookingJob $job): bool
+    {
+        return ($job->type === 'charter' && $job->role === 'captain') || $job->type === 'transfer';
     }
 
     public static function startCharter(BookingJob $job, User $captain, array $data): void
@@ -124,7 +130,7 @@ class DriverWork
             // No money here: payments, deposits and charges stay with the office.
             BookingFlow::deliver($fresh, [
                 'delivered_at' => now(),
-                'delivery_notes' => trim('Charter started by '.$captain->name.($guests !== null ? ' · '.$guests.' guests on board' : '').(filled($data['notes'] ?? null) ? "\n".$data['notes'] : '')),
+                'delivery_notes' => trim(($job->type === 'transfer' ? 'Customer picked up by ' : 'Charter started by ').$captain->name.($guests !== null ? ' · '.$guests.' guests on board' : '').(filled($data['notes'] ?? null) ? "\n".$data['notes'] : '')),
             ]);
             $job->refresh()->update([
                 'status' => 'arrived',
@@ -134,7 +140,7 @@ class DriverWork
             ]);
         });
 
-        Notify::staff('operate-fleet', 'Charter started: '.$booking->reference, ($booking->bookable?->name ?? 'Yacht').' · captain '.$captain->name,
+        Notify::staff('operate-fleet', ($job->type === 'transfer' ? 'Transfer started: ' : 'Charter started: ').$booking->reference, ($booking->bookable?->name ?? ($job->type === 'transfer' ? 'Transfer' : 'Yacht')).' · '.($job->type === 'transfer' ? 'driver ' : 'captain ').$captain->name,
             BookingResource::getUrl('edit', ['record' => $booking]), $booking->assignee, 'success');
     }
 
@@ -164,7 +170,7 @@ class DriverWork
             $booking->jobs()->where('type', 'charter')->whereKeyNot($job->id)->open()->update(['status' => 'done', 'status_at' => now(), 'done_at' => now(), 'done_by' => $captain->id]);
         });
 
-        Notify::staff('operate-fleet', 'Charter finished: '.$booking->reference, 'Captain '.$captain->name.'. Please close it (extra charges, payment, deposit).'.($report ? ' Damage was reported.' : ''),
+        Notify::staff('operate-fleet', ($job->type === 'transfer' ? 'Transfer finished: ' : 'Charter finished: ').$booking->reference, ($job->type === 'transfer' ? 'Driver ' : 'Captain ').$captain->name.'. Please close it (extra charges, payment, deposit).'.($report ? ' Damage was reported.' : ''),
             BookingResource::getUrl('edit', ['record' => $booking]), $booking->assignee, $report ? 'danger' : 'warning');
         if ($report) {
             self::tellDamage($report);

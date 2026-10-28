@@ -37,6 +37,8 @@ class Access
         'manage-pricing' => ['Admin', 'Manager'],
         // Change a quoted / booked price, give a discount, waive a fee (always with a reason)
         'adjust-prices' => ['Admin', 'Manager', 'Sales', 'Agent'],
+        // OK a price below the discount limit (only used when price approval is switched on)
+        'approve-prices' => ['Admin', 'Manager'],
         // Delete leads, customers, bookings
         'delete-records' => ['Admin', 'Manager'],
         // Book or hand over a car / yacht that is in maintenance, unavailable or not ready
@@ -51,6 +53,8 @@ class Access
         'review-damage' => ['Admin', 'Manager', 'Operations'],
         // Download lists as Excel / CSV (28 Oct, brief 2). Each export is logged.
         'export-data' => ['Admin', 'Manager', 'Finance'],
+        // Outside services: Google Maps, payment gateways, social platforms (keys, tests)
+        'manage-integrations' => ['Admin'],
         // Team, roles, business settings
         'manage-team' => ['Admin'],
     ];
@@ -69,6 +73,7 @@ class Access
         'manage-fleet' => 'Cars, yachts, trips, rates, website publishing',
         'manage-pricing' => 'Pricing: special rates, extras and fees, the rate card',
         'adjust-prices' => 'Change a quoted or booked price, give a discount, waive a fee (a reason is always asked)',
+        'approve-prices' => 'Approve prices below the discount limit (when approval is on)',
         'delete-records' => 'Delete leads, customers, bookings, quotations',
         'override-availability' => 'Book / hand over a car that is in maintenance, not ready or missing documents',
         'view-history' => 'See the change history of records',
@@ -76,6 +81,7 @@ class Access
         'manage-drivers' => 'Driver profiles and their documents (passport, ID, licence)',
         'review-damage' => 'Review damage reported by drivers',
         'export-data' => 'Export lists to Excel / CSV (logged)',
+        'manage-integrations' => 'Integrations: Google Maps, payment gateways, social platforms (keys)',
         'manage-team' => 'Team, roles and business settings',
     ];
 

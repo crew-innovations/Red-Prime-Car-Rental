@@ -33,6 +33,7 @@ class Transaction extends Model implements HasMedia
         'yacht_trip' => 'Yacht trip tickets',
         'travel_package' => 'Trips & packages',
         'chauffeur' => 'Chauffeur service',
+        'transfer' => 'Limousine & transfers',
         'delivery' => 'Delivery & pick-up',
         'extras' => 'Add-ons & extras',
         'deposit' => 'Security deposit held',

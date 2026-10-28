@@ -77,7 +77,7 @@ class PriceExtraResource extends Resource
             Forms\Components\CheckboxList::make('service_types')
                 ->label('For')
                 ->helperText('Leave empty for every service.')
-                ->options(PriceRuleResource::serviceOptions())
+                ->options(PriceRuleResource::serviceOptions() + ['transfer' => 'Limousine & transfers'])
                 ->columns(4)
                 ->columnSpanFull(),
             Forms\Components\Textarea::make('description')->rows(2)->columnSpanFull(),

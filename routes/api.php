@@ -22,6 +22,8 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
         Route::get('yachts', [CatalogController::class, 'yachts'])->name('yachts.index');
         Route::get('yachts/{slug}', [CatalogController::class, 'yacht'])->name('yachts.show')->where('slug', '[A-Za-z0-9\-]+');
         Route::post('price-estimate', PriceEstimateController::class)->name('price-estimate');
+        Route::get('transfer-services', [CatalogController::class, 'transferServices'])->name('transfer-services');
+        Route::get('vehicle-categories', [CatalogController::class, 'vehicleCategories'])->name('vehicle-categories');
     });
 
     Route::post('booking-requests', [BookingRequestController::class, 'store'])

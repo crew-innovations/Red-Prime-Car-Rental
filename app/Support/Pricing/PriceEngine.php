@@ -53,6 +53,10 @@ class PriceEngine
         $end = filled($in['end_at'] ?? null) ? Carbon::parse($in['end_at']) : null;
         $departure = $in['departure'] ?? null;
 
+        // Limousine & transfers are priced by vehicle category and route (28 Oct-2).
+        if ($service === 'transfer') {
+            return TransferPricing::calculate($in);
+        }
         if (! $item || ! $service) {
             return null;
         }

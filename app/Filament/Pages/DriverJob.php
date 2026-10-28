@@ -90,6 +90,11 @@ class DriverJob extends Page
 
     public function mapUrl(): ?string
     {
+        $b = $this->booking();
+        if ($this->record->type === 'transfer' && $b) {
+            return \App\Support\Maps\GoogleMaps::directionsLink($b->pickup_location, $b->dropoff_location, collect((array) $b->stops)->pluck('address')->filter()->all());
+        }
+
         return $this->record->address ? 'https://www.google.com/maps/search/?api=1&query='.rawurlencode($this->record->address) : null;
     }
 
@@ -212,22 +217,22 @@ class DriverJob extends Page
     public function startCharterAction(): Action
     {
         return Action::make('startCharter')
-            ->label('Start the charter')
+            ->label(fn (): string => $this->record->type === 'transfer' ? 'Customer picked up' : 'Start the charter')
             ->icon('heroicon-o-play')
             ->size(ActionSize::ExtraLarge)
             ->extraAttributes(['class' => 'rp-dv-bigbtn'])
             ->visible(fn (): bool => DriverWork::canStartCharter($this->record))
-            ->modalHeading('Start · '.($this->booking()?->bookable?->name ?? 'yacht'))
-            ->modalDescription('Guests are on board and you are leaving. The office records any payment.')
+            ->modalHeading(fn (): string => 'Start · '.($this->booking()?->bookable?->name ?? ($this->record->type === 'transfer' ? 'transfer' : 'yacht')))
+            ->modalDescription(fn (): string => $this->record->type === 'transfer' ? 'The customer is in the car and you are leaving. The office records any payment.' : 'Guests are on board and you are leaving. The office records any payment.')
             ->modalSubmitActionLabel('Start now')
             ->form([
-                Forms\Components\TextInput::make('guests')->label('Guests on board')->numeric()->minValue(1)
+                Forms\Components\TextInput::make('guests')->label(fn (): string => $this->record->type === 'transfer' ? 'Passengers' : 'Guests on board')->numeric()->minValue(1)
                     ->default(fn () => $this->booking()?->guests),
                 Forms\Components\Textarea::make('notes')->label('Notes')->rows(2),
             ])
             ->action(function (array $data, Action $action): void {
                 $this->runSafely($action, fn () => DriverWork::startCharter($this->record->refresh(), auth()->user(), $data));
-                Notification::make()->title('Charter started')->body('The office has been told. Have a good trip.')->success()->send();
+                Notification::make()->title($this->record->type === 'transfer' ? 'Transfer started' : 'Charter started')->body('The office has been told. Have a good trip.')->success()->send();
                 $this->record->refresh();
             });
     }
@@ -235,21 +240,21 @@ class DriverJob extends Page
     public function finishCharterAction(): Action
     {
         return Action::make('finishCharter')
-            ->label('Finish the charter')
+            ->label(fn (): string => $this->record->type === 'transfer' ? 'Customer dropped off' : 'Finish the charter')
             ->icon('heroicon-o-flag')
             ->size(ActionSize::ExtraLarge)
             ->extraAttributes(['class' => 'rp-dv-bigbtn'])
             ->visible(fn (): bool => DriverWork::canFinishCharter($this->record))
-            ->modalHeading('Finish · '.($this->booking()?->bookable?->name ?? 'yacht'))
-            ->modalDescription('Back at the marina. The office closes the booking and any charges.')
+            ->modalHeading(fn (): string => 'Finish · '.($this->booking()?->bookable?->name ?? ($this->record->type === 'transfer' ? 'transfer' : 'yacht')))
+            ->modalDescription(fn (): string => $this->record->type === 'transfer' ? 'At the destination. Note waiting time, tolls or extra stops; the office closes the booking.' : 'Back at the marina. The office closes the booking and any charges.')
             ->modalSubmitActionLabel('Save')
             ->form([
-                Forms\Components\Textarea::make('notes')->label('Notes (fuel, extra time, anything to know)')->rows(3),
+                Forms\Components\Textarea::make('notes')->label(fn (): string => $this->record->type === 'transfer' ? 'Notes (waiting time, extra stops, tolls, anything to know)' : 'Notes (fuel, extra time, anything to know)')->rows(3),
                 Forms\Components\Textarea::make('damage')->label('Damage or problems (if any)')->rows(2),
             ])
             ->action(function (array $data, Action $action): void {
                 $this->runSafely($action, fn () => DriverWork::finishCharter($this->record->refresh(), auth()->user(), $data));
-                Notification::make()->title('Charter finished')->body('The office will close it.')->success()->send();
+                Notification::make()->title($this->record->type === 'transfer' ? 'Transfer finished' : 'Charter finished')->body('The office will close it.')->success()->send();
                 $this->record->refresh();
             });
     }

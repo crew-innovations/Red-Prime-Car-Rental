@@ -122,4 +122,9 @@ class Car extends Model implements HasMedia
     {
         return $this->morphMany(Lead::class, 'interested_in');
     }
+
+    public function vehicleCategory(): \Illuminate\Database\Eloquent\Relations\BelongsTo
+    {
+        return $this->belongsTo(VehicleCategory::class);
+    }
 }

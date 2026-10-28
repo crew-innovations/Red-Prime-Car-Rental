@@ -56,8 +56,8 @@ class EditQuotation extends EditRecord
             QuotationResource::workflowActions(Actions\Action::class),
         );
         // The first two (send, convert) stay as buttons; the rest go in the menu.
-        $buttons = array_values(array_filter($workflow, fn ($a) => in_array($a->getName(), ['send', 'accept', 'convert'], true)));
-        $menu = array_values(array_filter($workflow, fn ($a) => ! in_array($a->getName(), ['send', 'accept', 'convert'], true)));
+        $buttons = array_values(array_filter($workflow, fn ($a) => in_array($a->getName(), ['approvePrice', 'send', 'accept', 'convert'], true)));
+        $menu = array_values(array_filter($workflow, fn ($a) => ! in_array($a->getName(), ['approvePrice', 'send', 'accept', 'convert'], true)));
 
         return [
             ...$buttons,

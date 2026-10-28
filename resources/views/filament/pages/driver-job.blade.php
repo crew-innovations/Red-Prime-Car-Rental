@@ -17,12 +17,36 @@
                 <span class="rp-dv-badge rp-dv-s-{{ $job->statusColor() }}">{{ $job->statusLabel() }}</span>
             </div>
             <div class="rp-dv-when">{{ $job->scheduled_at->format('D d M') }} · <strong>{{ $job->scheduled_at->format('H:i') }}</strong>@if ($job->ends_at) – <strong>{{ $job->ends_at->format('H:i') }}</strong>@endif</div>
-            <div class="rp-dv-car">{{ $car?->name ?? ($job->type === 'charter' ? 'Yacht' : 'Car') }}@if ($car?->registration_number) <span class="rp-dv-plate">{{ $car->registration_number }}</span>@endif</div>
+            <div class="rp-dv-car">{{ $car?->name ?? match ($job->type) { 'charter' => 'Yacht', 'transfer' => ($b?->vehicleCategory?->name ?? 'Car to be assigned'), default => 'Car' } }}@if ($car?->registration_number) <span class="rp-dv-plate">{{ $car->registration_number }}</span>@endif</div>
             @if ($job->type === 'charter')
                 <div class="rp-dv-meta">{{ $b?->guests ? $b->guests.' guests' : 'Guests not set' }}@if ($car?->max_guests) · max {{ $car->max_guests }}@endif @if ($b?->captain) · captain {{ $b->captain->name }}@endif @if ($b?->crew_ids) · crew {{ $b->crewMembers()->pluck('name')->implode(', ') }}@endif</div>
             @endif
         </div>
 
+        @if ($job->type === 'transfer' && $b)
+            <div class="rp-dv-section">
+                <div class="rp-dv-label">{{ $b->transferService?->name ?? 'Transfer' }}</div>
+                <div class="rp-dv-meta">{{ collect([$b->guests ? $b->guests.' passengers' : null, $b->luggage ? $b->luggage.' bags' : null, $b->child_seats ? $b->child_seats.' child seat(s)' : null])->filter()->implode(' · ') ?: 'Passengers not set' }}</div>
+                @if ($b->flight_number)
+                    <div class="rp-dv-value">Flight {{ $b->flight_number }}{{ $b->airline ? ' · '.$b->airline : '' }}{{ $b->terminal ? ' · Terminal '.$b->terminal : '' }}</div>
+                @endif
+                @if ($b->special_requests)<div class="rp-dv-meta" style="white-space:pre-line">{{ $b->special_requests }}</div>@endif
+            </div>
+            <div class="rp-dv-section">
+                <div class="rp-dv-label">Pick up</div>
+                <div class="rp-dv-value">{{ $b->pickup_location ?: 'Not set yet: call the office' }}</div>
+                @foreach ((array) $b->stops as $n => $stop)
+                    @if (! empty($stop['address']))<div class="rp-dv-meta">Stop {{ $n + 1 }}: {{ $stop['address'] }}</div>@endif
+                @endforeach
+                <div class="rp-dv-label" style="margin-top:.6rem">Drop off</div>
+                <div class="rp-dv-value">{{ $b->dropoff_location ?: ($b->journey_type === 'hourly' ? 'As the customer asks (by the hour)' : 'Not set yet') }}</div>
+                @if ($b->route_km)<div class="rp-dv-meta">About {{ rtrim(rtrim(number_format((float) $b->route_km, 1), '0'), '.') }} km · {{ $b->route_minutes }} min</div>@endif
+                @if ($b->return_at)<div class="rp-dv-meta">Return trip: {{ $b->return_at->format('D d M H:i') }}</div>@endif
+                @if ($map)
+                    <a class="rp-dv-link" href="{{ $map }}" target="_blank" rel="noopener"><x-filament::icon icon="heroicon-m-map" class="h-4 w-4" /> Open the route in maps</a>
+                @endif
+            </div>
+        @else
         <div class="rp-dv-section">
             <div class="rp-dv-label">{{ match ($job->type) { 'delivery' => 'Deliver to', 'charter' => 'Marina / meeting point', default => 'Collect from' } }}</div>
             <div class="rp-dv-value">{{ $job->address ?: 'Address not set yet: call the office' }}</div>
@@ -30,6 +54,7 @@
                 <a class="rp-dv-link" href="{{ $map }}" target="_blank" rel="noopener"><x-filament::icon icon="heroicon-m-map" class="h-4 w-4" /> Open in maps</a>
             @endif
         </div>
+        @endif
 
         <div class="rp-dv-section">
             <div class="rp-dv-label">Customer</div>
@@ -79,7 +104,7 @@
         @endif
 
         @if ($job->isOpen())
-            @php($list = $job->type === 'charter' ? [] : (array) \App\Models\Setting::read($job->type === 'delivery' ? 'handover_checklist' : 'return_checklist', []))
+            @php($list = in_array($job->type, ['charter', 'transfer'], true) ? [] : (array) \App\Models\Setting::read($job->type === 'delivery' ? 'handover_checklist' : 'return_checklist', []))
             @if ($list)
                 <div class="rp-dv-section">
                     <div class="rp-dv-label">You will check</div>

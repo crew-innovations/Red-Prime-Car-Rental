@@ -29,6 +29,7 @@ class Quotation extends Model
     public const PRICE_FIELDS = [
         'service_type', 'bookable_id', 'trip_date_id', 'package_departure_id', 'drive_mode', 'start_at', 'end_at', 'guests',
         'delivery_method', 'return_method', 'crew_mode',
+        'transfer_service_id', 'vehicle_category_id', 'journey_type', 'pickup_location', 'dropoff_location', 'stops', 'return_at', 'waiting_minutes', 'route_km', 'return_route_km',
         'base_amount', 'extras', 'discount', 'tax_rate', 'tax_inclusive', 'security_deposit', 'advance_required',
         'terms', // the terms the customer accepts are locked with the price (28 Oct)
     ];
@@ -51,6 +52,16 @@ class Quotation extends Model
             'discount' => 'decimal:2',
             'standard_amount' => 'decimal:2',
             'price_breakdown' => 'array',
+            // Limousine & transfers (28 Oct-2)
+            'stops' => 'array',
+            'route' => 'array',
+            'return_at' => 'datetime',
+            'route_km' => 'decimal:2',
+            'return_route_km' => 'decimal:2',
+            'route_minutes' => 'integer',
+            'waiting_minutes' => 'integer',
+            'luggage' => 'integer',
+            'child_seats' => 'integer',
             'tax_rate' => 'decimal:2',
             'tax_inclusive' => 'boolean',
             'tax_amount' => 'decimal:2',
@@ -83,8 +94,9 @@ class Quotation extends Model
             }
 
             if ($q->bookable_id && $q->service_type) {
-                $q->bookable_type = $q->service_type->value;
+                $q->bookable_type = $q->service_type === ServiceType::Transfer ? 'car' : $q->service_type->value;
             }
+            \App\Support\Transfers\TransferJourney::prepare($q);
             if ($q->service_type !== ServiceType::Car) {
                 $q->drive_mode = null;
                 $q->delivery_method = null;
@@ -213,5 +225,15 @@ class Quotation extends Model
     public function creator(): BelongsTo
     {
         return $this->belongsTo(User::class, 'created_by');
+    }
+
+    public function transferService(): \Illuminate\Database\Eloquent\Relations\BelongsTo
+    {
+        return $this->belongsTo(\App\Models\TransferService::class)->withTrashed();
+    }
+
+    public function vehicleCategory(): \Illuminate\Database\Eloquent\Relations\BelongsTo
+    {
+        return $this->belongsTo(\App\Models\VehicleCategory::class)->withTrashed();
     }
 }

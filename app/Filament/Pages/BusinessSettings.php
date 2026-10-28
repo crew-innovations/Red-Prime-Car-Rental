@@ -50,6 +50,7 @@ class BusinessSettings extends Page implements HasForms
         'bareboat' => 'Extra for yacht charter without crew (bareboat)',
         'trip' => 'Yacht trip',
         'package' => 'Trip / package',
+        'transfer' => 'Limousine & transfer',
         'corporate' => 'Extra for company / agency customers',
     ];
 
@@ -270,6 +271,10 @@ class BusinessSettings extends Page implements HasForms
                             ->label('Most an agent can take off')
                             ->numeric()->minValue(0)->maxValue(100)->suffix('%')
                             ->helperText('Empty = no limit. Managers with "Pricing" rights are not limited. A reason is always asked.'),
+                        Forms\Components\Toggle::make('price_approval_required')
+                            ->label('Above the limit, wait for a manager\'s OK instead of refusing')
+                            ->helperText('Off (default): a bigger discount is refused. On: it is saved but can\'t be sent or confirmed until a manager approves it.')
+                            ->inline(false),
                         Forms\Components\Toggle::make('booking_requires_accepted_quote')
                             ->label('Bookings must come from an accepted quotation')
                             ->helperText('Off: staff can also book directly (walk-ins). On: a new confirmed booking needs an accepted quotation.')
@@ -532,7 +537,7 @@ class BusinessSettings extends Page implements HasForms
         'driver_job_gap_minutes', 'driver_required_fields', 'driver_required_documents', 'driver_block_incomplete',
         'driver_doc_warn_days', 'driver_doc_reminders', 'notify_drivers_by_email', 'notify_staff_by_email',
         // 28 Oct: pricing and sales workflow
-        'hourly_increment_minutes', 'price_max_discount_percent', 'booking_requires_accepted_quote', 'doc_block_confirm',
+        'hourly_increment_minutes', 'price_max_discount_percent', 'price_approval_required', 'booking_requires_accepted_quote', 'doc_block_confirm',
         'expense_approval_required', 'audit_retention_days',
     ];
 

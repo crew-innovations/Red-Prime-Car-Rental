@@ -164,6 +164,12 @@ class PriceFields
             'delivery_method' => $service === ServiceType::Car->value ? $get('delivery_method') : null,
             'return_method' => $service === ServiceType::Car->value ? $get('return_method') : null,
             'extra_keys' => $keys ?? (array) ($get('extra_keys') ?? []),
+            // limousine & transfers (28 Oct-2)
+            'transfer_service_id' => $get('transfer_service_id'), 'vehicle_category_id' => $get('vehicle_category_id'),
+            'journey_type' => $get('journey_type'), 'route_km' => $get('route_km'), 'return_km' => $get('return_route_km'),
+            'route_minutes' => $get('route_minutes'), 'route_source' => $get('route_source'), 'stops' => array_values((array) ($get('stops') ?? [])),
+            'waiting_minutes' => $get('waiting_minutes'), 'return_at' => $get('return_at'),
+            'pickup_location' => $get('pickup_location'), 'dropoff_location' => $get('dropoff_location'),
         ];
     }
 

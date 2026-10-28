@@ -79,6 +79,7 @@ class BookingResource extends Resource
                     ->columnSpan(['lg' => 2])
                     ->schema([
                         self::serviceSection(),
+                        \App\Filament\Concerns\TransferFields::section(),
                         self::datesSection(),
                         self::priceSection(),
                         self::photosSection(),
@@ -195,9 +196,10 @@ class BookingResource extends Resource
 
                 Forms\Components\Select::make('bookable_id')
                     ->label(fn (Get $get): string => self::itemLabel($get('service_type')))
-                    ->options(fn (Get $get): array => self::itemOptions($get('service_type')))
+                    ->options(fn (Get $get): array => self::itemOptions($get('service_type'), $get('vehicle_category_id')))
                     ->searchable()
-                    ->required()
+                    ->required(fn (Get $get): bool => $get('service_type') !== ServiceType::Transfer->value)
+                    ->placeholder(fn (Get $get): string => $get('service_type') === ServiceType::Transfer->value ? 'Assign a car later' : 'Select an option')
                     ->live()
                     ->afterStateUpdated(function (Get $get, Set $set) {
                         $item = self::findItem($get('service_type'), $get('bookable_id'));
@@ -240,31 +242,31 @@ class BookingResource extends Resource
                     ->visible(fn (Get $get): bool => $get('service_type') === ServiceType::Car->value),
 
                 Forms\Components\Select::make('driver_id')
-                    ->label(fn (Get $get): string => $get('drive_mode') === DriveMode::WithDriver->value ? 'Driver' : 'Delivery driver')
+                    ->label(fn (Get $get): string => $get('service_type') === ServiceType::Transfer->value ? 'Chauffeur' : ($get('drive_mode') === DriveMode::WithDriver->value ? 'Driver' : 'Delivery driver'))
                     ->options(fn (Get $get, ?Booking $record): array => BookingActions::driverOptions(
                         $get('bookable_id') ? (int) $get('bookable_id') : null,
-                        $get('start_at'), $get('end_at'), $get('drive_mode'), $record?->getKey(),
+                        $get('start_at'), $get('end_at'), $get('service_type') === ServiceType::Transfer->value ? DriveMode::WithDriver->value : $get('drive_mode'), $record?->getKey(),
                     ))
                     ->disableOptionWhen(fn (string $label): bool => str_contains($label, BookingActions::BUSY))
                     ->searchable()
                     ->live()
                     ->placeholder('Assign later')
                     ->helperText(fn (Get $get): ?string => BookingActions::driverOptions()
-                        ? ($get('drive_mode') === DriveMode::WithDriver->value
+                        ? ($get('service_type') === ServiceType::Transfer->value ? 'Drives the customer from pickup to drop-off.' : ($get('drive_mode') === DriveMode::WithDriver->value
                             ? 'Drives the customer for the whole booking.'
-                            : 'Delivers the car at the start and collects it at the end. Leave empty if the customer picks up and returns it at the office.').' '.self::driverHint($get)
+                            : 'Delivers the car at the start and collects it at the end. Leave empty if the customer picks up and returns it at the office.')).' '.self::driverHint($get)
                         : 'Add drivers under Operations › Drivers.')
                     ->rules([fn (Get $get, ?Booking $record): Closure => function (string $attribute, $value, Closure $fail) use ($get, $record) {
                         if (! $value || ! $get('start_at') || ! $get('end_at') || ! in_array($get('status'), array_map(fn ($s) => $s->value, BookingStatus::blocking()), true)) {
                             return;
                         }
-                        $clash = Availability::personConflict((int) $value, $get('start_at'), $get('end_at'), $record?->getKey(), $get('drive_mode'));
+                        $clash = Availability::personConflict((int) $value, $get('start_at'), $get('end_at'), $record?->getKey(), $get('service_type') === ServiceType::Transfer->value ? DriveMode::WithDriver->value : $get('drive_mode'));
                         if ($clash) {
                             $fail("This driver is already busy on {$clash->reference} (".$clash->start_at->format('d M H:i').' – '.$clash->end_at->format('d M H:i').').');
                         }
                     }])
-                    ->visible(fn (Get $get): bool => $get('service_type') === ServiceType::Car->value
-                        && ($get('drive_mode') === DriveMode::WithDriver->value || $get('delivery_method') !== 'office' || filled($get('driver_id')))),
+                    ->visible(fn (Get $get): bool => $get('service_type') === ServiceType::Transfer->value || ($get('service_type') === ServiceType::Car->value
+                        && ($get('drive_mode') === DriveMode::WithDriver->value || $get('delivery_method') !== 'office' || filled($get('driver_id'))))),
                 Forms\Components\Select::make('return_driver_id')
                     ->label('Collection driver')
                     ->options(fn (Get $get, ?Booking $record): array => BookingActions::driverOptions(
@@ -309,7 +311,7 @@ class BookingResource extends Resource
                     ->label(fn (Get $get): string => $get('service_type') === ServiceType::Yacht->value ? 'Instructions for the crew' : 'Instructions for the driver')
                     ->placeholder('Gate code, parking, who to call, child seat…')
                     ->rows(2)
-                    ->visible(fn (Get $get): bool => ($get('service_type') === ServiceType::Car->value && filled($get('driver_id')))
+                    ->visible(fn (Get $get): bool => (in_array($get('service_type'), [ServiceType::Car->value, ServiceType::Transfer->value], true) && filled($get('driver_id')))
                         || ($get('service_type') === ServiceType::Yacht->value && filled($get('captain_id'))))
                     ->columnSpanFull(),
 
@@ -387,6 +389,7 @@ class BookingResource extends Resource
             ServiceType::Yacht->value => 'Yacht (old charter)',
             ServiceType::Trip->value => 'Yacht trip',
             ServiceType::Package->value => 'Trip / package',
+            ServiceType::Transfer->value => 'Car (optional)',
             default => 'Car',
         };
     }
@@ -394,13 +397,15 @@ class BookingResource extends Resource
     protected static function datesSection(): Forms\Components\Section
     {
         $isCar = fn (Get $get): bool => $get('service_type') === ServiceType::Car->value;
+        $isTransfer = fn (Get $get): bool => $get('service_type') === ServiceType::Transfer->value;
+        $hourly = fn (Get $get): bool => $isTransfer($get) && \App\Models\TransferService::find($get('transfer_service_id'))?->isHourly();
 
         return Forms\Components\Section::make('Dates & place')
             ->icon('heroicon-o-calendar')
             ->columns(2)
             ->schema([
                 Forms\Components\DateTimePicker::make('start_at')
-                    ->label(fn (Get $get): string => $isCar($get) ? 'Pick-up' : 'Start')
+                    ->label(fn (Get $get): string => $isCar($get) || $isTransfer($get) ? 'Pick-up' : 'Start')
                     ->native(false)
                     ->seconds(false)
                     ->minutesStep(15)
@@ -414,18 +419,19 @@ class BookingResource extends Resource
                         self::recalculate($get, $set);
                     }),
                 Forms\Components\DateTimePicker::make('end_at')
-                    ->label(fn (Get $get): string => $isCar($get) ? 'Return' : 'End')
+                    ->label(fn (Get $get): string => $isCar($get) ? 'Return' : ($isTransfer($get) ? 'Hire ends' : 'End'))
                     ->native(false)
                     ->seconds(false)
                     ->minutesStep(15)
                     ->displayFormat('D, d M Y · H:i')
-                    ->required()
+                    ->required(fn (Get $get): bool => ! $isTransfer($get) || $hourly($get))
                     ->after('start_at')
+                    ->visible(fn (Get $get): bool => ! $isTransfer($get) || $hourly($get))
                     ->live(onBlur: true)
                     ->afterStateUpdated(fn (Get $get, Set $set) => self::recalculate($get, $set))
                     ->helperText(fn (Get $get): ?string => self::durationText($get('start_at'), $get('end_at')))
                     ->rules([fn (Get $get, ?Booking $record): Closure => function (string $attribute, $value, Closure $fail) use ($get, $record) {
-                        $type = $get('service_type');
+                        $type = $get('service_type') === ServiceType::Transfer->value ? ServiceType::Car->value : $get('service_type');
                         if (! in_array($type, [ServiceType::Car->value, ServiceType::Yacht->value], true) || ! $get('bookable_id') || ! $get('start_at')
                             || ! in_array($get('status'), array_map(fn ($s) => $s->value, BookingStatus::blocking()), true)) {
                             return;
@@ -451,8 +457,10 @@ class BookingResource extends Resource
                         && $get('bookable_id')
                         && Availability::restriction($get('service_type'), (int) $get('bookable_id')) !== null),
                 Forms\Components\TextInput::make('pickup_location')
-                    ->label(fn (Get $get): string => $isCar($get) ? ($get('delivery_method') === 'delivery' ? 'Delivery address' : 'Pick-up location') : 'Meeting point / marina')
-                    ->required(fn (Get $get): bool => $isCar($get) && $get('delivery_method') === 'delivery')
+                    ->label(fn (Get $get): string => $isTransfer($get) ? 'Pickup address' : ($isCar($get) ? ($get('delivery_method') === 'delivery' ? 'Delivery address' : 'Pick-up location') : 'Meeting point / marina'))
+                    ->required(fn (Get $get): bool => ($isCar($get) && $get('delivery_method') === 'delivery') || $isTransfer($get))
+                    ->live(onBlur: true)
+                    ->afterStateUpdated(fn (Get $get, Set $set) => $isTransfer($get) ? self::recalculate($get, $set) : null)
                     ->placeholder(fn (Get $get): string => $isCar($get) ? 'Office, hotel, airport…' : 'Dubai Marina')
                     ->datalist(fn (): array => \App\Support\Options::list('pickup_locations'))
                     ->maxLength(255),
@@ -464,6 +472,7 @@ class BookingResource extends Resource
                     ->visible($isCar),
                 ...\App\Filament\Concerns\PriceFields::handoverChoice(),
                 Forms\Components\TextInput::make('guests')
+                    ->label(fn (Get $get): string => $isTransfer($get) ? 'Passengers' : 'Guests')
                     ->numeric()
                     ->minValue(1)
                     ->required(fn (Get $get): bool => in_array($get('service_type'), [ServiceType::Trip->value, ServiceType::Package->value], true))
@@ -673,7 +682,7 @@ class BookingResource extends Resource
         }
 
         return match ($service) {
-            ServiceType::Car->value => Car::withTrashed()->find($id),
+            ServiceType::Car->value, ServiceType::Transfer->value => Car::withTrashed()->find($id),
             ServiceType::Yacht->value => Yacht::withTrashed()->find($id),
             ServiceType::Trip->value => Trip::withTrashed()->find($id),
             ServiceType::Package->value => \App\Models\Package::withTrashed()->find($id),
@@ -715,9 +724,11 @@ class BookingResource extends Resource
         return null;
     }
 
-    public static function itemOptions(?string $service): array
+    public static function itemOptions(?string $service, $categoryId = null): array
     {
         return match ($service) {
+            ServiceType::Transfer->value => Car::query()->whereNotNull('vehicle_category_id')->when($categoryId, fn ($q, $id) => $q->where('vehicle_category_id', $id))->orderBy('name')->get()
+                ->mapWithKeys(fn (Car $c) => [$c->id => $c->name.' · '.$c->status?->getLabel()])->all(),
             ServiceType::Yacht->value => Yacht::orderBy('name')->get()
                 ->mapWithKeys(fn (Yacht $y) => [$y->id => $y->name.' · '.$y->status?->getLabel().($y->hourly_price ? ' · AED '.number_format((float) $y->hourly_price).'/hr' : '')])->all(),
             ServiceType::Trip->value => Trip::orderBy('name')->get()

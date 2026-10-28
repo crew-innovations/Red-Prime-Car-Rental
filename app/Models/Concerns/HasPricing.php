@@ -25,10 +25,26 @@ use Illuminate\Validation\ValidationException;
  */
 trait HasPricing
 {
+    /** Tell managers when a price starts waiting for their OK (optional approval, 28 Oct-2). */
+    public static function bootHasPricing(): void
+    {
+        static::saved(function ($record) {
+            if ($record->wasChanged('price_approval') && $record->price_approval === 'pending') {
+                $url = $record instanceof \App\Models\Booking
+                    ? \App\Filament\Resources\BookingResource::getUrl('edit', ['record' => $record])
+                    : \App\Filament\Resources\QuotationResource::getUrl('edit', ['record' => $record]);
+                rescue(fn () => \App\Support\Drivers\Notify::staff('approve-prices', 'Price to approve: '.($record->number ?? $record->reference),
+                    'AED '.number_format((float) $record->total, 2).' (price list AED '.number_format((float) $record->standard_amount, 2).'). Reason: '.$record->adjustment_reason, $url, null, 'warning'), report: false);
+            }
+        });
+    }
+
     /** Fields that change what the price list gives. */
     public static function pricingInputs(): array
     {
-        return ['service_type', 'bookable_id', 'start_at', 'end_at', 'drive_mode', 'guests', 'package_departure_id', 'delivery_method', 'return_method', 'extras'];
+        return ['service_type', 'bookable_id', 'start_at', 'end_at', 'drive_mode', 'guests', 'package_departure_id', 'delivery_method', 'return_method', 'extras',
+            // limousine & transfers (28 Oct-2)
+            'transfer_service_id', 'vehicle_category_id', 'journey_type', 'route_km', 'return_route_km', 'route_minutes', 'stops', 'waiting_minutes', 'return_at', 'pickup_location', 'dropoff_location'];
     }
 
     public static function pricingFields(): array
@@ -39,10 +55,10 @@ trait HasPricing
     /** Runs the engine for the saved fields. */
     public function priceResult(?array $extraKeys = null): ?array
     {
-        $class = $this->service_type ? Relation::getMorphedModel($this->service_type->value) : null;
+        $class = $this->service_type ? Relation::getMorphedModel($this->service_type->value === 'transfer' ? 'car' : $this->service_type->value) : null;
         $item = $class && $this->bookable_id ? $class::withTrashed()->find($this->bookable_id) : null;
 
-        return PriceEngine::calculate([
+        return PriceEngine::calculate(\App\Support\Transfers\TransferJourney::priceInput($this) + [
             'service_type' => $this->service_type,
             'item' => $item,
             'start_at' => $this->start_at,
@@ -162,6 +178,7 @@ trait HasPricing
         if (! $adjusted) {
             if ($this->isDirty(['base_amount', 'extras', 'discount', 'standard_amount'])) {
                 $this->adjusted_by = null;
+                $this->price_approval = null;
             }
 
             return;
@@ -194,12 +211,39 @@ trait HasPricing
             }
         }
         $max = Setting::read('price_max_discount_percent');
+        $over = false;
         if ($user && $max !== null && $max !== '' && (float) $this->standard_amount > 0 && ! Access::allows('manage-pricing')) {
             $off = ((float) $this->standard_amount - $net) / (float) $this->standard_amount * 100;
             if ($off > (float) $max + 0.001) {
-                throw ValidationException::withMessages(['data.discount' => 'The most you can take off is '.rtrim(rtrim(number_format((float) $max, 2), '0'), '.').'% of the price list. A manager can give more.']);
+                // Optional (28 Oct-2): above the limit it waits for a manager instead of being refused.
+                if (! Setting::read('price_approval_required')) {
+                    throw ValidationException::withMessages(['data.discount' => 'The most you can take off is '.rtrim(rtrim(number_format((float) $max, 2), '0'), '.').'% of the price list. A manager can give more.']);
+                }
+                $over = true;
             }
         }
+        $this->price_approval = $over ? 'pending' : null;
+        $this->price_approved_by = null;
+        $this->price_approved_at = null;
         $this->adjusted_by = $user?->id ?? $this->adjusted_by;
+    }
+
+    public function priceWaiting(): bool
+    {
+        return $this->price_approval === 'pending';
+    }
+
+    /** A manager OKs a price below the limit (28 Oct-2, optional). */
+    public function approvePrice(?\App\Models\User $by = null): void
+    {
+        $by ??= auth()->user();
+        if (! $this->priceWaiting()) {
+            return;
+        }
+        if (! $by || ! Access::allows('approve-prices')) {
+            throw ValidationException::withMessages(['price' => 'Only a manager can approve this price.']);
+        }
+        $this->forceFill(['price_approval' => 'approved', 'price_approved_by' => $by->id, 'price_approved_at' => now()])->saveQuietly();
+        \App\Models\AuditLog::note($this, 'override', 'Price approved by '.$by->name.': AED '.number_format((float) $this->total, 2).' (price list AED '.number_format((float) $this->standard_amount, 2).')');
     }
 }
