@@ -63,6 +63,9 @@
                 @if ($b->returned_at)
                     <a class="rp-acc-link" href="{{ route('pdf.statement', $b) }}" target="_blank" rel="noopener">{{ $b->isCar() ? 'Return statement' : 'End of service statement' }} (PDF)</a>
                 @endif
+                @if ($jobReport = \App\Support\Documents\JobReports::current($b))
+                    <a class="rp-acc-link" href="{{ $jobReport->url() }}" target="_blank" rel="noopener">Job report {{ $jobReport->number }} ({{ strtoupper($jobReport->format) }})</a>
+                @endif
             </div>
         </div>
 

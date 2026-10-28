@@ -185,6 +185,12 @@ class Booking extends Model implements HasMedia
             $booking->advanceLead();
 
             \App\Support\Drivers\DriverJobs::sync($booking);
+
+            // Job completion report (28 Oct-2, Phase 6): made when the job is completed, after the save is final.
+            if ($booking->wasChanged('status') && $booking->status === BookingStatus::Completed) {
+                $by = auth()->user();
+                \Illuminate\Support\Facades\DB::afterCommit(fn () => rescue(fn () => \App\Support\Documents\JobReports::generate($booking->fresh(), $by, 'Job completed')));
+            }
         });
 
         static::deleted(function (Booking $booking) {

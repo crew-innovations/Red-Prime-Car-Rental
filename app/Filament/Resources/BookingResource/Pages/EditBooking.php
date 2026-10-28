@@ -87,6 +87,32 @@ class EditBooking extends EditRecord
                     ->icon('heroicon-o-clipboard-document-check')
                     ->visible(fn (): bool => (bool) $this->getRecord()->delivered_at)
                     ->url(fn (): string => route('pdf.statement', $this->getRecord()), shouldOpenInNewTab: true),
+                // Job completion report (28 Oct-2): made on completion; can be made again, every version kept.
+                Actions\Action::make('jobReport')
+                    ->label(fn (): string => 'Job report'.(($r = \App\Support\Documents\JobReports::current($this->getRecord())) ? ' (v'.$r->version.')' : ''))
+                    ->icon('heroicon-o-clipboard-document-list')
+                    ->visible(fn (): bool => (bool) \App\Support\Documents\JobReports::current($this->getRecord()))
+                    ->url(fn (): ?string => \App\Support\Documents\JobReports::current($this->getRecord())?->url(), shouldOpenInNewTab: true),
+                Actions\Action::make('makeJobReport')
+                    ->label(fn (): string => \App\Support\Documents\JobReports::current($this->getRecord()) ? 'Make the job report again' : 'Make job report')
+                    ->icon('heroicon-o-arrow-path')
+                    ->authorize('operate-fleet')
+                    ->visible(fn (): bool => (bool) $this->getRecord()->delivered_at || $this->getRecord()->status === \App\Enums\BookingStatus::Completed)
+                    ->form([\Filament\Forms\Components\TextInput::make('reason')->label('Why?')->placeholder('Return details corrected')->required()->maxLength(200)])
+                    ->modalDescription(fn (): string => ($m = \App\Support\Documents\JobReports::missing($this->getRecord())) ? 'Still missing: '.implode(', ', $m).'. The report will show this.' : 'Everything required is recorded.')
+                    ->action(function (array $data) {
+                        $r = \App\Support\Documents\JobReports::generate($this->getRecord()->fresh(), auth()->user(), $data['reason']);
+                        \Filament\Notifications\Notification::make()->title('Job report '.$r->number.' (v'.$r->version.') made')
+                            ->actions([\Filament\Notifications\Actions\Action::make('open')->label('Open')->url($r->url(), shouldOpenInNewTab: true)])
+                            ->success()->persistent()->send();
+                    }),
+                Actions\Action::make('jobReportVersions')
+                    ->label('Earlier job reports')
+                    ->icon('heroicon-o-clock')
+                    ->visible(fn (): bool => \App\Models\JobReport::where('booking_id', $this->getRecord()->id)->count() > 1)
+                    ->modalSubmitAction(false)->modalCancelActionLabel('Close')
+                    ->modalContent(fn () => new \Illuminate\Support\HtmlString('<ul style="display:flex;flex-direction:column;gap:.5rem">'.\App\Models\JobReport::with('generator')->where('booking_id', $this->getRecord()->id)->orderByDesc('version')->get()
+                        ->map(fn ($r) => '<li><a style="font-weight:600;color:rgb(var(--primary-600))" target="_blank" href="'.e($r->url()).'">'.e($r->number.' · v'.$r->version).'</a> · '.e($r->created_at->format('d M Y H:i')).' · '.e($r->generator?->name ?? 'System').' · '.e($r->reason).($r->missing ? ' · <span style="color:rgb(var(--warning-600))">incomplete</span>' : '').'</li>')->implode('').'</ul>')),
             ])->label('Documents')->icon('heroicon-o-document-duplicate')->button()->color('gray'),
             Actions\ActionGroup::make([
                 \App\Filament\Support\DocumentActions::requestLink(Actions\Action::class, fn () => $this->getRecord()->customer, fn () => $this->getRecord()),

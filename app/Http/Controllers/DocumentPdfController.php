@@ -87,6 +87,29 @@ class DocumentPdfController extends Controller
         return Pdf::response('pdf.receipt', ['t' => $transaction, 'number' => self::receiptNumber($transaction)], 'Receipt '.self::receiptNumber($transaction).'.pdf', $request->boolean('download'));
     }
 
+    /** A stored job completion report (any version). Every opening is logged. */
+    public function jobReport(Request $request, \App\Models\JobReport $report)
+    {
+        $booking = $report->booking;
+        abort_unless($booking, 404);
+        $this->allowBooking($request, $booking);
+        if ($request->user()->isCustomerAccount()) {
+            abort_unless($report->is_current, 404); // customers get the latest version only
+        }
+        $disk = \Illuminate\Support\Facades\Storage::disk('private');
+        abort_unless($report->path && $disk->exists($report->path), 404);
+
+        \App\Models\AuditLog::create(['event' => 'download', 'auditable_type' => 'booking', 'auditable_id' => $booking->id,
+            'note' => 'Opened job report '.$report->number.' (v'.$report->version.')']);
+        $name = 'Job report '.$booking->reference.' v'.$report->version.'.'.$report->format;
+
+        return $disk->response($report->path, $name, [
+            'Content-Type' => $report->format === 'pdf' ? 'application/pdf' : 'text/html; charset=UTF-8',
+            'Content-Disposition' => ($request->boolean('download') ? 'attachment' : 'inline').'; filename="'.$name.'"',
+            'X-Robots-Tag' => 'noindex, nofollow', 'Cache-Control' => 'private, no-store', 'X-Content-Type-Options' => 'nosniff',
+        ]);
+    }
+
     public static function receiptNumber(Transaction $t): string
     {
         return 'RCPT-'.str_pad((string) $t->id, 5, '0', STR_PAD_LEFT);

@@ -76,6 +76,7 @@ Route::prefix('documents')->middleware('throttle:60,1')->group(function () {
     Route::get('/booking/{booking}/statement', [\App\Http\Controllers\DocumentPdfController::class, 'statement'])->whereNumber('booking')->name('pdf.statement');
     Route::get('/invoice/{invoice}', [\App\Http\Controllers\DocumentPdfController::class, 'invoice'])->whereNumber('invoice')->name('pdf.invoice');
     Route::get('/receipt/{transaction}', [\App\Http\Controllers\DocumentPdfController::class, 'receipt'])->whereNumber('transaction')->name('pdf.receipt');
+    Route::get('/job-report/{report}', [\App\Http\Controllers\DocumentPdfController::class, 'jobReport'])->whereNumber('report')->name('job-report');
 });
 Route::get('/quote/{token}/pdf', [\App\Http\Controllers\DocumentPdfController::class, 'publicQuotation'])->middleware('throttle:30,1')->name('quotations.public.pdf');
 
