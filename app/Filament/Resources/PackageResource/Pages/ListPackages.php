@@ -20,6 +20,7 @@ class ListPackages extends ListRecords
         $enabled = Category::isEnabled(Package::CATEGORY);
 
         return [
+            \App\Support\Exports\TableExport::action(),
             // One-click switch for the whole Trips & Packages section on the website.
             Actions\Action::make('toggleSection')
                 ->label($enabled ? 'Section is live on website' : 'Section hidden on website')

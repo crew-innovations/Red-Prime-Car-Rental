@@ -13,6 +13,7 @@ class ManageLeadSources extends ManageRecords
     protected function getHeaderActions(): array
     {
         return [
+            \App\Support\Exports\TableExport::action(),
             Actions\CreateAction::make()->label('Add source'),
         ];
     }

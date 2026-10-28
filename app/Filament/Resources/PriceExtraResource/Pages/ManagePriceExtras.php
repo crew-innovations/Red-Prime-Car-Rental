@@ -13,6 +13,7 @@ class ManagePriceExtras extends ManageRecords
     protected function getHeaderActions(): array
     {
         return [
+            \App\Support\Exports\TableExport::action(),
             Actions\CreateAction::make()->label('Add extra or fee'),
         ];
     }

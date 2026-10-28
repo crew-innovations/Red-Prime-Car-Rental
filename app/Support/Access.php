@@ -49,6 +49,8 @@ class Access
         'manage-drivers' => ['Admin', 'Manager'],
         // Review damage reported by drivers
         'review-damage' => ['Admin', 'Manager', 'Operations'],
+        // Download lists as Excel / CSV (28 Oct, brief 2). Each export is logged.
+        'export-data' => ['Admin', 'Manager', 'Finance'],
         // Team, roles, business settings
         'manage-team' => ['Admin'],
     ];
@@ -73,6 +75,7 @@ class Access
         'manage-accounts' => 'Invite customers and drivers to log in, switch accounts on / off',
         'manage-drivers' => 'Driver profiles and their documents (passport, ID, licence)',
         'review-damage' => 'Review damage reported by drivers',
+        'export-data' => 'Export lists to Excel / CSV (logged)',
         'manage-team' => 'Team, roles and business settings',
     ];
 

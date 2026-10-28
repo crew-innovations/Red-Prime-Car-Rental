@@ -17,6 +17,7 @@ class ListLeads extends ListRecords
     protected function getHeaderActions(): array
     {
         return [
+            \App\Support\Exports\TableExport::action(),
             Actions\Action::make('board')
                 ->label('Pipeline board')
                 ->icon('heroicon-o-view-columns')

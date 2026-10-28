@@ -18,6 +18,7 @@ class ListTransactions extends ListRecords
     protected function getHeaderActions(): array
     {
         return [
+            \App\Support\Exports\TableExport::action(),
             Actions\CreateAction::make('income')
                 ->label('Record income')
                 ->icon('heroicon-o-arrow-down-left')

@@ -18,6 +18,7 @@ class ListYachts extends ListRecords
     protected function getHeaderActions(): array
     {
         return [
+            \App\Support\Exports\TableExport::action(),
             Actions\CreateAction::make()->label('Add yacht'),
         ];
     }

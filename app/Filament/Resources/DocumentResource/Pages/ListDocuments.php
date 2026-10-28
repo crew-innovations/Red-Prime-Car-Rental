@@ -12,6 +12,11 @@ class ListDocuments extends ListRecords
 {
     protected static string $resource = DocumentResource::class;
 
+    protected function getHeaderActions(): array
+    {
+        return [\App\Support\Exports\TableExport::action()];
+    }
+
     protected ?string $subheading = 'New uploads to review, and documents that have expired. To upload or request a document, open the customer.';
 
     public function getTabs(): array

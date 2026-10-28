@@ -9,5 +9,10 @@ class ListDamageReports extends ListRecords
 {
     protected static string $resource = DamageReportResource::class;
 
+    protected function getHeaderActions(): array
+    {
+        return [\App\Support\Exports\TableExport::action()];
+    }
+
     protected ?string $subheading = 'Reported by drivers. Decide here; add any charge on the booking.';
 }

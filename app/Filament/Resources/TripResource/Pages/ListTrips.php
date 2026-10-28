@@ -19,6 +19,7 @@ class ListTrips extends ListRecords
         $enabled = Category::isEnabled(Category::YACHT_TRIPS);
 
         return [
+            \App\Support\Exports\TableExport::action(),
             // One-click switch for the whole Yacht Trips section on the website (Clause 4.6).
             Actions\Action::make('toggleSection')
                 ->label($enabled ? 'Section is live on website' : 'Section hidden on website')

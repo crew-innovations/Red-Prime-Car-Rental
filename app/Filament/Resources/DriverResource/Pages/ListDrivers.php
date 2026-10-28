@@ -12,6 +12,9 @@ class ListDrivers extends ListRecords
 
     protected function getHeaderActions(): array
     {
-        return [Actions\CreateAction::make()->label('Add driver')];
+        return [
+            \App\Support\Exports\TableExport::action(),
+            Actions\CreateAction::make()->label('Add driver'),
+        ];
     }
 }
