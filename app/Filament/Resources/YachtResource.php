@@ -39,11 +39,11 @@ class YachtResource extends Resource
 
     protected static ?string $navigationIcon = 'heroicon-o-lifebuoy';
 
-    protected static ?string $navigationGroup = 'Operations';
+    protected static ?string $navigationGroup = 'Yachts & trips';
 
     // Private yacht charters are offered again (28 Oct); the yacht screens are back.
 
-    protected static ?int $navigationSort = 9;
+    protected static ?int $navigationSort = 1;
 
     protected static ?string $recordTitleAttribute = 'name';
 

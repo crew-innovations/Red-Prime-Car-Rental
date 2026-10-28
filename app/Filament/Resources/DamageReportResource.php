@@ -27,13 +27,13 @@ class DamageReportResource extends Resource
 
     protected static ?string $navigationIcon = 'heroicon-o-exclamation-triangle';
 
-    protected static ?string $navigationGroup = 'Operations';
+    protected static ?string $navigationGroup = 'Bookings & drivers';
 
     protected static ?string $navigationLabel = 'Damage reports';
 
     protected static ?string $modelLabel = 'damage report';
 
-    protected static ?int $navigationSort = 7;
+    protected static ?int $navigationSort = 3;
 
     public static function canViewAny(): bool
     {

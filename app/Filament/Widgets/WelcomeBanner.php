@@ -85,11 +85,12 @@ class WelcomeBanner extends Widget
                 ['label' => 'New booking', 'icon' => 'heroicon-m-calendar-days', 'url' => $bookings::getUrl('create'), 'primary' => false],
                 ['label' => 'Pipeline', 'icon' => 'heroicon-m-view-columns', 'url' => \App\Filament\Pages\PipelineBoard::getUrl(), 'primary' => false],
             ],
-            'fleetActions' => [
-                ['label' => 'Car', 'icon' => 'heroicon-m-truck', 'url' => CarResource::getUrl('create')],
-                ['label' => 'Package', 'icon' => 'heroicon-m-map', 'url' => \App\Filament\Resources\PackageResource::getUrl('create')],
-                ['label' => 'Trip', 'icon' => 'heroicon-m-sun', 'url' => TripResource::getUrl('create')],
-            ],
+            // Only what this person may add.
+            'fleetActions' => array_values(array_filter([
+                CarResource::canCreate() ? ['label' => 'Car', 'icon' => 'heroicon-m-truck', 'url' => CarResource::getUrl('create')] : null,
+                \App\Filament\Resources\PackageResource::canCreate() ? ['label' => 'Package', 'icon' => 'heroicon-m-map', 'url' => \App\Filament\Resources\PackageResource::getUrl('create')] : null,
+                TripResource::canCreate() ? ['label' => 'Trip', 'icon' => 'heroicon-m-sun', 'url' => TripResource::getUrl('create')] : null,
+            ])),
         ];
     }
 }

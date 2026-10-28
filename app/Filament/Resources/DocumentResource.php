@@ -26,13 +26,13 @@ class DocumentResource extends Resource
 
     protected static ?string $navigationIcon = 'heroicon-o-identification';
 
-    protected static ?string $navigationGroup = 'Administration';
+    protected static ?string $navigationGroup = 'Sales';
 
     protected static ?string $navigationLabel = 'Documents';
 
     protected static ?string $modelLabel = 'document';
 
-    protected static ?int $navigationSort = 1;
+    protected static ?int $navigationSort = 5;
 
     public static function canViewAny(): bool
     {

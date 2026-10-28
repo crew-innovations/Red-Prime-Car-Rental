@@ -45,6 +45,7 @@
                 @endforelse
             </div>
 
+            @if ($fleetActions)
             <div class="rp-fleet-add">
                 <span>Add</span>
                 @foreach ($fleetActions as $action)
@@ -54,6 +55,7 @@
                     </a>
                 @endforeach
             </div>
+            @endif
         </div>
     </section>
 </x-filament-widgets::widget>

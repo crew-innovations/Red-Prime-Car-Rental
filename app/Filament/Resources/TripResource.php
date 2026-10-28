@@ -40,13 +40,13 @@ class TripResource extends Resource
 
     protected static ?string $navigationIcon = 'heroicon-o-sun';
 
-    protected static ?string $navigationGroup = 'Operations';
+    protected static ?string $navigationGroup = 'Yachts & trips';
 
     protected static ?string $navigationLabel = 'Yacht Trips';
 
     protected static ?string $modelLabel = 'yacht trip';
 
-    protected static ?int $navigationSort = 4;
+    protected static ?int $navigationSort = 2;
 
     protected static ?string $recordTitleAttribute = 'name';
 

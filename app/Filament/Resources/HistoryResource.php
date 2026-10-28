@@ -22,7 +22,7 @@ class HistoryResource extends Resource
 
     protected static ?string $navigationIcon = 'heroicon-o-clock';
 
-    protected static ?string $navigationGroup = 'Administration';
+    protected static ?string $navigationGroup = 'Settings';
 
     protected static ?string $navigationLabel = 'History';
 
@@ -30,7 +30,7 @@ class HistoryResource extends Resource
 
     protected static ?string $pluralModelLabel = 'History';
 
-    protected static ?int $navigationSort = 6;
+    protected static ?int $navigationSort = 5;
 
     /** Record types people can filter by, with the page that opens them. */
     public const TYPES = [

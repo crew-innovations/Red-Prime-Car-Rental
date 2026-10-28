@@ -31,6 +31,8 @@ class Dashboard extends BaseDashboard
     {
         return [
             Widgets\WelcomeBanner::class,
+            Widgets\MyWork::class,
+            Widgets\BusinessBoard::class,
             Widgets\TodayOperations::class,
             Widgets\FleetStatus::class,
             Widgets\UpcomingTrips::class,

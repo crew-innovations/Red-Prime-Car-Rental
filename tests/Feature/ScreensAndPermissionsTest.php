@@ -99,7 +99,7 @@ class ScreensAndPermissionsTest extends TestCase
     {
         $this->actingAs($this->user('Super Admin'));
         $this->get('/crm')->assertOk()
-            ->assertSeeInOrder(['Overview', 'Sales', 'Operations', 'Finance', 'Administration'])
+            ->assertSeeInOrder(['Overview', 'Sales', 'Bookings &amp; drivers', 'Fleet', 'Yachts &amp; trips', 'Accounts &amp; reports', 'Pricing', 'Settings'], false)
             ->assertSee('Car readiness')
             ->assertSee('To collect')
             ->assertSee('Trips &amp; Packages', false)

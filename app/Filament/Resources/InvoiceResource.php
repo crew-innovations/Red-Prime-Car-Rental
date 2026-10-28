@@ -26,7 +26,7 @@ class InvoiceResource extends Resource
 
     protected static ?string $navigationIcon = 'heroicon-o-document-currency-dollar';
 
-    protected static ?string $navigationGroup = 'Finance';
+    protected static ?string $navigationGroup = 'Accounts & reports';
 
     protected static ?int $navigationSort = 4;
 

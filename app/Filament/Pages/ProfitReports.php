@@ -12,13 +12,13 @@ class ProfitReports extends Page
 {
     protected static ?string $navigationIcon = 'heroicon-o-presentation-chart-line';
 
-    protected static ?string $navigationGroup = 'Finance';
+    protected static ?string $navigationGroup = 'Accounts & reports';
 
     protected static ?string $navigationLabel = 'Profit & reports';
 
     protected static ?string $title = 'Profit & reports';
 
-    protected static ?int $navigationSort = 2;
+    protected static ?int $navigationSort = 5;
 
     protected static string $view = 'filament.pages.profit-reports';
 

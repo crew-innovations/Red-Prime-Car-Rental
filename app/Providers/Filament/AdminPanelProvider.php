@@ -71,22 +71,24 @@ class AdminPanelProvider extends PanelProvider
             ->navigationGroups([
                 NavigationGroup::make('Overview'),
                 NavigationGroup::make('Sales'),
-                NavigationGroup::make('Operations'),
+                NavigationGroup::make('Bookings & drivers'),
+                NavigationGroup::make('Fleet'),
+                NavigationGroup::make('Yachts & trips'),
+                NavigationGroup::make('Accounts & reports'),
                 NavigationGroup::make('Pricing'),
-                NavigationGroup::make('Finance'),
-                NavigationGroup::make('Administration'),
+                NavigationGroup::make('Settings'),
             ])
             // Shortcuts to the most used list tabs.
             ->navigationItems([
                 NavigationItem::make('Car readiness')
-                    ->group('Operations')
-                    ->sort(3)
+                    ->group('Fleet')
+                    ->sort(2)
                     ->icon('heroicon-o-sparkles')
                     ->url(fn (): string => \App\Filament\Resources\CarResource::getUrl('index', ['activeTab' => 'attention']))
                     ->isActiveWhen(fn (): bool => request()->routeIs('filament.admin.resources.cars.index') && request()->query('activeTab') === 'attention')
                     ->visible(fn (): bool => \App\Filament\Resources\CarResource::canViewAny()),
                 NavigationItem::make('To collect')
-                    ->group('Finance')
+                    ->group('Accounts & reports')
                     ->sort(3)
                     ->icon('heroicon-o-inbox-stack')
                     ->url(fn (): string => \App\Filament\Resources\TransactionResource::getUrl('index', ['activeTab' => 'outstanding']))

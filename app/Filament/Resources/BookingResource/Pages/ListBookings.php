@@ -37,24 +37,35 @@ class ListBookings extends ListRecords
             ->where(fn (Builder $q) => $q->whereIn('status', [BookingStatus::Confirmed, BookingStatus::PendingPayment])->whereDate('start_at', today()))
             ->orWhere(fn (Builder $q) => $q->where('status', BookingStatus::InProgress)->where('end_at', '<=', now()->endOfDay())));
 
+        $own = fn () => \App\Support\Access::scopeOwn(Booking::query(), 'booking');
+
         return [
             'upcoming' => Tab::make('Upcoming')
                 ->icon('heroicon-o-calendar')
                 ->modifyQueryUsing(fn (Builder $query) => $query->whereIn('status', [BookingStatus::Confirmed, BookingStatus::PendingPayment])->where('end_at', '>=', now()->startOfDay())),
             'today' => Tab::make('Out / back today')
                 ->icon('heroicon-o-clock')
-                ->badge(fn () => $today(Booking::query())->count() ?: null)
+                ->badge(fn () => $today($own())->count() ?: null)
                 ->badgeColor('warning')
                 ->modifyQueryUsing(fn (Builder $query) => $today($query)),
             'out' => Tab::make('With customer')
                 ->icon('heroicon-o-key')
-                ->badge(fn () => Booking::where('status', BookingStatus::InProgress)->count() ?: null)
+                ->badge(fn () => $own()->where('status', BookingStatus::InProgress)->count() ?: null)
                 ->modifyQueryUsing(fn (Builder $query) => $query->where('status', BookingStatus::InProgress)->orderBy('end_at')),
+            'late' => Tab::make('Late returns')
+                ->icon('heroicon-o-exclamation-triangle')
+                ->badge(fn () => $own()->where('status', BookingStatus::InProgress)->where('end_at', '<', now())->count() ?: null)
+                ->badgeColor('danger')
+                ->modifyQueryUsing(fn (Builder $query) => $query->where('status', BookingStatus::InProgress)->where('end_at', '<', now())->reorder('end_at')),
+            'waiting' => Tab::make('Waiting for payment')
+                ->badge(fn () => $own()->where('status', BookingStatus::PendingPayment)->count() ?: null)
+                ->badgeColor('warning')
+                ->modifyQueryUsing(fn (Builder $query) => $query->where('status', BookingStatus::PendingPayment)->reorder('start_at')),
             'enquiries' => Tab::make('Enquiries & quotes')
                 ->modifyQueryUsing(fn (Builder $query) => $query->whereIn('status', [BookingStatus::Inquiry, BookingStatus::Quotation])),
             'balance' => Tab::make('Balance due')
                 ->icon('heroicon-o-banknotes')
-                ->badge(fn () => Booking::where('balance', '>', 0)->whereIn('status', [BookingStatus::InProgress, BookingStatus::Completed])->count() ?: null)
+                ->badge(fn () => $own()->where('balance', '>', 0)->whereIn('status', [BookingStatus::InProgress, BookingStatus::Completed])->count() ?: null)
                 ->badgeColor('danger')
                 ->modifyQueryUsing(fn (Builder $query) => $query->where('balance', '>', 0)->whereIn('status', BookingStatus::billable())),
             'completed' => Tab::make('Completed')

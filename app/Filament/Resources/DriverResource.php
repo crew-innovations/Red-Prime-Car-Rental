@@ -32,13 +32,13 @@ class DriverResource extends Resource
 
     protected static ?string $navigationIcon = 'heroicon-o-identification';
 
-    protected static ?string $navigationGroup = 'Operations';
+    protected static ?string $navigationGroup = 'Bookings & drivers';
 
     protected static ?string $navigationLabel = 'Drivers & crew';
 
     protected static ?string $modelLabel = 'driver';
 
-    protected static ?int $navigationSort = 6;
+    protected static ?int $navigationSort = 2;
 
     public static function canViewAny(): bool
     {
