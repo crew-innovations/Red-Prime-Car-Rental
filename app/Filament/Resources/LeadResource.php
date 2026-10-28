@@ -231,8 +231,14 @@ class LeadResource extends Resource
                             ->schema([
                                 Forms\Components\Select::make('assigned_to')
                                     ->label('Salesperson')
-                                    ->relationship('assignee', 'name', fn (Builder $query) => $query->where('is_active', true))
+                                    ->relationship('assignee', 'name', fn (Builder $query) => $query->where('is_active', true)->whereDoesntHave('roles', fn ($r) => $r->whereIn('name', ['Customer', 'Driver'])))
                                     ->default(fn () => auth()->id())
+                                    ->disabled(fn (string $operation): bool => $operation !== 'create' && ! \App\Support\Access::allows('assign-leads'))
+                                    ->helperText(fn (?Lead $record): ?string => match ($record?->assignment_status) {
+                                        'pending' => 'Waiting for '.$record->assignee?->name.' to accept.',
+                                        'accepted' => 'Accepted '.$record->accepted_at?->format('d M, H:i').'.',
+                                        default => null,
+                                    })
                                     ->searchable()
                                     ->preload(),
                                 Forms\Components\DateTimePicker::make('next_follow_up_at')
@@ -352,6 +358,7 @@ class LeadResource extends Resource
                 Tables\Columns\TextColumn::make('assignee.name')
                     ->label('Salesperson')
                     ->placeholder('Unassigned')
+                    ->description(fn (Lead $record): ?string => $record->assignment_status === 'pending' ? 'Not accepted yet' : null)
                     ->sortable()
                     ->toggleable(),
                 Tables\Columns\TextColumn::make('next_follow_up_at')
@@ -437,13 +444,13 @@ class LeadResource extends Resource
             ->bulkActions([
                 Tables\Actions\BulkActionGroup::make([
                     Tables\Actions\BulkAction::make('assign')
-                        ->authorize('manage-leads')
+                        ->authorize('assign-leads')
                         ->label('Assign to salesperson')
                         ->icon('heroicon-o-user-plus')
                         ->form([
                             Forms\Components\Select::make('assigned_to')
                                 ->label('Salesperson')
-                                ->options(fn () => User::where('is_active', true)->pluck('name', 'id'))
+                                ->options(fn () => User::where('is_active', true)->whereDoesntHave('roles', fn ($r) => $r->whereIn('name', ['Customer', 'Driver']))->pluck('name', 'id'))
                                 ->required(),
                         ])
                         ->action(fn (Collection $records, array $data) => $records->each->update(['assigned_to' => $data['assigned_to']]))

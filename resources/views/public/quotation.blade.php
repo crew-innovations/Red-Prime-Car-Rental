@@ -55,7 +55,11 @@
                 <td class="r">{{ $aed($q->base_amount) }}</td>
             </tr>
             @foreach ($q->extras ?? [] as $line)
-                <tr><td>{{ $line['label'] ?? 'Extra' }}</td><td class="r">{{ $aed($line['amount'] ?? 0) }}</td></tr>
+                @if (! empty($line['waived']))
+                    <tr><td>{{ $line['label'] ?? 'Extra' }} <span class="pill ok">Waived</span></td><td class="r"><s class="muted">{{ $aed($line['standard'] ?? 0) }}</s> {{ $aed(0) }}</td></tr>
+                @else
+                    <tr><td>{{ $line['label'] ?? 'Extra' }}@if (! empty($line['qty']) && (float) $line['qty'] != 1) <span class="muted">({{ \App\Support\Pricing\PriceEngine::qtyText((float) $line['qty']) }} × {{ $aed($line['unit_price'] ?? 0) }})</span>@endif</td><td class="r">{{ $aed($line['amount'] ?? 0) }}</td></tr>
+                @endif
             @endforeach
             @if ((float) $q->discount > 0)
                 <tr><td>Discount</td><td class="r">− {{ $aed($q->discount) }}</td></tr>
@@ -80,9 +84,54 @@
         <div class="card"><h2>Terms</h2><div class="muted" style="white-space:pre-line">{{ $q->terms }}</div></div>
     @endif
 
+    @if (session('accepted'))
+        <div class="card" style="border-color:#86efac">
+            <h2>Thank you, the quotation is accepted</h2>
+            <p class="muted" style="margin:0 0 10px">Accepted {{ $q->accepted_at?->format('d M Y, H:i') }}. This does not book the {{ $q->service_type === \App\Enums\ServiceType::Car ? 'car' : 'service' }} yet: our team will now check availability and confirm your booking.</p>
+            @if (session('documents_url'))
+                <p style="margin:0 0 10px"><strong>Next step:</strong> please upload your documents ({{ implode(', ', array_map(fn ($t) => \App\Support\Options::documentLabel($t), (array) session('missing'))) }}).</p>
+                <a class="btn btn-primary" href="{{ session('documents_url') }}">Upload documents</a>
+            @elseif (session('missing'))
+                <p style="margin:0">Our team will ask you for your documents.</p>
+            @else
+                <p style="margin:0">We have all the documents we need.</p>
+            @endif
+        </div>
+    @elseif (session('declined'))
+        <div class="card"><h2>Quotation declined</h2><p class="muted" style="margin:0">Thank you for letting us know. Reply on WhatsApp any time if you would like a new offer.</p></div>
+    @elseif (! $q->acceptProblem())
+        <div class="card no-print" id="accept">
+            <h2>Accept this quotation</h2>
+            @if ($errors->any())
+                <div class="alert bad">{{ $errors->first() }}</div>
+            @endif
+            <form method="post" action="{{ route('quotations.public.accept', ['token' => $q->public_token]) }}">
+                @csrf
+                <label for="accept_name">Your full name</label>
+                <input id="accept_name" name="name" value="{{ old('name') }}" required maxlength="120" autocomplete="name" style="width:100%;font:15px Poppins,sans-serif;padding:12px;border:1px solid var(--line);border-radius:12px">
+                <label style="display:flex;gap:10px;align-items:flex-start;font-weight:400;margin-top:14px">
+                    <input type="checkbox" name="agree" value="1" required style="margin-top:4px">
+                    <span>I accept the price{{ $q->terms ? ' and the terms' : '' }} shown above for {{ $q->customerName() }}.</span>
+                </label>
+                <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:16px">
+                    <button class="btn btn-primary" type="submit">Accept quotation</button>
+                </div>
+            </form>
+            <details style="margin-top:14px">
+                <summary class="muted" style="cursor:pointer">Not for you? Decline</summary>
+                <form method="post" action="{{ route('quotations.public.decline', ['token' => $q->public_token]) }}" style="margin-top:10px">
+                    @csrf
+                    <label for="decline_reason">Reason (optional)</label>
+                    <input id="decline_reason" name="reason" maxlength="200" style="width:100%;font:15px Poppins,sans-serif;padding:12px;border:1px solid var(--line);border-radius:12px">
+                    <button class="btn btn-ghost" type="submit" style="margin-top:10px">Decline quotation</button>
+                </form>
+            </details>
+        </div>
+    @endif
+
     <div class="card">
         <div style="font-weight:600">{{ $s['company_name'] ?? 'RED PRIME RENTALS' }}</div>
-        <div class="muted" style="white-space:pre-line">{{ collect([$s['company_address'] ?? null, $s['company_phone'] ?? null, $s['company_email'] ?? null, ! empty($s['company_trn']) ? 'TRN '.$s['company_trn'] : null])->filter()->implode("\n") }}</div>
+        <div class="muted" style="white-space:pre-line">{{ collect([$s['company_address'] ?? null, $s['company_phone'] ?? null, $s['company_email'] ?? null, ! empty($s['company_trn']) && ! empty($s['vat_enabled']) ? 'TRN '.$s['company_trn'] : null])->filter()->implode("\n") }}</div>
         @if (! empty($s['bank_details']))
             <div class="muted" style="white-space:pre-line;margin-top:8px">{{ $s['bank_details'] }}</div>
         @endif

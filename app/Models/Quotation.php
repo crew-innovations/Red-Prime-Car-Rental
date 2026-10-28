@@ -62,6 +62,8 @@ class Quotation extends Model
             'accepted_at' => 'datetime',
             'rejected_at' => 'datetime',
             'expired_at' => 'datetime',
+            'emailed_at' => 'datetime',
+            'accepted_terms' => 'array',
         ];
     }
 
@@ -117,6 +119,33 @@ class Quotation extends Model
         return $count;
     }
 
+    /** Documents the customer needs for this offer (same rules as bookings). */
+    public function documentChecklist(): array
+    {
+        $types = Booking::requiredTypesFor(Booking::documentKindsFor($this->service_type, $this->drive_mode, $this->customer));
+
+        return Booking::checklistFor($this->customer_id, $types, $this->start_at);
+    }
+
+    /** Can the customer accept this now? Returns why not, or null. */
+    public function acceptProblem(): ?string
+    {
+        return match (true) {
+            $this->status === QuotationStatus::Accepted => 'This quotation is already accepted.',
+            $this->status === QuotationStatus::Rejected => 'This quotation was declined.',
+            $this->status === QuotationStatus::Expired, $this->valid_until && $this->valid_until->lt(today()) => 'This quotation has expired. Please ask us for a new one.',
+            $this->status === QuotationStatus::Negotiation => 'We are updating this quotation. You will get the new version shortly.',
+            $this->status !== QuotationStatus::Sent || ! $this->sent_at => 'This quotation is not ready yet.',
+            $this->trashed() => 'This quotation was withdrawn.',
+            default => null,
+        };
+    }
+
+    public function documentRequest(): BelongsTo
+    {
+        return $this->belongsTo(DocumentRequest::class);
+    }
+
     public function publicUrl(): string
     {
         return route('quotations.public', ['token' => $this->public_token]);
@@ -130,6 +159,11 @@ class Quotation extends Model
     public function customerName(): ?string
     {
         return $this->customer?->name ?? $this->lead?->name;
+    }
+
+    public function customerEmail(): ?string
+    {
+        return $this->customer?->email ?: $this->lead?->email;
     }
 
     public function customerPhone(): ?string

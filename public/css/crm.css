@@ -601,3 +601,23 @@ a.rp-acc-card:hover { border-color: var(--rp-line-strong); }
 .rp-breakdown .rp-breakdown-total { border-bottom: 0; padding-top: .8rem; font-size: 1.15rem; }
 .rp-breakdown .rp-breakdown-total dd { color: rgb(var(--primary-600)); font-size: 1.3rem; }
 .dark .rp-breakdown .rp-breakdown-total dd { color: rgb(var(--primary-400)); }
+
+/* ---------- Sales journey and booking checks (28 Oct) ---------- */
+.rp-steps { list-style: none; margin: 0; padding: 0; }
+.rp-step { position: relative; display: flex; gap: .75rem; padding: 0 0 .9rem; font-size: .85rem; line-height: 1.35; }
+.rp-step:not(:last-child)::before { content: ""; position: absolute; left: .4rem; top: 1rem; bottom: 0; width: 2px; background: rgb(var(--gray-200)); }
+.dark .rp-step:not(:last-child)::before { background: rgb(255 255 255 / .1); }
+.rp-step-dot { flex: none; width: .85rem; height: .85rem; margin-top: .15rem; border-radius: 999px; border: 2px solid rgb(var(--gray-300)); background: transparent; position: relative; z-index: 1; }
+.rp-step-done .rp-step-dot { background: rgb(var(--success-500)); border-color: rgb(var(--success-500)); }
+.rp-step-now .rp-step-dot { background: rgb(var(--warning-500)); border-color: rgb(var(--warning-500)); box-shadow: 0 0 0 4px rgb(var(--warning-500) / .2); }
+.rp-step-skip { opacity: .5; }
+.rp-step-text { color: rgb(var(--gray-500)); font-size: .8rem; }
+.rp-step-todo strong { font-weight: 500; color: rgb(var(--gray-500)); }
+.rp-checks { list-style: none; margin: 0 0 .25rem; padding: 0; display: flex; flex-direction: column; gap: .5rem; }
+.rp-check { display: flex; gap: .65rem; align-items: flex-start; font-size: .85rem; line-height: 1.35; padding: .6rem .75rem; border-radius: .75rem; background: rgb(var(--gray-50)); }
+.dark .rp-check { background: rgb(255 255 255 / .04); }
+.rp-check-icon { flex: none; width: 1.3rem; height: 1.3rem; border-radius: 999px; display: grid; place-items: center; font-weight: 700; font-size: .75rem; color: #fff; background: rgb(var(--gray-400)); }
+.rp-check-ok .rp-check-icon { background: rgb(var(--success-500)); }
+.rp-check-warn .rp-check-icon { background: rgb(var(--warning-500)); }
+.rp-check-bad .rp-check-icon { background: rgb(var(--danger-500)); }
+.rp-check-bad { box-shadow: inset 0 0 0 1px rgb(var(--danger-500) / .4); }

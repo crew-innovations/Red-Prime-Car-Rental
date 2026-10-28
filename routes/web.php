@@ -55,6 +55,8 @@ Route::get('/crm/preview/{type}/{id}', function (Request $request, string $type,
 Route::get('/upload/{token}', [DocumentUploadController::class, 'show'])->middleware('throttle:60,1')->name('documents.upload');
 Route::post('/upload/{token}', [DocumentUploadController::class, 'store'])->middleware('throttle:20,1')->name('documents.upload.store');
 Route::get('/quote/{token}', [QuotationPublicController::class, 'show'])->middleware('throttle:60,1')->name('quotations.public');
+Route::post('/quote/{token}/accept', [QuotationPublicController::class, 'accept'])->middleware('throttle:10,1')->name('quotations.public.accept');
+Route::post('/quote/{token}/decline', [QuotationPublicController::class, 'decline'])->middleware('throttle:10,1')->name('quotations.public.decline');
 
 // "Choose your password" link for driver and customer logins (signed, expires, single use).
 Route::get('/invite/{user}', [\App\Http\Controllers\AccountInviteController::class, 'show'])->middleware(['signed:relative', 'throttle:30,1'])->whereNumber('user')->name('account.invite');

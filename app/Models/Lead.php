@@ -35,6 +35,8 @@ class Lead extends Model
             'preferred_date' => 'date',
             'converted_at' => 'datetime',
             'next_follow_up_at' => 'datetime',
+            'assigned_at' => 'datetime',
+            'accepted_at' => 'datetime',
         ];
     }
 
@@ -58,6 +60,29 @@ class Lead extends Model
             } elseif (blank($lead->lost_reason)) {
                 // Lost always needs a reason (Schedule A3), whichever screen it comes from.
                 throw \Illuminate\Validation\ValidationException::withMessages(['data.lost_reason' => 'Please give a reason why the lead was lost.']);
+            }
+
+            // Ownership (28 Oct, 3.1): the person a lead is given to accepts it. Taking a
+            // lead yourself counts as accepted straight away.
+            if (! $lead->exists || $lead->isDirty('assigned_to')) {
+                if (! $lead->assigned_to) {
+                    $lead->assignment_status = null;
+                    $lead->assigned_at = null;
+                    $lead->accepted_at = null;
+                } else {
+                    $lead->assigned_at = now();
+                    $self = (int) $lead->assigned_to === (int) auth()->id();
+                    $lead->assignment_status = $self ? 'accepted' : 'pending';
+                    $lead->accepted_at = $self ? now() : null;
+                }
+            }
+        });
+
+        static::saved(function (Lead $lead) {
+            if ($lead->wasChanged('assigned_to') || $lead->wasRecentlyCreated) {
+                if ($lead->assignment_status === 'pending' && ($agent = $lead->assignee)) {
+                    \App\Support\Drivers\Notify::person($agent, 'New lead for you: '.$lead->name, 'Open it and press "Accept lead" to take it.', \App\Filament\Resources\LeadResource::getUrl('edit', ['record' => $lead]));
+                }
             }
         });
 
@@ -84,6 +109,23 @@ class Lead extends Model
         if ($this->pipeline->stageIndex($stage) > $this->pipeline->stageIndex($this->stage)) {
             $this->update(['stage' => $stage]);
         }
+    }
+
+    public function acceptAssignment(): void
+    {
+        abort_unless((int) $this->assigned_to === (int) auth()->id(), 403);
+        $this->forceFill(['assignment_status' => 'accepted', 'accepted_at' => now()])->save();
+        $this->activities()->create(['type' => \App\Enums\ActivityType::Note, 'body' => 'Accepted the lead.', 'user_id' => auth()->id()]);
+    }
+
+    /** The agent hands the lead back; managers are told so it can be given to someone else. */
+    public function declineAssignment(string $reason): void
+    {
+        abort_unless((int) $this->assigned_to === (int) auth()->id(), 403);
+        $name = auth()->user()->name;
+        $this->activities()->create(['type' => \App\Enums\ActivityType::Note, 'body' => 'Handed back by '.$name.': '.$reason, 'user_id' => auth()->id()]);
+        $this->update(['assigned_to' => null]);
+        \App\Support\Drivers\Notify::staff('assign-leads', 'Lead handed back: '.$this->name, $name.': '.$reason, \App\Filament\Resources\LeadResource::getUrl('edit', ['record' => $this]));
     }
 
     public function bookings(): HasMany

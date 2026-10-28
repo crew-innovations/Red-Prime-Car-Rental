@@ -15,6 +15,8 @@ class Access
     public const ABILITIES = [
         // Leads, customers, pipeline
         'manage-leads' => ['Admin', 'Manager', 'Sales', 'Agent', 'Staff'],
+        // Give a lead to another salesperson / agent (28 Oct, inquiry ownership)
+        'assign-leads' => ['Admin', 'Manager'],
         // Create / edit bookings (and pick their driver)
         'manage-bookings' => ['Admin', 'Manager', 'Sales', 'Agent', 'Operations', 'Staff'],
         // Hand over, receive, mark a car / yacht ready
@@ -52,6 +54,7 @@ class Access
     /** Plain-English names for the settings page. */
     public const LABELS = [
         'manage-leads' => 'Leads, customers and the pipeline',
+        'assign-leads' => 'Give leads to a salesperson or agent',
         'manage-bookings' => 'Create and edit bookings',
         'operate-fleet' => 'Hand over, receive, mark cars / yachts ready',
         'record-payments' => 'Record money received',

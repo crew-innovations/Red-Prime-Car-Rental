@@ -19,6 +19,15 @@ class Notify
         self::send(collect([$driver]), new CrmMessage($title, $body, $url, (bool) Setting::read('notify_drivers_by_email'), 'heroicon-o-truck', $color));
     }
 
+    /** One staff member (an agent about their lead or quotation). */
+    public static function person(?User $user, string $title, ?string $body = null, ?string $url = null, string $color = 'info'): void
+    {
+        if (! $user || ! $user->is_active || $user->is(auth()->user())) {
+            return;
+        }
+        self::send(collect([$user]), new CrmMessage($title, $body, $url, (bool) Setting::read('notify_staff_by_email'), 'heroicon-o-bell-alert', $color));
+    }
+
     /** Active staff whose role has the ability (plus Super Admins), and optionally a specific person. */
     public static function staff(string $ability, string $title, ?string $body = null, ?string $url = null, ?User $also = null, string $color = 'warning'): void
     {

@@ -254,6 +254,14 @@ class QuotationResource extends Resource
                                 ->default(fn () => ($days = (int) Setting::read('quote_valid_days')) ? today()->addDays($days) : null)
                                 ->required(),
                         ]),
+                    Forms\Components\Section::make('Progress')
+                        ->icon('heroicon-o-map')
+                        ->visibleOn('edit')
+                        ->schema([
+                            Forms\Components\Placeholder::make('journey')
+                                ->hiddenLabel()
+                                ->content(fn (?Quotation $record): HtmlString => new HtmlString($record ? \App\Support\Sales\Journey::html(\App\Support\Sales\Journey::forQuotation($record)) : '')),
+                        ]),
                     Forms\Components\Section::make('Internal')
                         ->icon('heroicon-o-lock-closed')
                         ->schema([
@@ -372,9 +380,22 @@ class QuotationResource extends Resource
                 ->color('success')
                 ->authorize('manage-quotations')
                 ->requiresConfirmation()
-                ->modalDescription('Locks the agreed price. This does not book the car / yacht yet: convert it to a booking next.')
-                ->visible(fn (Quotation $record): bool => in_array($record->status, [QuotationStatus::Sent, QuotationStatus::Negotiation], true))
-                ->action(fn (Quotation $record) => $record->update(['status' => QuotationStatus::Accepted, 'accepted_at' => now()])),
+                ->modalDescription('For when the customer accepted by phone, WhatsApp or in person. Locks the agreed price, links the customer profile and asks for missing documents. It does not book the car yet: create the booking next.')
+                ->form([Forms\Components\TextInput::make('name')->label('Who accepted (customer name)')->default(fn (Quotation $record) => $record->customerName())->required()->maxLength(120)])
+                ->visible(fn (Quotation $record): bool => $record->status === QuotationStatus::Sent)
+                ->action(function (Quotation $record, array $data) {
+                    try {
+                        $result = \App\Support\Sales\QuotationDecision::accept($record, 'staff', $data['name']);
+                    } catch (ValidationException $e) {
+                        Notification::make()->title(collect($e->errors())->flatten()->first())->danger()->send();
+
+                        return;
+                    }
+                    Notification::make()
+                        ->title('Accepted. Customer profile linked.')
+                        ->body($result['documents_url'] ? 'Documents asked for. Send the customer this upload link: '.$result['documents_url'] : ($result['missing'] ? 'Documents still needed.' : 'All documents are in.'))
+                        ->success()->persistent()->send();
+                }),
             $class::make('reject')
                 ->label('Customer declined')
                 ->icon('heroicon-o-hand-thumb-down')
@@ -383,7 +404,7 @@ class QuotationResource extends Resource
                 ->form([Forms\Components\TextInput::make('reason')->datalist(\App\Support\Options::list('quote_decline_reasons'))->required()])
                 ->modalWidth('md')
                 ->visible(fn (Quotation $record): bool => in_array($record->status, [QuotationStatus::Draft, QuotationStatus::Sent, QuotationStatus::Negotiation], true))
-                ->action(fn (Quotation $record, array $data) => $record->update(['status' => QuotationStatus::Rejected, 'rejected_at' => now(), 'rejection_reason' => $data['reason']])),
+                ->action(fn (Quotation $record, array $data) => \App\Support\Sales\QuotationDecision::decline($record, 'staff', $data['reason'])),
             self::convertAction($class),
             $class::make('duplicate')
                 ->label('Duplicate as new draft')
@@ -414,10 +435,16 @@ class QuotationResource extends Resource
             ->color('primary')
             ->authorize('manage-quotations')
             ->visible(fn (Quotation $record): bool => in_array($record->status, [QuotationStatus::Draft, QuotationStatus::Sent, QuotationStatus::Negotiation], true))
-            ->requiresConfirmation()
             ->modalHeading('Send quotation')
-            ->modalDescription(fn (Quotation $record): string => 'The price will be locked at AED '.number_format((float) $record->total, 2).'. You will get a WhatsApp message with the link to send.')
-            ->action(function (Quotation $record) {
+            ->modalWidth('md')
+            ->modalDescription(fn (Quotation $record): string => 'The price will be locked at AED '.number_format((float) $record->total, 2).'. The customer can view, download and accept it from the link.')
+            ->form(fn (Quotation $record): array => [
+                Forms\Components\Toggle::make('email')
+                    ->label($record->customerEmail() ? 'Also email it to '.$record->customerEmail() : 'No email on file')
+                    ->default((bool) $record->customerEmail())
+                    ->disabled(! $record->customerEmail()),
+            ])
+            ->action(function (Quotation $record, array $data) {
                 if ($record->valid_until && $record->valid_until->isPast() && ! $record->valid_until->isToday()) {
                     Notification::make()->title('This quotation has expired. Change "Valid until" first.')->danger()->send();
 
@@ -429,12 +456,24 @@ class QuotationResource extends Resource
                     $record->lead->advanceTo('quotation_sent');
                 }
 
+                $emailNote = null;
+                if (! empty($data['email']) && ($email = $record->customerEmail())) {
+                    try {
+                        \Illuminate\Support\Facades\Notification::route('mail', $email)->notify(new \App\Notifications\QuotationSent($record));
+                        $record->forceFill(['emailed_at' => now()])->saveQuietly();
+                        $emailNote = 'Emailed to '.$email.'. ';
+                    } catch (\Throwable $e) {
+                        report($e);
+                        $emailNote = 'Email could not be sent (check the mail settings). ';
+                    }
+                }
+
                 $message = \App\Support\Options::message('msg_quote', ['name' => $record->customerName(), 'number' => $record->number, 'link' => $record->publicUrl(), 'amount' => number_format((float) $record->total, 2)]);
                 $wa = Phone::whatsappUrl($record->customerPhone(), $message);
 
                 Notification::make()
                     ->title('Quotation ready to send')
-                    ->body($wa ? 'Tap the button to open WhatsApp with the message ready. Link: '.$record->publicUrl() : 'No phone number on file. Copy the link: '.$record->publicUrl())
+                    ->body($emailNote.($wa ? 'Tap the button to open WhatsApp with the message ready. Link: '.$record->publicUrl() : 'No phone number on file. Copy the link: '.$record->publicUrl()))
                     ->success()
                     ->persistent()
                     ->actions(array_filter([
@@ -449,24 +488,36 @@ class QuotationResource extends Resource
     public static function convertAction(string $class)
     {
         return $class::make('convert')
-            ->label('Convert to booking')
+            ->label('Create booking')
             ->icon('heroicon-o-calendar-days')
             ->color('success')
             ->authorize('manage-bookings')
             ->visible(fn (Quotation $record): bool => $record->status === QuotationStatus::Accepted && ! $record->booking_id)
             ->modalWidth('lg')
-            ->modalDescription(fn (Quotation $record): string => 'Creates the booking at the agreed AED '.number_format((float) $record->total, 2).'. Availability is checked again now.')
+            ->modalHeading(fn (Quotation $record): string => 'Create booking from '.$record->number)
+            ->modalDescription(fn (Quotation $record): string => 'Everything is copied from the accepted quotation at the agreed AED '.number_format((float) $record->total, 2).'. Availability is checked again now.')
             ->form([
+                Forms\Components\Placeholder::make('checks')
+                    ->hiddenLabel()
+                    ->content(fn (Quotation $record): HtmlString => new HtmlString(\App\Support\Sales\BookingChecks::html(\App\Support\Sales\BookingChecks::forQuotation($record)))),
                 Forms\Components\ToggleButtons::make('status')
                     ->options([BookingStatus::Confirmed->value => 'Confirmed', BookingStatus::PendingPayment->value => 'Pending payment'])
                     ->colors([BookingStatus::Confirmed->value => 'success', BookingStatus::PendingPayment->value => 'warning'])
-                    ->default(BookingStatus::Confirmed->value)
+                    ->default(fn (Quotation $record): string => (float) $record->advance_required > 0 ? BookingStatus::PendingPayment->value : BookingStatus::Confirmed->value)
+                    ->disableOptionWhen(fn (string $value, Quotation $record): bool => $value === BookingStatus::Confirmed->value && \App\Support\Sales\BookingChecks::confirmBlocked($record) !== null)
+                    ->helperText(fn (Quotation $record): ?string => \App\Support\Sales\BookingChecks::confirmBlocked($record))
                     ->inline()
                     ->required(),
-                Forms\Components\TextInput::make('advance')->label('Advance received now')->numeric()->minValue(0)->prefix('AED'),
+                Forms\Components\TextInput::make('advance')->label('Advance received now')->numeric()->minValue(0)->prefix('AED')
+                    ->default(fn (Quotation $record) => $record->advance_required ?: null),
                 Forms\Components\Select::make('method')->label('Paid by')->options(PaymentMethod::class)->default(PaymentMethod::Card->value)->native(false),
             ])
             ->action(function (Quotation $record, array $data, $livewire) {
+                if ($data['status'] === BookingStatus::Confirmed->value && ($why = \App\Support\Sales\BookingChecks::confirmBlocked($record))) {
+                    Notification::make()->title($why)->danger()->send();
+
+                    return;
+                }
                 try {
                     $booking = DB::transaction(function () use ($record, $data) {
                         $customerId = $record->customer_id ?? $record->lead?->convertToCustomer()->id;
@@ -514,6 +565,8 @@ class QuotationResource extends Resource
                         return $booking;
                     });
                 } catch (ValidationException $e) {
+                    $record->lead?->activities()->create(['type' => \App\Enums\ActivityType::Note, 'user_id' => auth()->id(),
+                        'body' => 'Booking from '.$record->number.' could not be created: '.collect($e->errors())->flatten()->first()]);
                     Notification::make()
                         ->title('Not available any more')
                         ->body(collect($e->errors())->flatten()->first().' The quotation stays accepted at the agreed price; change the dates on a revised quote or pick another car.')

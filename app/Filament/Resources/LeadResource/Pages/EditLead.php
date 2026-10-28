@@ -25,6 +25,28 @@ class EditLead extends EditRecord
         $lead = $this->getRecord();
 
         return [
+            Actions\Action::make('acceptLead')
+                ->label('Accept lead')
+                ->icon('heroicon-o-hand-raised')
+                ->color('success')
+                ->visible(fn (): bool => $this->getRecord()->assignment_status === 'pending' && (int) $this->getRecord()->assigned_to === (int) auth()->id())
+                ->action(function () {
+                    $this->getRecord()->acceptAssignment();
+                    Notification::make()->title('The lead is yours')->success()->send();
+                    $this->redirect(LeadResource::getUrl('edit', ['record' => $this->getRecord()]));
+                }),
+            Actions\Action::make('handBack')
+                ->label('Hand back')
+                ->icon('heroicon-o-arrow-uturn-left')
+                ->color('gray')
+                ->visible(fn (): bool => (int) $this->getRecord()->assigned_to === (int) auth()->id() && ! \App\Support\Access::allows('assign-leads'))
+                ->form([Forms\Components\TextInput::make('reason')->label('Why?')->required()->maxLength(200)])
+                ->modalDescription('The lead goes back to the managers to give to someone else.')
+                ->action(function (array $data) {
+                    $this->getRecord()->declineAssignment($data['reason']);
+                    Notification::make()->title('Lead handed back')->success()->send();
+                    $this->redirect(LeadResource::getUrl('index'));
+                }),
             Actions\Action::make('whatsapp')
                 ->label('WhatsApp')
                 ->icon('heroicon-o-chat-bubble-left-right')

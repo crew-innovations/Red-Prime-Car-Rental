@@ -49,6 +49,9 @@ class Setting extends Model
         // Pricing (28 Oct)
         'hourly_increment_minutes' => 60,     // hourly rates bill in steps of this many minutes
         'price_max_discount_percent' => null, // empty = no limit (Bilal, 28 Oct: no approval step)
+        // Sales workflow (28 Oct). Off keeps the way staff worked before.
+        'booking_requires_accepted_quote' => false,
+        'doc_block_confirm' => false,
         // Accounts (26 Oct): who can log in and how invites work
         'agent_own_records_only' => true,
         'customer_accounts_enabled' => true,

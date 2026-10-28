@@ -118,6 +118,12 @@ class Booking extends Model implements HasMedia
             }
             $booking->assigned_to ??= auth()->id();
 
+            // Optional rule (Business settings): confirmed bookings only come from an accepted quotation.
+            if (! $booking->exists && ! $booking->quotation_id && auth()->check() && Setting::read('booking_requires_accepted_quote')
+                && in_array($booking->status, BookingStatus::billable(), true)) {
+                throw ValidationException::withMessages(['data.status' => 'Bookings are made from an accepted quotation. Send a quotation first, or save this as an Inquiry.']);
+            }
+
             $booking->guardAvailability();
         });
 
@@ -314,13 +320,19 @@ class Booking extends Model implements HasMedia
     /** Which document checklist applies: self_drive, with_driver, yacht, trip (+ corporate). */
     public function documentKinds(): array
     {
-        $kinds = [match ($this->service_type) {
+        return self::documentKindsFor($this->service_type, $this->drive_mode, $this->customer);
+    }
+
+    /** Shared with quotations: the checklist for a service, rental type and customer. */
+    public static function documentKindsFor(?ServiceType $service, ?DriveMode $mode, ?Customer $customer): array
+    {
+        $kinds = [match ($service) {
             ServiceType::Yacht => 'yacht',
             ServiceType::Trip => 'trip',
             ServiceType::Package => 'package',
-            default => $this->drive_mode === DriveMode::WithDriver ? 'with_driver' : 'self_drive',
+            default => $mode === DriveMode::WithDriver ? 'with_driver' : 'self_drive',
         }];
-        if ($this->customer && $this->customer->type !== \App\Enums\CustomerType::Individual) {
+        if ($customer && $customer->type !== \App\Enums\CustomerType::Individual) {
             $kinds[] = 'corporate';
         }
 
@@ -330,9 +342,14 @@ class Booking extends Model implements HasMedia
     /** Document types required for this booking (from Settings). */
     public function requiredDocumentTypes(): array
     {
+        return self::requiredTypesFor($this->documentKinds());
+    }
+
+    public static function requiredTypesFor(array $kinds): array
+    {
         $rules = (array) Setting::read('doc_requirements', []);
 
-        return collect($this->documentKinds())
+        return collect($kinds)
             ->flatMap(fn ($kind) => (array) ($rules[$kind] ?? []))
             ->unique()->values()->all();
     }
@@ -340,12 +357,17 @@ class Booking extends Model implements HasMedia
     /** Checklist: type => [label, status text, ok]. */
     public function documentChecklist(): array
     {
-        $docs = $this->customer_id
-            ? CustomerDocument::where('customer_id', $this->customer_id)->latest()->get()->groupBy('type')
-            : collect();
-        $on = $this->start_at ?? now();
+        return self::checklistFor($this->customer_id, $this->requiredDocumentTypes(), $this->start_at);
+    }
 
-        return collect($this->requiredDocumentTypes())->mapWithKeys(function ($type) use ($docs, $on) {
+    public static function checklistFor(?int $customerId, array $types, $on = null): array
+    {
+        $docs = $customerId
+            ? CustomerDocument::where('customer_id', $customerId)->latest()->get()->groupBy('type')
+            : collect();
+        $on ??= now();
+
+        return collect($types)->mapWithKeys(function ($type) use ($docs, $on) {
             $label = \App\Support\Options::documentLabel($type);
             $list = $docs->get($type, collect());
             $valid = $list->first(fn (CustomerDocument $d) => $d->isValidOn($on));

@@ -179,7 +179,12 @@ class BusinessSettings extends Page implements HasForms
                     // Yacht charter thresholds are no longer shown (charters stopped); stored values stay.
                     ->schema(collect(Rules::PRICING)->reject(fn ($meta, $key) => str_starts_with($key, 'yacht_'))->map(fn ($meta, $key) => Forms\Components\TextInput::make($key)
                         ->label($meta[0])
-                        ->numeric()->minValue(1)->maxValue(365)->suffix($meta[1])->required())->values()->all()),
+                        ->numeric()->minValue(1)->maxValue(365)->suffix($meta[1])->required())->values()->push(
+                            Forms\Components\Select::make('hourly_increment_minutes')
+                                ->label('Hourly rates are charged per')
+                                ->options([15 => '15 minutes', 30 => '30 minutes', 60 => 'Full hour'])
+                                ->native(false)->required()
+                        )->all()),
                 Forms\Components\Section::make('Late return')
                     ->columns(3)
                     ->schema([
@@ -255,6 +260,14 @@ class BusinessSettings extends Page implements HasForms
                             ->helperText('Added to new quotations; staff can edit them per quotation.')
                             ->rows(5)
                             ->columnSpanFull(),
+                        Forms\Components\TextInput::make('price_max_discount_percent')
+                            ->label('Most an agent can take off')
+                            ->numeric()->minValue(0)->maxValue(100)->suffix('%')
+                            ->helperText('Empty = no limit. Managers with "Pricing" rights are not limited. A reason is always asked.'),
+                        Forms\Components\Toggle::make('booking_requires_accepted_quote')
+                            ->label('Bookings must come from an accepted quotation')
+                            ->helperText('Off: staff can also book directly (walk-ins). On: a new confirmed booking needs an accepted quotation.')
+                            ->inline(false),
                         $this->listField('quote_extras'),
                         $this->listField('quote_decline_reasons'),
                     ]),
@@ -299,6 +312,10 @@ class BusinessSettings extends Page implements HasForms
                         Forms\Components\Toggle::make('doc_block_handover')
                             ->label('Block hand over / start until required documents are approved')
                             ->helperText('Managers can still override; the override is recorded.')
+                            ->columnSpanFull(),
+                        Forms\Components\Toggle::make('doc_block_confirm')
+                            ->label('Only confirm a booking once required documents are approved')
+                            ->helperText('Until then it can be created as Pending payment.')
                             ->columnSpanFull(),
                         Forms\Components\TextInput::make('upload_link_hours')
                             ->label('Upload links work for')
@@ -490,6 +507,8 @@ class BusinessSettings extends Page implements HasForms
         'checklist_all_required', 'handover_checklist', 'return_checklist',
         'driver_job_gap_minutes', 'driver_required_fields', 'driver_required_documents', 'driver_block_incomplete',
         'driver_doc_warn_days', 'driver_doc_reminders', 'notify_drivers_by_email', 'notify_staff_by_email',
+        // 28 Oct: pricing and sales workflow
+        'hourly_increment_minutes', 'price_max_discount_percent', 'booking_requires_accepted_quote', 'doc_block_confirm',
     ];
 
     public function save(): void
@@ -594,6 +613,9 @@ class BusinessSettings extends Page implements HasForms
                 default => $out[$key],
             };
         }
+        $max = $out['price_max_discount_percent'] ?? null;
+        $out['price_max_discount_percent'] = $max === null || $max === '' ? null : (float) $max;
+        $out['hourly_increment_minutes'] = in_array((int) ($out['hourly_increment_minutes'] ?? 60), [15, 30, 60], true) ? (int) $out['hourly_increment_minutes'] : 60;
         $out['driver_steps'] = array_values(array_intersect($out['driver_steps'] ?? [], array_keys(\App\Models\BookingJob::DRIVER_STEPS)));
         $out['driver_editable_fields'] = array_values(array_intersect($out['driver_editable_fields'] ?? [], array_keys(\App\Models\DriverProfile::SELF_SERVICE_FIELDS)));
         $out['driver_required_fields'] = array_values(array_intersect($out['driver_required_fields'] ?? [], array_keys(\App\Models\DriverProfile::FIELDS)));

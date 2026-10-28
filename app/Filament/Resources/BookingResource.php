@@ -87,6 +87,15 @@ class BookingResource extends Resource
                     ->columnSpan(['lg' => 1])
                     ->schema([
                         self::statusSection(),
+                        Forms\Components\Section::make('Progress')
+                            ->icon('heroicon-o-map')
+                            ->collapsible()
+                            ->visibleOn('edit')
+                            ->schema([
+                                Forms\Components\Placeholder::make('journey')
+                                    ->hiddenLabel()
+                                    ->content(fn (?Booking $record): HtmlString => new HtmlString($record ? \App\Support\Sales\Journey::html(\App\Support\Sales\Journey::forBooking($record)) : '')),
+                            ]),
                         self::paymentSection(),
                         self::operationsSection(),
                         self::documentsSection(),
