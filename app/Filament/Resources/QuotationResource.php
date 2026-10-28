@@ -208,64 +208,25 @@ class QuotationResource extends Resource
                                 ->afterStateUpdated(fn (Get $get, Set $set) => self::recalculate($get, $set))
                                 ->visible(fn (Get $get): bool => ! $isCar($get)),
                             Forms\Components\TextInput::make('pickup_location')
-                                ->label(fn (Get $get): string => $isCar($get) ? 'Delivery / pick-up' : 'Meeting point')
+                                ->label(fn (Get $get): string => $isCar($get) ? 'Delivery / pick-up address' : 'Meeting point')
                                 ->maxLength(255),
+                            ...\App\Filament\Concerns\PriceFields::handoverChoice(),
                         ]),
 
                     Forms\Components\Section::make('Price')
                         ->icon('heroicon-o-banknotes')
+                        ->description('From the price list. Any change needs a reason and is saved in the history.')
                         ->columns(3)
                         ->schema([
-                            Forms\Components\Hidden::make('rate_type'),
-                            Forms\Components\Hidden::make('quantity'),
-                            Forms\Components\Hidden::make('rate'),
-                            Forms\Components\TextInput::make('base_amount')
-                                ->label('Rental price')
-                                ->numeric()->minValue(0)->prefix('AED')->default(0)->required()
-                                ->live(onBlur: true)
-                                ->helperText(fn (Get $get): ?string => $get('rate') !== null && $get('quantity')
-                                    ? rtrim(rtrim(number_format((float) $get('quantity'), 2), '0'), '.').' × AED '.number_format((float) $get('rate')).' / '.Booking::rateLabel($get('rate_type'))
-                                    : null)
-                                ->suffixAction(Forms\Components\Actions\Action::make('recalculate')
-                                    ->icon('heroicon-m-arrow-path')
-                                    ->tooltip('Recalculate from rates')
-                                    ->action(fn (Get $get, Set $set) => self::recalculate($get, $set))),
-                            Forms\Components\TextInput::make('discount')
-                                ->numeric()->minValue(0)->prefix('AED')->default(0)
-                                ->live(onBlur: true),
+                            ...\App\Filament\Concerns\PriceFields::schema('quotation'),
                             Forms\Components\TextInput::make('security_deposit')
                                 ->label('Security deposit')
+                                ->helperText('Refundable. Not part of the price.')
                                 ->numeric()->minValue(0)->prefix('AED')->default(0),
-                            Forms\Components\Repeater::make('extras')
-                                ->label('Extras (delivery, add-ons, charges)')
-                                ->schema([
-                                    Forms\Components\TextInput::make('label')->required()->maxLength(120)
-                                        ->datalist(fn (): array => \App\Support\Options::list('quote_extras')),
-                                    Forms\Components\TextInput::make('amount')->numeric()->minValue(0)->prefix('AED')->required(),
-                                ])
-                                ->columns(2)
-                                ->defaultItems(0)
-                                ->addActionLabel('Add extra')
-                                ->live(onBlur: true)
-                                ->columnSpanFull(),
-                            Forms\Components\Hidden::make('tax_rate')->default(fn () => Tax::defaultRate()),
-                            Forms\Components\Hidden::make('tax_inclusive')->default(fn () => Tax::defaultInclusive()),
                             Forms\Components\TextInput::make('advance_required')
                                 ->label('Advance to confirm')
                                 ->numeric()->minValue(0)->prefix('AED')
                                 ->helperText('Optional. Shown to the customer.'),
-                            Forms\Components\Placeholder::make('totals')
-                                ->label('Total')
-                                ->columnSpan(2)
-                                ->content(function (Get $get): HtmlString {
-                                    $extras = collect($get('extras') ?? [])->sum(fn ($l) => (float) ($l['amount'] ?? 0));
-                                    $net = (float) $get('base_amount') + $extras - (float) $get('discount');
-                                    $rate = $get('tax_rate') !== null && $get('tax_rate') !== '' ? (float) $get('tax_rate') : null;
-                                    [$tax, $total] = Tax::apply($net, $rate, (bool) $get('tax_inclusive'));
-                                    $vat = $rate ? '<div style="font-size:.85rem;opacity:.75">VAT '.rtrim(rtrim(number_format($rate, 2), '0'), '.').'%'.($get('tax_inclusive') ? ' included' : '').': AED '.number_format($tax, 2).'</div>' : '';
-
-                                    return new HtmlString('<span style="font-size:1.4rem;font-weight:700">AED '.number_format($total, 2).'</span>'.$vat);
-                                }),
                         ]),
 
                     Forms\Components\Section::make('Shown to the customer')
@@ -332,18 +293,7 @@ class QuotationResource extends Resource
 
     public static function recalculate(Get $get, Set $set): void
     {
-        $quote = Booking::quote(
-            BookingResource::findItem($get('service_type'), $get('bookable_id')),
-            $get('start_at'), $get('end_at'), $get('drive_mode'), (int) $get('guests'),
-            $get('package_departure_id') ? \App\Models\PackageDeparture::find($get('package_departure_id')) : null,
-        );
-        if ($quote) {
-            [$type, $qty, $rate, $amount] = $quote;
-            $set('rate_type', $type);
-            $set('quantity', $qty);
-            $set('rate', $rate);
-            $set('base_amount', $amount);
-        }
+        \App\Filament\Concerns\PriceFields::recalculate($get, $set);
     }
 
     /* ------------------------------------------------------------------ */
@@ -541,7 +491,14 @@ class QuotationResource extends Resource
                             'rate' => $record->rate,
                             'base_amount' => $record->base_amount,
                             'extras_amount' => $record->extras_amount,
+                            'extras' => $record->extras,
+                            'delivery_method' => $record->delivery_method,
+                            'return_method' => $record->return_method,
                             'discount' => $record->discount,
+                            'standard_amount' => $record->standard_amount,
+                            'adjustment_reason' => $record->adjustment_reason,
+                            'adjusted_by' => $record->adjusted_by,
+                            'price_breakdown' => $record->price_breakdown ?? ['source' => 'quotation', 'number' => $record->number],
                             'tax_rate' => $record->tax_rate,
                             'tax_inclusive' => $record->tax_inclusive,
                             'security_deposit' => $record->security_deposit,

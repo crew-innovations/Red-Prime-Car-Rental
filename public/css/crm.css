@@ -583,3 +583,21 @@ a.rp-acc-card:hover { border-color: var(--rp-line-strong); }
 .rp-acc-table .r, .rp-acc .r { text-align: right; }
 .rp-acc-link { display: inline-block; margin-top: .5rem; font-weight: 600; font-size: .875rem; color: rgb(var(--primary-600)); }
 @media (max-width: 480px) { .rp-acc-dl { grid-template-columns: 1fr; } .rp-acc-right { align-items: flex-start; } }
+
+/* ---------- Pricing (28 Oct): price check and breakdowns ---------- */
+.rp-pc-grid { display: grid; gap: 1.5rem; grid-template-columns: minmax(0, 1fr); align-items: start; }
+@media (min-width: 1024px) { .rp-pc-grid { grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); } }
+.rp-muted { font-size: .875rem; color: rgb(var(--gray-500)); }
+.rp-warn { margin-top: .5rem; font-size: .875rem; color: rgb(var(--warning-600)); }
+.dark .rp-warn { color: rgb(var(--warning-400)); }
+.rp-breakdown { margin: 0; display: flex; flex-direction: column; }
+.rp-breakdown > div { display: flex; justify-content: space-between; gap: 1rem; padding: .55rem 0; border-bottom: 1px solid rgb(var(--gray-200)); font-size: .9rem; }
+.dark .rp-breakdown > div { border-color: rgb(255 255 255 / .08); }
+.rp-breakdown dt { margin: 0; }
+.rp-breakdown dt span { display: block; font-size: .78rem; color: rgb(var(--gray-500)); }
+.rp-breakdown dd { margin: 0; font-weight: 600; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.rp-breakdown .rp-breakdown-note { font-size: .82rem; color: rgb(var(--gray-500)); border-bottom-style: dashed; }
+.rp-breakdown .rp-breakdown-note dd { font-weight: 500; }
+.rp-breakdown .rp-breakdown-total { border-bottom: 0; padding-top: .8rem; font-size: 1.15rem; }
+.rp-breakdown .rp-breakdown-total dd { color: rgb(var(--primary-600)); font-size: 1.3rem; }
+.dark .rp-breakdown .rp-breakdown-total dd { color: rgb(var(--primary-400)); }

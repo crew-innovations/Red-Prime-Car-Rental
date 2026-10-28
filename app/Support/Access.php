@@ -29,6 +29,10 @@ class Access
         'manage-quotations' => ['Admin', 'Manager', 'Sales', 'Agent', 'Staff'],
         // Cars, yachts, trips, rates, publishing, website sections, lead sources
         'manage-fleet' => ['Admin', 'Manager'],
+        // Pricing section: special rates, extras and fees, rate card (28 Oct)
+        'manage-pricing' => ['Admin', 'Manager'],
+        // Change a quoted / booked price, give a discount, waive a fee (always with a reason)
+        'adjust-prices' => ['Admin', 'Manager', 'Sales', 'Agent'],
         // Delete leads, customers, bookings
         'delete-records' => ['Admin', 'Manager'],
         // Book or hand over a car / yacht that is in maintenance, unavailable or not ready
@@ -55,6 +59,8 @@ class Access
         'review-documents' => 'Upload, request and approve customer documents',
         'manage-quotations' => 'Create, send and convert quotations',
         'manage-fleet' => 'Cars, yachts, trips, rates, website publishing',
+        'manage-pricing' => 'Pricing: special rates, extras and fees, the rate card',
+        'adjust-prices' => 'Change a quoted or booked price, give a discount, waive a fee (a reason is always asked)',
         'delete-records' => 'Delete leads, customers, bookings, quotations',
         'override-availability' => 'Book / hand over a car that is in maintenance, not ready or missing documents',
         'view-history' => 'See the change history of records',

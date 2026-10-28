@@ -61,7 +61,7 @@ class DemoQuotationsSeeder extends Seeder
             'status' => QuotationStatus::Draft, 'customer_id' => Customer::orderByDesc('id')->value('id'),
             'service_type' => ServiceType::Yacht, 'bookable_id' => Yacht::value('id'),
             'start_at' => $at(14, 16), 'end_at' => $at(14, 20), 'guests' => 10, 'pickup_location' => 'Dubai Marina',
-            'discount' => 300,
+            'discount' => 300, 'adjustment_reason' => 'Returning customer',
         ]);
     }
 }

@@ -411,6 +411,7 @@ class BookingResource extends Resource
                     ->datalist(fn (): array => \App\Support\Options::list('pickup_locations'))
                     ->maxLength(255)
                     ->visible($isCar),
+                ...\App\Filament\Concerns\PriceFields::handoverChoice(),
                 Forms\Components\TextInput::make('guests')
                     ->numeric()
                     ->minValue(1)
@@ -444,58 +445,14 @@ class BookingResource extends Resource
         return Forms\Components\Section::make('Price')
             ->icon('heroicon-o-banknotes')
             ->description(fn (?Booking $record): string => $record?->quotation
-                ? 'Agreed in quotation '.$record->quotation->number.' at AED '.number_format((float) $record->quotation->total, 2).'. Any change is recorded in the history.'
-                : 'Worked out from the rates. You can change any amount.')
+                ? 'Agreed in quotation '.$record->quotation->number.' at AED '.number_format((float) $record->quotation->total, 2).'. Any change needs a reason and is saved in the history.'
+                : 'From the price list. Any change needs a reason and is saved in the history.')
             ->columns(3)
             ->schema([
-                Forms\Components\Hidden::make('rate_type'),
-                Forms\Components\Hidden::make('tax_rate')->default(fn () => \App\Support\Tax::defaultRate()),
-                Forms\Components\Hidden::make('tax_inclusive')->default(fn () => \App\Support\Tax::defaultInclusive()),
-                Forms\Components\Hidden::make('quantity'),
-                Forms\Components\Hidden::make('rate'),
-                Forms\Components\TextInput::make('base_amount')
-                    ->label('Rental price')
-                    ->numeric()
-                    ->minValue(0)
-                    ->prefix('AED')
-                    ->default(0)
-                    ->required()
-                    ->live(onBlur: true)
-                    ->helperText(fn (Get $get): ?string => $get('rate') !== null && $get('quantity')
-                        ? rtrim(rtrim(number_format((float) $get('quantity'), 2), '0'), '.').' × AED '.number_format((float) $get('rate')).' / '.Booking::rateLabel($get('rate_type'))
-                        : null)
-                    ->suffixAction(
-                        Forms\Components\Actions\Action::make('recalculate')
-                            ->icon('heroicon-m-arrow-path')
-                            ->tooltip('Recalculate from rates')
-                            ->action(fn (Get $get, Set $set) => self::recalculate($get, $set))
-                    ),
-                Forms\Components\TextInput::make('extras_amount')
-                    ->label('Add-ons & delivery')
-                    ->numeric()
-                    ->minValue(0)
-                    ->prefix('AED')
-                    ->default(0)
-                    ->live(onBlur: true),
-                Forms\Components\TextInput::make('discount')
-                    ->numeric()
-                    ->minValue(0)
-                    ->prefix('AED')
-                    ->default(0)
-                    ->live(onBlur: true),
-                Forms\Components\Placeholder::make('total_preview')
-                    ->label('Total')
-                    ->content(function (Get $get): HtmlString {
-                        $net = (float) $get('base_amount') + (float) $get('extras_amount') - (float) $get('discount');
-                        $rate = filled($get('tax_rate')) ? (float) $get('tax_rate') : null;
-                        [$tax, $total] = \App\Support\Tax::apply($net, $rate, (bool) $get('tax_inclusive'));
-                        $vat = $rate ? '<div style="font-size:.85rem;opacity:.75">VAT '.rtrim(rtrim(number_format($rate, 2), '0'), '.').'%'.($get('tax_inclusive') ? ' included' : '').': AED '.number_format($tax, 2).'</div>' : '';
-
-                        return new HtmlString('<span style="font-size:1.4rem;font-weight:700">AED '.number_format($total, 2).'</span>'.$vat);
-                    }),
+                ...\App\Filament\Concerns\PriceFields::schema('booking'),
                 Forms\Components\TextInput::make('security_deposit')
                     ->label('Security deposit')
-                    ->helperText('Refundable, collected at handover.')
+                    ->helperText('Refundable, collected at handover. Not revenue.')
                     ->numeric()
                     ->minValue(0)
                     ->prefix('AED')
@@ -503,6 +460,7 @@ class BookingResource extends Resource
                 Forms\Components\Group::make()
                     ->visibleOn('create')
                     ->columns(2)
+                    ->columnSpan(2)
                     ->schema([
                         Forms\Components\TextInput::make('advance_amount')
                             ->label('Advance paid now')
@@ -793,22 +751,7 @@ class BookingResource extends Resource
 
     public static function recalculate(Get $get, Set $set): void
     {
-        $quote = Booking::quote(
-            self::findItem($get('service_type'), $get('bookable_id')),
-            $get('start_at'),
-            $get('end_at'),
-            $get('drive_mode'),
-            (int) $get('guests'),
-            $get('package_departure_id') ? \App\Models\PackageDeparture::find($get('package_departure_id')) : null,
-        );
-
-        if ($quote) {
-            [$type, $qty, $rate, $amount] = $quote;
-            $set('rate_type', $type);
-            $set('quantity', $qty);
-            $set('rate', $rate);
-            $set('base_amount', $amount);
-        }
+        \App\Filament\Concerns\PriceFields::recalculate($get, $set);
     }
 
     public static function durationText($start, $end): ?string

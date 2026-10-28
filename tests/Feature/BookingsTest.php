@@ -63,7 +63,7 @@ class BookingsTest extends TestCase
 
     public function test_total_includes_extras_minus_discount_and_vat_only_when_switched_on(): void
     {
-        $b = $this->booking($this->car(), '2026-11-03 10:00', '2026-11-05 10:00', ['extras_amount' => 200, 'discount' => 100]);
+        $b = $this->booking($this->car(), '2026-11-03 10:00', '2026-11-05 10:00', ['extras_amount' => 200, 'discount' => 100, 'adjustment_reason' => 'Corporate rate']);
         $this->assertSame('2100.00', $b->total);
         $this->assertSame('0.00', $b->tax_amount);
 

@@ -19,6 +19,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Carbon;
 use Illuminate\Validation\ValidationException;
 use App\Models\Concerns\Audited;
+use App\Models\Concerns\HasPricing;
 use App\Support\Availability;
 use App\Support\Rules;
 use App\Support\Tax;
@@ -28,7 +29,7 @@ use Spatie\MediaLibrary\MediaCollections\Models\Media;
 
 class Booking extends Model implements HasMedia
 {
-    use Audited, InteractsWithMedia, SoftDeletes;
+    use Audited, HasPricing, InteractsWithMedia, SoftDeletes;
 
     protected $guarded = ['id'];
 
@@ -66,7 +67,10 @@ class Booking extends Model implements HasMedia
             'rate' => 'decimal:2',
             'base_amount' => 'decimal:2',
             'extras_amount' => 'decimal:2',
+            'extras' => 'array',
             'discount' => 'decimal:2',
+            'standard_amount' => 'decimal:2',
+            'price_breakdown' => 'array',
             'tax_rate' => 'decimal:2',
             'tax_inclusive' => 'boolean',
             'tax_amount' => 'decimal:2',
@@ -96,6 +100,13 @@ class Booking extends Model implements HasMedia
             // Any car booking can have a driver: with driver he drives, self-drive he delivers and collects.
             if ($booking->service_type !== ServiceType::Car) {
                 $booking->driver_id = null;
+                $booking->delivery_method = null;
+                $booking->return_method = null;
+            }
+            // A new booking made from a quotation keeps the agreed price and its calculation
+            // as they are; any other new booking or price change is worked out again.
+            if (! ($booking->quotation_id && ! $booking->exists && $booking->price_breakdown)) {
+                $booking->applyPricing();
             }
             [$booking->tax_amount, $booking->total] = Tax::apply(
                 (float) $booking->base_amount + (float) $booking->extras_amount - (float) $booking->discount,
@@ -523,72 +534,25 @@ class Booking extends Model implements HasMedia
         $lead->advanceTo($lead->pipeline->stageForBooking($this->status, $this->payment_status === PaymentStatus::Paid));
     }
 
-    /** Price suggestion from the car / yacht / trip / package rates. Returns [rate_type, quantity, rate, amount]. */
+    /**
+     * Price suggestion: [rate_type, quantity, rate, amount] for the rental only.
+     * Kept for older callers; the full calculation is App\Support\Pricing\PriceEngine.
+     */
     public static function quote(?Model $item, $start, $end, ?string $driveMode = null, ?int $guests = null, ?PackageDeparture $departure = null): ?array
     {
-        if ($item instanceof Package) {
-            return $item->priceFor($guests, $departure);
-        }
+        $service = match (true) {
+            $item instanceof Car => 'car',
+            $item instanceof Yacht => 'yacht',
+            $item instanceof Trip => 'trip',
+            $item instanceof Package => 'package',
+            default => null,
+        };
+        $result = \App\Support\Pricing\PriceEngine::calculate([
+            'service_type' => $service, 'item' => $item, 'start_at' => $start, 'end_at' => $end,
+            'drive_mode' => $driveMode, 'guests' => $guests, 'departure' => $departure,
+        ]);
 
-        if (! $item || ! $start) {
-            return null;
-        }
-
-        $start = Carbon::parse($start);
-        $end = $end ? Carbon::parse($end) : $start->copy();
-        $hours = max(1, (int) ceil($start->diffInMinutes($end) / 60));
-
-        if ($item instanceof Trip) {
-            if ($item->price_unit === 'per_trip') {
-                return ['trip', 1, (float) $item->price, (float) $item->price];
-            }
-            $guests = max(1, (int) $guests);
-
-            return ['guest', $guests, (float) $item->price, round($guests * (float) $item->price, 2)];
-        }
-
-        if ($item instanceof Yacht) {
-            if ($hours >= Rules::pricing('yacht_full_day_from_hours') && $item->full_day_price) {
-                $days = max(1, (int) ceil($hours / 24));
-
-                return ['full_day', $days, (float) $item->full_day_price, round($days * (float) $item->full_day_price, 2)];
-            }
-            if ($hours === Rules::pricing('yacht_half_day_hours') && $item->half_day_price) {
-                return ['half_day', 1, (float) $item->half_day_price, (float) $item->half_day_price];
-            }
-
-            return ['hour', $hours, (float) $item->hourly_price, round($hours * (float) $item->hourly_price, 2)];
-        }
-
-        if ($item instanceof Car) {
-            $days = max(1, (int) ceil($hours / 24));
-
-            if ($driveMode === DriveMode::WithDriver->value) {
-                if ($hours < 24 && $item->chauffeur_hourly_price && (! $item->driver_hours_per_day || $hours < $item->driver_hours_per_day)) {
-                    return ['hour', $hours, (float) $item->chauffeur_hourly_price, round($hours * (float) $item->chauffeur_hourly_price, 2)];
-                }
-
-                return ['day', $days, (float) $item->chauffeur_daily_price, round($days * (float) $item->chauffeur_daily_price, 2)];
-            }
-
-            if ($hours < 24 && $item->hourly_price && $hours < Rules::pricing('hourly_max_hours')) {
-                return ['hour', $hours, (float) $item->hourly_price, round($hours * (float) $item->hourly_price, 2)];
-            }
-            if ($days >= Rules::pricing('monthly_from_days') && $item->monthly_price) {
-                $months = round($days / 30, 2);
-
-                return ['month', $months, (float) $item->monthly_price, round($months * (float) $item->monthly_price, 2)];
-            }
-            if ($days >= Rules::pricing('weekly_from_days') && $item->weekly_price) {
-                $weeks = round($days / 7, 2);
-
-                return ['week', $weeks, (float) $item->weekly_price, round($weeks * (float) $item->weekly_price, 2)];
-            }
-
-            return ['day', $days, (float) $item->daily_price, round($days * (float) $item->daily_price, 2)];
-        }
-
-        return null;
+        return $result ? [$result['rate_type'], $result['quantity'], $result['rate'], $result['base_amount']] : null;
     }
 
     public static function rateLabel(?string $type): string

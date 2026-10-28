@@ -6,6 +6,7 @@ use App\Enums\DriveMode;
 use App\Enums\QuotationStatus;
 use App\Enums\ServiceType;
 use App\Models\Concerns\Audited;
+use App\Models\Concerns\HasPricing;
 use App\Support\Tax;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -20,13 +21,14 @@ use Illuminate\Support\Str;
  */
 class Quotation extends Model
 {
-    use Audited, SoftDeletes;
+    use Audited, HasPricing, SoftDeletes;
 
     protected $guarded = ['id'];
 
     /** Fields that make up the agreed offer; locked while Sent / Accepted. */
     public const PRICE_FIELDS = [
         'service_type', 'bookable_id', 'trip_date_id', 'package_departure_id', 'drive_mode', 'start_at', 'end_at', 'guests',
+        'delivery_method', 'return_method',
         'base_amount', 'extras', 'discount', 'tax_rate', 'tax_inclusive', 'security_deposit', 'advance_required',
     ];
 
@@ -46,6 +48,8 @@ class Quotation extends Model
             'base_amount' => 'decimal:2',
             'extras_amount' => 'decimal:2',
             'discount' => 'decimal:2',
+            'standard_amount' => 'decimal:2',
+            'price_breakdown' => 'array',
             'tax_rate' => 'decimal:2',
             'tax_inclusive' => 'boolean',
             'tax_amount' => 'decimal:2',
@@ -80,7 +84,10 @@ class Quotation extends Model
             }
             if ($q->service_type !== ServiceType::Car) {
                 $q->drive_mode = null;
+                $q->delivery_method = null;
+                $q->return_method = null;
             }
+            $q->applyPricing(); // the server works the price out again (Priority 2.2)
             $q->extras_amount = round(collect($q->extras ?? [])->sum(fn ($line) => (float) ($line['amount'] ?? 0)), 2);
             $net = (float) $q->base_amount + (float) $q->extras_amount - (float) $q->discount;
             [$q->tax_amount, $q->total] = Tax::apply($net, $q->tax_rate !== null ? (float) $q->tax_rate : null, (bool) $q->tax_inclusive);

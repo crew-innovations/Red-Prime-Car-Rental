@@ -47,7 +47,7 @@ class QuotationsTest extends TestCase
 
         Livewire::test(CreateQuotation::class, ['lead' => (string) $lead->id])
             ->assertFormSet(['lead_id' => $lead->id, 'bookable_id' => $car->id, 'base_amount' => 2000.0])
-            ->fillForm(['discount' => 100, 'extras' => [['label' => 'Delivery & pick-up', 'amount' => 150]], 'valid_until' => '2026-11-05', 'terms' => 'Our terms'])
+            ->fillForm(['discount' => 100, 'adjustment_reason' => 'Returning customer', 'extras' => [['label' => 'Delivery & pick-up', 'amount' => 150]], 'valid_until' => '2026-11-05', 'terms' => 'Our terms'])
             ->call('create')
             ->assertHasNoFormErrors();
 
