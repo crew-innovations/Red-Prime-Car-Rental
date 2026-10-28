@@ -213,14 +213,8 @@ class TableExport
         $rows = self::rows($livewire);
 
         $log = function (int $count) use ($model, $title, $format, $context) {
-            AuditLog::create([
-                'user_id' => auth()->id(),
-                'event' => 'export',
-                'auditable_type' => (new $model)->getMorphClass(),
-                'auditable_id' => 0,
-                'new_values' => ['rows' => $count, 'format' => $format, 'list' => $title],
-                'note' => mb_substr('Exported '.$count.' row(s) of '.$title.' as '.strtoupper($format).($context ? ' ('.$context.')' : ''), 0, 255),
-            ]);
+            AuditLog::event('export', 'Exported '.$count.' row(s) of '.$title.' as '.strtoupper($format).($context ? ' ('.$context.')' : ''),
+                ['rows' => $count, 'format' => $format, 'list' => $title], null, (new $model)->getMorphClass());
         };
 
         if ($format === 'csv') {

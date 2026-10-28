@@ -9,3 +9,6 @@ Artisan::command('inspire', function () {
 
 // Driver document expiry reminders (needs the server cron: php artisan schedule:run every minute).
 \Illuminate\Support\Facades\Schedule::command('crm:driver-document-reminders')->dailyAt('08:00');
+
+// Audit log retention (off unless "Keep the audit log for" is set in Business settings).
+\Illuminate\Support\Facades\Schedule::command('crm:prune-audit-log')->dailyAt('03:15');

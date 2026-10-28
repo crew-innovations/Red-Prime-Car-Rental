@@ -492,6 +492,15 @@ class BusinessSettings extends Page implements HasForms
                         Forms\Components\Toggle::make('customer_sees_payments')->label('Customers see their payments and balance'),
                         Forms\Components\Toggle::make('customer_can_upload_documents')->label('Customers can upload documents from their account'),
                     ]),
+                Forms\Components\Section::make('Audit log')
+                    ->description('Every sign-in, change, export and document opening is kept in Settings › Audit log. Lines cannot be edited or deleted from the CRM.')
+                    ->schema([
+                        Forms\Components\TextInput::make('audit_retention_days')
+                            ->label('Keep the audit log for (days)')
+                            ->numeric()->minValue(90)->maxValue(3650)
+                            ->placeholder('Keep forever')
+                            ->helperText('Empty = keep everything. If set (90 days or more), older lines are removed each night.'),
+                    ]),
                 Forms\Components\Section::make('Who can do what')
                     ->description('Super Admin can always do everything. Admin always keeps access to these settings. Drivers only see their own jobs and profile; customers only their own account.')
                     ->columns(2)
@@ -524,7 +533,7 @@ class BusinessSettings extends Page implements HasForms
         'driver_doc_warn_days', 'driver_doc_reminders', 'notify_drivers_by_email', 'notify_staff_by_email',
         // 28 Oct: pricing and sales workflow
         'hourly_increment_minutes', 'price_max_discount_percent', 'booking_requires_accepted_quote', 'doc_block_confirm',
-        'expense_approval_required',
+        'expense_approval_required', 'audit_retention_days',
     ];
 
     public function save(): void
@@ -649,6 +658,12 @@ class BusinessSettings extends Page implements HasForms
             'new_values' => collect($out)->only($changed)->all() ?: null,
             'note' => $changed ? 'Business settings changed: '.Str::limit(implode(', ', $changed), 200) : 'Business settings saved (no changes)',
         ]);
+
+        if (in_array('role_abilities', $changed, true)) {
+            AuditLog::event('permissions', 'Who-can-do-what changed in Business settings', [
+                'before' => $before['role_abilities'] ?? null, 'after' => $out['role_abilities'] ?? null,
+            ]);
+        }
 
         Notification::make()->title('Settings saved')->success()->send();
         $this->mount();

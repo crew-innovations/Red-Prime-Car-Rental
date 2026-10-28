@@ -45,12 +45,25 @@ class AppServiceProvider extends ServiceProvider
             'invoice' => \App\Models\Invoice::class,
         ]);
 
-        // Last login time on the driver / customer / team lists (a quiet save, not in the history).
+        // Last login time on the driver / customer / team lists (a quiet save, not in the history),
+        // and sign-in / sign-out / failed sign-in lines in the audit log (brief 28 Oct-2, Phase 8).
         \Illuminate\Support\Facades\Event::listen(\Illuminate\Auth\Events\Login::class, function ($event) {
             if ($event->user instanceof User) {
                 $event->user->forceFill(['last_login_at' => now()])->saveQuietly();
+                rescue(fn () => \App\Models\AuditLog::event('login', 'Signed in'.($event->remember ? ' (remember me)' : ''), [], null, 'user', $event->user->getKey()), report: false);
             }
         });
+        \Illuminate\Support\Facades\Event::listen(\Illuminate\Auth\Events\Logout::class, function ($event) {
+            if ($event->user instanceof User) {
+                rescue(fn () => \App\Models\AuditLog::event('logout', 'Signed out', [], null, 'user', $event->user->getKey()), report: false);
+            }
+        });
+        \Illuminate\Support\Facades\Event::listen(\Illuminate\Auth\Events\Failed::class, function ($event) {
+            // Only the email typed is kept, never the password.
+            $email = mb_substr((string) ($event->credentials['email'] ?? ''), 0, 120);
+            rescue(fn () => \App\Models\AuditLog::event('login_failed', 'Failed sign-in for '.($email ?: 'unknown email'), ['email' => $email], 'failed', 'user', $event->user?->getKey()), report: false);
+        });
+        $this->app->terminating(fn () => \App\Models\AuditLog::resetRequestId());
 
         // Fail loudly in development if a value is written to a column that does not exist.
         Model::preventSilentlyDiscardingAttributes(! $this->app->isProduction());

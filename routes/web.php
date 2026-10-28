@@ -14,7 +14,18 @@ Route::get('/', fn () => view('public.home'))->name('home');
 Route::get('/crm/private-file/{path}', function (Request $request, string $path) {
     $user = $request->user();
     abort_if(str_contains($path, '..'), 404);
-    abort_unless($user && \App\Support\PrivateFiles::allows($user, $path), 403);
+    $allowed = $user && \App\Support\PrivateFiles::allows($user, $path);
+
+    // Identity papers (customer and driver documents): every opening and every refusal is logged.
+    $doc = \App\Models\CustomerDocument::where('path', $path)->first() ?? \App\Models\DriverDocument::where('path', $path)->first();
+    if ($doc || ! $allowed) {
+        rescue(fn () => \App\Models\AuditLog::create([
+            'event' => 'download', 'outcome' => $allowed ? null : 'denied',
+            'auditable_type' => $doc?->getMorphClass(), 'auditable_id' => $doc?->getKey(),
+            'note' => mb_substr(($allowed ? 'Opened ' : 'Refused: ').($doc ? str_replace('_', ' ', (string) $doc->type).' document' : 'private file').' '.basename($path), 0, 255),
+        ]), report: false);
+    }
+    abort_unless($allowed, 403);
 
     $disk = Storage::disk('private');
     abort_unless($disk->exists($path), 404);

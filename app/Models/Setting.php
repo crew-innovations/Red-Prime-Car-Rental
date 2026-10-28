@@ -52,6 +52,7 @@ class Setting extends Model
         // Sales workflow (28 Oct). Off keeps the way staff worked before.
         'booking_requires_accepted_quote' => false,
         'doc_block_confirm' => false,
+        'audit_retention_days' => null,      // empty = keep the audit log forever (28 Oct-2)
         'expense_approval_required' => true, // expenses from staff without finance rights wait for approval
         // Accounts (26 Oct): who can log in and how invites work
         'agent_own_records_only' => true,

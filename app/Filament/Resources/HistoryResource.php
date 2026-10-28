@@ -24,11 +24,11 @@ class HistoryResource extends Resource
 
     protected static ?string $navigationGroup = 'Settings';
 
-    protected static ?string $navigationLabel = 'History';
+    protected static ?string $navigationLabel = 'Audit log';
 
-    protected static ?string $modelLabel = 'change';
+    protected static ?string $modelLabel = 'log entry';
 
-    protected static ?string $pluralModelLabel = 'History';
+    protected static ?string $pluralModelLabel = 'Audit log';
 
     protected static ?int $navigationSort = 5;
 
@@ -48,7 +48,10 @@ class HistoryResource extends Resource
         'driver_document' => ['Driver document', null],
         'booking_job' => ['Driver job', null],
         'damage_report' => ['Damage report', null],
-        'yacht' => ['Yacht (old)', YachtResource::class],
+        'yacht' => ['Yacht', YachtResource::class],
+        'invoice' => ['Invoice', InvoiceResource::class],
+        'price_rule' => ['Special rate', null],
+        'price_extra' => ['Extra / fee', null],
     ];
 
     public static function canViewAny(): bool
@@ -78,7 +81,13 @@ class HistoryResource extends Resource
 
     public static function recordLabel(AuditLog $log): string
     {
+        if (! $log->auditable_type) {
+            return 'System';
+        }
         $type = self::TYPES[$log->auditable_type][0] ?? ucfirst(str_replace('_', ' ', (string) $log->auditable_type));
+        if (! $log->auditable_id) {
+            return $type.' list';
+        }
         $item = $log->auditable;
         $name = $item ? ($item->reference ?? $item->number ?? $item->name ?? $item->title ?? null) : null;
 
@@ -101,7 +110,8 @@ class HistoryResource extends Resource
             ->modifyQueryUsing(fn (Builder $query) => $query->with(['user', 'auditable']))
             ->columns([
                 Tables\Columns\TextColumn::make('created_at')->label('When')->dateTime('d M Y, H:i')->sortable(),
-                Tables\Columns\TextColumn::make('user.name')->label('Who')->placeholder('System'),
+                Tables\Columns\TextColumn::make('user.name')->label('Who')->placeholder('System')
+                    ->description(fn (AuditLog $record): ?string => $record->role),
                 Tables\Columns\TextColumn::make('record')
                     ->label('Record')
                     ->state(fn (AuditLog $record): string => self::recordLabel($record))
@@ -109,17 +119,24 @@ class HistoryResource extends Resource
                     ->weight('medium'),
                 Tables\Columns\TextColumn::make('event')
                     ->badge()
-                    ->formatStateUsing(fn (string $state): string => ucfirst($state))
-                    ->color(fn (string $state): string => match ($state) {
-                        'created' => 'success',
-                        'deleted' => 'danger',
-                        'override' => 'warning',
+                    ->formatStateUsing(fn (string $state): string => AuditLog::EVENTS[$state] ?? ucfirst(str_replace('_', ' ', $state)))
+                    ->color(fn (string $state, AuditLog $record): string => match (true) {
+                        $record->outcome === 'failed', $record->outcome === 'denied', $state === 'login_failed', $state === 'deleted' => 'danger',
+                        $state === 'created' => 'success',
+                        in_array($state, ['override', 'permissions', 'settings', 'export'], true) => 'warning',
                         default => 'gray',
+                    })
+                    ->description(fn (AuditLog $record): ?string => match ($record->outcome) {
+                        'failed' => 'Failed', 'denied' => 'Refused', default => null,
                     }),
                 Tables\Columns\TextColumn::make('changes')
                     ->label('What changed')
                     ->state(fn (AuditLog $record): HtmlString => new HtmlString(HistoryRelationManager::describe($record)))
+                    ->searchable(query: fn (Builder $query, string $search) => $query->where(fn ($q) => $q->where('note', 'like', "%{$search}%")->orWhere('event', 'like', "%{$search}%")))
                     ->wrap(),
+                Tables\Columns\TextColumn::make('ip_address')->label('IP')->toggleable(isToggledHiddenByDefault: true),
+                Tables\Columns\TextColumn::make('user_agent')->label('Device')->limit(40)->toggleable(isToggledHiddenByDefault: true),
+                Tables\Columns\TextColumn::make('request_id')->label('Request')->limit(8)->toggleable(isToggledHiddenByDefault: true),
             ])
             ->defaultSort('created_at', 'desc')
             ->filters([
@@ -127,7 +144,21 @@ class HistoryResource extends Resource
                     ->label('Record type')
                     ->options(collect(self::TYPES)->map(fn (array $t): string => $t[0])->all()),
                 Tables\Filters\SelectFilter::make('event')
-                    ->options(['created' => 'Created', 'updated' => 'Updated', 'deleted' => 'Deleted', 'restored' => 'Restored', 'override' => 'Override']),
+                    ->label('Action')
+                    ->multiple()
+                    ->options(AuditLog::EVENTS),
+                Tables\Filters\SelectFilter::make('role')
+                    ->options(fn (): array => collect(['Super Admin', ...Access::ROLES, 'Driver', 'Customer'])->mapWithKeys(fn ($r) => [$r => $r])->all()),
+                Tables\Filters\SelectFilter::make('outcome')
+                    ->options(['ok' => 'Done', 'failed' => 'Failed', 'denied' => 'Refused'])
+                    ->query(fn (Builder $query, array $data) => match ($data['value'] ?? null) {
+                        'ok' => $query->whereNull('outcome'),
+                        'failed', 'denied' => $query->where('outcome', $data['value']),
+                        default => $query,
+                    }),
+                Tables\Filters\Filter::make('record')
+                    ->form([\Filament\Forms\Components\TextInput::make('record_id')->label('Record number')->numeric()])
+                    ->query(fn (Builder $query, array $data) => $query->when($data['record_id'] ?? null, fn ($q, $id) => $q->where('auditable_id', $id))),
                 Tables\Filters\SelectFilter::make('user_id')
                     ->label('Who')
                     ->relationship('user', 'name')
@@ -144,7 +175,7 @@ class HistoryResource extends Resource
             ])
             ->paginated([25, 50, 100])
             ->emptyStateIcon('heroicon-o-clock')
-            ->emptyStateHeading('No changes recorded yet');
+            ->emptyStateHeading('Nothing recorded yet');
     }
 
     public static function getPages(): array
