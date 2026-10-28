@@ -40,6 +40,9 @@ class AppServiceProvider extends ServiceProvider
             'driver_document' => \App\Models\DriverDocument::class,
             'booking_job' => \App\Models\BookingJob::class,
             'damage_report' => \App\Models\DamageReport::class,
+            'price_rule' => \App\Models\PriceRule::class,
+            'price_extra' => \App\Models\PriceExtra::class,
+            'invoice' => \App\Models\Invoice::class,
         ]);
 
         // Last login time on the driver / customer / team lists (a quiet save, not in the history).

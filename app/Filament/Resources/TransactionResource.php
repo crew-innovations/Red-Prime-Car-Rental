@@ -197,6 +197,11 @@ class TransactionResource extends Resource
                 self::markPaidAction(),
                 Tables\Actions\EditAction::make()->iconButton(),
                 Tables\Actions\ActionGroup::make([
+                    Tables\Actions\Action::make('receipt')
+                        ->label('Receipt (PDF)')
+                        ->icon('heroicon-o-receipt-percent')
+                        ->visible(fn (Transaction $record): bool => $record->type === \App\Enums\TransactionType::Income && ! $record->is_balance && $record->status === \App\Enums\PaymentStatus::Paid)
+                        ->url(fn (Transaction $record): string => route('pdf.receipt', $record), shouldOpenInNewTab: true),
                     Tables\Actions\ReplicateAction::make()
                         ->label('Duplicate')
                         ->excludeAttributes(['reference', 'deleted_at'])

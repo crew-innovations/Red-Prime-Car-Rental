@@ -46,6 +46,46 @@ class EditBooking extends EditRecord
             BookingActions::recordPayment(Actions\Action::class)->after($after),
             BookingActions::refundDeposit(Actions\Action::class)->after($after),
             BookingActions::whatsapp(Actions\Action::class),
+            // Customer documents (28 Oct): confirmation, invoice, return statement.
+            Actions\ActionGroup::make([
+                Actions\Action::make('confirmationPdf')
+                    ->label('Booking confirmation (PDF)')
+                    ->icon('heroicon-o-document-check')
+                    ->visible(fn (): bool => in_array($this->getRecord()->status, \App\Enums\BookingStatus::billable(), true))
+                    ->url(fn (): string => route('pdf.confirmation', $this->getRecord()), shouldOpenInNewTab: true),
+                Actions\Action::make('issueInvoice')
+                    ->label('Issue invoice')
+                    ->icon('heroicon-o-document-plus')
+                    ->authorize('record-payments')
+                    ->visible(fn (): bool => in_array($this->getRecord()->status, \App\Enums\BookingStatus::billable(), true)
+                        && ! \App\Models\Invoice::where('booking_id', $this->getRecord()->id)->where('type', 'invoice')->where('status', 'issued')->exists())
+                    ->requiresConfirmation()
+                    ->modalDescription(fn (): string => 'Issues an invoice for AED '.number_format($this->getRecord()->amountDue(), 2).' with the next number. It cannot be edited afterwards (void it or add a credit note).'
+                        .(\App\Support\Tax::enabled() ? ' VAT is on: it is a tax invoice with your TRN.' : ' VAT is off: it is not a tax invoice.'))
+                    ->form([\Filament\Forms\Components\Textarea::make('notes')->label('Note on the invoice (optional)')->rows(2)])
+                    ->action(function (array $data) {
+                        try {
+                            $invoice = \App\Models\Invoice::issueFor($this->getRecord(), $data['notes'] ?? null);
+                        } catch (\Illuminate\Validation\ValidationException $e) {
+                            \Filament\Notifications\Notification::make()->title(collect($e->errors())->flatten()->first())->danger()->send();
+
+                            return;
+                        }
+                        \Filament\Notifications\Notification::make()->title('Invoice '.$invoice->number.' issued')
+                            ->actions([\Filament\Notifications\Actions\Action::make('open')->label('Open PDF')->url(route('pdf.invoice', $invoice), shouldOpenInNewTab: true)])
+                            ->success()->persistent()->send();
+                    }),
+                Actions\Action::make('invoicePdf')
+                    ->label('Invoice (PDF)')
+                    ->icon('heroicon-o-document-currency-dollar')
+                    ->visible(fn (): bool => \App\Models\Invoice::where('booking_id', $this->getRecord()->id)->where('type', 'invoice')->where('status', 'issued')->exists())
+                    ->url(fn (): ?string => ($i = \App\Models\Invoice::where('booking_id', $this->getRecord()->id)->where('type', 'invoice')->where('status', 'issued')->latest('id')->first()) ? route('pdf.invoice', $i) : null, shouldOpenInNewTab: true),
+                Actions\Action::make('statementPdf')
+                    ->label(fn (): string => $this->getRecord()->isCar() ? 'Return & damage statement (PDF)' : 'End of service statement (PDF)')
+                    ->icon('heroicon-o-clipboard-document-check')
+                    ->visible(fn (): bool => (bool) $this->getRecord()->delivered_at)
+                    ->url(fn (): string => route('pdf.statement', $this->getRecord()), shouldOpenInNewTab: true),
+            ])->label('Documents')->icon('heroicon-o-document-duplicate')->button()->color('gray'),
             Actions\ActionGroup::make([
                 \App\Filament\Support\DocumentActions::requestLink(Actions\Action::class, fn () => $this->getRecord()->customer, fn () => $this->getRecord()),
                 Actions\Action::make('quotation')

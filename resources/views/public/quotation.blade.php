@@ -138,7 +138,7 @@
     </div>
 
     <div class="no-print" style="display:flex;gap:10px;flex-wrap:wrap">
-        <button class="btn btn-primary" onclick="window.print()">Download PDF</button>
+        <a class="btn btn-primary" href="{{ route('quotations.public.pdf', ['token' => $q->public_token, 'download' => 1]) }}">Download PDF</a>
         @if (! empty($s['company_phone']))
             <a class="btn btn-ghost" href="{{ \App\Support\Phone::whatsappUrl($s['company_phone'], 'Hi, about quotation '.$q->number.': ') }}">Reply on WhatsApp</a>
         @endif

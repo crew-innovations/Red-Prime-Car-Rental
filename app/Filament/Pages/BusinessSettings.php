@@ -129,15 +129,21 @@ class BusinessSettings extends Page implements HasForms
                             ->nestedRecursiveRules(['url', 'max:255']),
                     ]),
                 Forms\Components\Section::make('Company details')
-                    ->description('Shown on quotations, upload pages and messages.')
+                    ->description('Printed on quotations, confirmations, invoices and receipts. The TRN is only printed while VAT is switched on.')
                     ->columns(2)
                     ->schema([
-                        Forms\Components\TextInput::make('company_name')->required()->maxLength(120),
+                        Forms\Components\TextInput::make('company_name')->label('Trading name')->required()->maxLength(120),
+                        Forms\Components\TextInput::make('company_legal_name')->label('Legal name (as on the trade licence)')->maxLength(160),
+                        Forms\Components\TextInput::make('company_trade_licence')->label('Trade licence number')->maxLength(60),
                         Forms\Components\TextInput::make('company_trn')->label('VAT registration number (TRN)')->maxLength(30),
                         Forms\Components\TextInput::make('company_phone')->label('Phone / WhatsApp')->tel()->maxLength(30),
                         Forms\Components\TextInput::make('company_email')->label('Email')->email()->maxLength(120),
                         Forms\Components\Textarea::make('company_address')->label('Address')->rows(2),
                         Forms\Components\Textarea::make('bank_details')->label('Bank details for payment')->rows(3),
+                        Forms\Components\Textarea::make('policy_cancellation')->label('Cancellation and changes (printed on quotations and confirmations)')->rows(3)
+                            ->helperText('Empty = not printed. Your own wording; the CRM does not assume a policy.'),
+                        Forms\Components\Textarea::make('policy_late_return')->label('Late return (printed on quotations and confirmations)')->rows(3)
+                            ->helperText('Empty = not printed.'),
                     ]),
                 Forms\Components\Section::make('WhatsApp messages')
                     ->description($placeholders)
@@ -581,6 +587,7 @@ class BusinessSettings extends Page implements HasForms
 
         foreach ([
             'company_name', 'company_trn', 'company_phone', 'company_email', 'company_address', 'bank_details',
+            'company_legal_name', 'company_trade_licence', 'policy_cancellation', 'policy_late_return',
             'vat_enabled', 'vat_rate', 'vat_inclusive', 'quote_valid_days', 'quote_terms',
             'doc_block_handover', 'upload_link_hours',
             'pending_payment_holds', 'booking_buffer_minutes', 'trip_default_minutes', 'car_default_hours', 'yacht_default_hours',

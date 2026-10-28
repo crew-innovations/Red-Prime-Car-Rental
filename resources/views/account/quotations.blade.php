@@ -11,6 +11,7 @@
                 <div class="rp-acc-right">
                     <x-filament::badge :color="$q->status->getColor()">{{ $q->status->getLabel() }}</x-filament::badge>
                     <div class="rp-acc-muted">AED {{ number_format((float) $q->total, 2) }}</div>
+                    @if (! $q->acceptProblem())<div class="rp-acc-cta">Review &amp; accept →</div>@endif
                 </div>
             </a>
         @empty

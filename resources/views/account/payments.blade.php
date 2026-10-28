@@ -27,7 +27,8 @@
                     <tr>
                         <td>{{ $p->date?->format('d M Y') }} · {{ $p->booking?->reference }}<br>
                             <span class="rp-acc-muted">{{ $p->type === \App\Enums\TransactionType::Expense ? 'Deposit refund' : ($p->category === 'deposit' ? 'Security deposit' : 'Payment') }}{{ $p->method ? ' · '.$p->method->getLabel() : '' }}{{ $p->reference ? ' · ref '.$p->reference : '' }}</span></td>
-                        <td class="r">{{ $p->type === \App\Enums\TransactionType::Expense ? '−' : '' }}AED {{ number_format((float) ($p->amount_paid ?: $p->amount), 2) }}</td>
+                        <td class="r">{{ $p->type === \App\Enums\TransactionType::Expense ? '−' : '' }}AED {{ number_format((float) ($p->amount_paid ?: $p->amount), 2) }}
+                            @if ($p->type === \App\Enums\TransactionType::Income && $p->status === \App\Enums\PaymentStatus::Paid)<br><a class="rp-acc-link" href="{{ route('pdf.receipt', $p) }}" target="_blank" rel="noopener">Receipt</a>@endif</td>
                     </tr>
                 @empty
                     <tr><td class="rp-acc-muted">No payments yet.</td></tr>

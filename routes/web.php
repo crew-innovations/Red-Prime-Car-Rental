@@ -58,6 +58,16 @@ Route::get('/quote/{token}', [QuotationPublicController::class, 'show'])->middle
 Route::post('/quote/{token}/accept', [QuotationPublicController::class, 'accept'])->middleware('throttle:10,1')->name('quotations.public.accept');
 Route::post('/quote/{token}/decline', [QuotationPublicController::class, 'decline'])->middleware('throttle:10,1')->name('quotations.public.decline');
 
+// Customer documents as PDF (28 Oct). Logged-in staff and customers; access checked per record.
+Route::prefix('documents')->middleware('throttle:60,1')->group(function () {
+    Route::get('/quotation/{quotation}', [\App\Http\Controllers\DocumentPdfController::class, 'quotation'])->whereNumber('quotation')->name('pdf.quotation');
+    Route::get('/booking/{booking}/confirmation', [\App\Http\Controllers\DocumentPdfController::class, 'confirmation'])->whereNumber('booking')->name('pdf.confirmation');
+    Route::get('/booking/{booking}/statement', [\App\Http\Controllers\DocumentPdfController::class, 'statement'])->whereNumber('booking')->name('pdf.statement');
+    Route::get('/invoice/{invoice}', [\App\Http\Controllers\DocumentPdfController::class, 'invoice'])->whereNumber('invoice')->name('pdf.invoice');
+    Route::get('/receipt/{transaction}', [\App\Http\Controllers\DocumentPdfController::class, 'receipt'])->whereNumber('transaction')->name('pdf.receipt');
+});
+Route::get('/quote/{token}/pdf', [\App\Http\Controllers\DocumentPdfController::class, 'publicQuotation'])->middleware('throttle:30,1')->name('quotations.public.pdf');
+
 // "Choose your password" link for driver and customer logins (signed, expires, single use).
 Route::get('/invite/{user}', [\App\Http\Controllers\AccountInviteController::class, 'show'])->middleware(['signed:relative', 'throttle:30,1'])->whereNumber('user')->name('account.invite');
 Route::post('/invite/{user}', [\App\Http\Controllers\AccountInviteController::class, 'store'])->middleware(['signed:relative', 'throttle:10,1'])->whereNumber('user')->name('account.invite.store');

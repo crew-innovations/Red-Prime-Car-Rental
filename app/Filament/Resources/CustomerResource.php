@@ -91,6 +91,15 @@ class CustomerResource extends Resource
                                     ->maxLength(255)
                                     ->required(fn (Get $get): bool => $get('type') === CustomerType::Corporate->value)
                                     ->visible(fn (Get $get): bool => $get('type') !== CustomerType::Individual->value),
+                                Forms\Components\TextInput::make('trn')
+                                    ->label('Company TRN (VAT number)')
+                                    ->helperText('Printed on tax invoices to this company.')
+                                    ->maxLength(30)
+                                    ->visible(fn (Get $get): bool => $get('type') !== CustomerType::Individual->value),
+                                Forms\Components\Textarea::make('address')
+                                    ->label('Billing address')
+                                    ->rows(2)
+                                    ->columnSpanFull(),
                                 Forms\Components\TextInput::make('phone')
                                     ->tel()
                                     ->placeholder('+971 50 123 4567')

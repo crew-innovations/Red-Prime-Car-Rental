@@ -10,6 +10,11 @@ step() { echo; echo "==> $1"; }
 
 step "Installing libraries (1-2 minutes)"
 composer install --no-dev --optimize-autoloader --no-scripts --no-interaction
+# PDF library (added 28 Oct). Installed once if the server's lock file does not have it yet.
+if [ ! -d vendor/barryvdh/laravel-dompdf ]; then
+    step "Adding the PDF library (one time)"
+    composer update barryvdh/laravel-dompdf --with-dependencies --no-dev --optimize-autoloader --no-scripts --no-interaction
+fi
 
 step "Registering packages"
 # Old cached config / routes would hide new settings until rebuilt (rebuilt by "optimize" below).

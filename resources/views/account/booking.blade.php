@@ -36,13 +36,35 @@
                         @foreach ($payments as $p)
                             <tr>
                                 <td>{{ $p->date?->format('d M Y') }}<br><span class="rp-acc-muted">{{ $p->type === \App\Enums\TransactionType::Expense ? 'Deposit refund' : ($p->category === 'deposit' ? 'Security deposit' : 'Payment') }}{{ $p->method ? ' · '.$p->method->getLabel() : '' }}</span></td>
-                                <td class="r">{{ $p->type === \App\Enums\TransactionType::Expense ? '−' : '' }}AED {{ number_format((float) ($p->amount_paid ?: $p->amount), 2) }}</td>
+                                <td class="r">{{ $p->type === \App\Enums\TransactionType::Expense ? '−' : '' }}AED {{ number_format((float) ($p->amount_paid ?: $p->amount), 2) }}
+                                    @if ($p->type === \App\Enums\TransactionType::Income && $p->status === \App\Enums\PaymentStatus::Paid)<br><a class="rp-acc-link" href="{{ route('pdf.receipt', $p) }}" target="_blank" rel="noopener">Receipt</a>@endif</td>
                             </tr>
                         @endforeach
                     </table>
                 @endif
             </div>
         @endif
+
+        <div class="rp-acc-card">
+            <div class="rp-acc-label">Progress</div>
+            {!! \App\Support\Sales\Journey::html(collect(\App\Support\Sales\Journey::forBooking($b))->reject(fn ($s) => in_array($s[0], ['Quotation sent'], true))->values()->all()) !!}
+        </div>
+
+        <div class="rp-acc-card">
+            <div class="rp-acc-label">Your documents</div>
+            <div class="rp-acc-links">
+                <a class="rp-acc-link" href="{{ route('pdf.confirmation', $b) }}" target="_blank" rel="noopener">Booking confirmation (PDF)</a>
+                @foreach (\App\Models\Invoice::where('booking_id', $b->id)->where('status', 'issued')->orderBy('id')->get() as $inv)
+                    <a class="rp-acc-link" href="{{ route('pdf.invoice', $inv) }}" target="_blank" rel="noopener">{{ $inv->title() }} {{ $inv->number }} (PDF)</a>
+                @endforeach
+                @if ($b->quotation && $b->quotation->sent_at)
+                    <a class="rp-acc-link" href="{{ route('pdf.quotation', $b->quotation) }}" target="_blank" rel="noopener">Quotation {{ $b->quotation->number }} (PDF)</a>
+                @endif
+                @if ($b->returned_at)
+                    <a class="rp-acc-link" href="{{ route('pdf.statement', $b) }}" target="_blank" rel="noopener">{{ $b->isCar() ? 'Return statement' : 'End of service statement' }} (PDF)</a>
+                @endif
+            </div>
+        </div>
 
         @if ($docs)
             <div class="rp-acc-card">

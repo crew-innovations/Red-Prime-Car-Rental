@@ -426,6 +426,11 @@ class QuotationResource extends Resource
                     $copy->save();
                     $livewire->redirect(self::getUrl('edit', ['record' => $copy]));
                 }),
+            $class::make('pdf')
+                ->label('PDF')
+                ->icon('heroicon-o-arrow-down-tray')
+                ->color('gray')
+                ->url(fn (Quotation $record): string => route('pdf.quotation', $record), shouldOpenInNewTab: true),
             $class::make('preview')
                 ->label('Open customer page')
                 ->icon('heroicon-o-arrow-top-right-on-square')

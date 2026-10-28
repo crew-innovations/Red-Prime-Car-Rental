@@ -30,6 +30,7 @@ class Quotation extends Model
         'service_type', 'bookable_id', 'trip_date_id', 'package_departure_id', 'drive_mode', 'start_at', 'end_at', 'guests',
         'delivery_method', 'return_method', 'crew_mode',
         'base_amount', 'extras', 'discount', 'tax_rate', 'tax_inclusive', 'security_deposit', 'advance_required',
+        'terms', // the terms the customer accepts are locked with the price (28 Oct)
     ];
 
     protected $attributes = ['status' => 'draft'];
