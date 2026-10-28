@@ -9,12 +9,13 @@ cd "$(dirname "$0")/.."
 step() { echo; echo "==> $1"; }
 
 step "Installing libraries (1-2 minutes)"
-composer install --no-dev --optimize-autoloader --no-scripts --no-interaction
-# PDF library (added 28 Oct). Installed once if the server's lock file does not have it yet.
-if [ ! -d vendor/barryvdh/laravel-dompdf ]; then
+# PDF library (added 28 Oct). Added to the server's lock file once, before "install"
+# (install refuses a composer.json that asks for a package the lock file lacks).
+if ! grep -q '"name": "barryvdh/laravel-dompdf"' composer.lock 2>/dev/null; then
     step "Adding the PDF library (one time)"
     composer update barryvdh/laravel-dompdf --with-dependencies --no-dev --optimize-autoloader --no-scripts --no-interaction
 fi
+composer install --no-dev --optimize-autoloader --no-scripts --no-interaction
 
 step "Registering packages"
 # Old cached config / routes would hide new settings until rebuilt (rebuilt by "optimize" below).
