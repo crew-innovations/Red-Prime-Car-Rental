@@ -21,6 +21,7 @@ class BookingJob extends Model
     public const TYPES = [
         'delivery' => 'Delivery',
         'collection' => 'Collection',
+        'charter' => 'Charter',
     ];
 
     /** Steps a driver can be allowed to set (Business settings › Drivers). */
@@ -43,6 +44,7 @@ class BookingJob extends Model
     {
         return [
             'scheduled_at' => 'datetime',
+            'ends_at' => 'datetime',
             'status_at' => 'datetime',
             'acknowledged_at' => 'datetime',
             'assigned_at' => 'datetime',
@@ -88,6 +90,9 @@ class BookingJob extends Model
 
     public function typeLabel(): string
     {
+        if ($this->type === 'charter') {
+            return $this->role === 'captain' ? 'Charter · captain' : 'Charter · crew';
+        }
         $booking = $this->booking;
         if ($booking && $booking->drive_mode === \App\Enums\DriveMode::WithDriver) {
             return $this->type === 'delivery' ? 'Chauffeur start' : 'Chauffeur end';

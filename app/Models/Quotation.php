@@ -28,7 +28,7 @@ class Quotation extends Model
     /** Fields that make up the agreed offer; locked while Sent / Accepted. */
     public const PRICE_FIELDS = [
         'service_type', 'bookable_id', 'trip_date_id', 'package_departure_id', 'drive_mode', 'start_at', 'end_at', 'guests',
-        'delivery_method', 'return_method',
+        'delivery_method', 'return_method', 'crew_mode',
         'base_amount', 'extras', 'discount', 'tax_rate', 'tax_inclusive', 'security_deposit', 'advance_required',
     ];
 
@@ -89,6 +89,14 @@ class Quotation extends Model
                 $q->delivery_method = null;
                 $q->return_method = null;
             }
+            if ($q->service_type === ServiceType::Yacht) {
+                $q->crew_mode ??= 'with_crew';
+                if ($q->crew_mode === 'bareboat' && ! Yacht::withTrashed()->find($q->bookable_id)?->bareboat_allowed) {
+                    throw \Illuminate\Validation\ValidationException::withMessages(['data.crew_mode' => 'This yacht is not allowed without crew.']);
+                }
+            } else {
+                $q->crew_mode = null;
+            }
             $q->applyPricing(); // the server works the price out again (Priority 2.2)
             $q->extras_amount = round(collect($q->extras ?? [])->sum(fn ($line) => (float) ($line['amount'] ?? 0)), 2);
             $net = (float) $q->base_amount + (float) $q->extras_amount - (float) $q->discount;
@@ -122,7 +130,7 @@ class Quotation extends Model
     /** Documents the customer needs for this offer (same rules as bookings). */
     public function documentChecklist(): array
     {
-        $types = Booking::requiredTypesFor(Booking::documentKindsFor($this->service_type, $this->drive_mode, $this->customer));
+        $types = Booking::requiredTypesFor(Booking::documentKindsFor($this->service_type, $this->drive_mode, $this->customer, $this->crew_mode));
 
         return Booking::checklistFor($this->customer_id, $types, $this->start_at);
     }

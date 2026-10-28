@@ -263,6 +263,42 @@ class Availability
         return null;
     }
 
+    /**
+     * Any work clash for a person of the driver module (28 Oct): car jobs as a
+     * driver, plus yacht charters as captain or crew. Returns the other booking.
+     */
+    public static function personConflict(int $userId, $start, $end, ?int $ignoreBookingId = null, DriveMode|string|null $driveMode = DriveMode::WithDriver): ?Booking
+    {
+        if ($clash = self::driverConflict($userId, $start, $end, $ignoreBookingId, $driveMode)) {
+            return $clash;
+        }
+        if (! $start) {
+            return null;
+        }
+        $start = Carbon::parse($start);
+        $end = $end ? Carbon::parse($end) : $start->copy();
+        $gap = max(0, (int) \App\Models\Setting::read('driver_job_gap_minutes', 90));
+        $mine = self::driverWindows($start, $end, $driveMode);
+
+        $charters = self::latest(Booking::query())->blocking()
+            ->where('service_type', 'yacht')
+            ->where(fn (Builder $q) => $q->where('captain_id', $userId)->orWhereJsonContains('crew_ids', $userId))
+            ->where('start_at', '<', $end->copy()->addMinutes($gap))
+            ->where('end_at', '>', $start->copy()->subMinutes($gap))
+            ->when($ignoreBookingId, fn (Builder $q) => $q->whereKeyNot($ignoreBookingId))
+            ->orderBy('start_at')
+            ->get();
+        foreach ($charters as $other) {
+            foreach ($mine as $a) {
+                if (self::windowsClash($a, [$other->start_at, $other->end_at], $gap)) {
+                    return $other;
+                }
+            }
+        }
+
+        return null;
+    }
+
     /** [[from, to], …] when the driver is needed. A point (delivery / collection) has from = to. */
     public static function driverWindows($start, $end, DriveMode|string|null $driveMode): array
     {

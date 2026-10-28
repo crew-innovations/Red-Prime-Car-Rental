@@ -34,7 +34,7 @@ class DriverResource extends Resource
 
     protected static ?string $navigationGroup = 'Operations';
 
-    protected static ?string $navigationLabel = 'Drivers';
+    protected static ?string $navigationLabel = 'Drivers & crew';
 
     protected static ?string $modelLabel = 'driver';
 
@@ -94,6 +94,13 @@ class DriverResource extends Resource
                         ->columns(2)
                         ->collapsible()
                         ->schema([
+                            Forms\Components\CheckboxList::make('work_types')
+                                ->label('Can work as')
+                                ->options(\App\Models\DriverProfile::WORK_TYPES)
+                                ->default(['driver'])
+                                ->helperText('Captains and crew can be put on yacht charters. Nothing ticked = driver.')
+                                ->columns(3)
+                                ->columnSpanFull(),
                             Forms\Components\TextInput::make('legal_name')->label('Full legal name (as on passport)')->maxLength(255)->required(self::req('legal_name')),
                             Forms\Components\DatePicker::make('date_of_birth')->native(false)->displayFormat('d M Y')->maxDate(today())->required(self::req('date_of_birth')),
                             Forms\Components\TextInput::make('nationality')->maxLength(80)->datalist(['United Arab Emirates', 'Pakistan', 'India', 'Philippines', 'Bangladesh', 'Egypt', 'Nepal', 'Sri Lanka'])->required(self::req('nationality')),

@@ -209,6 +209,51 @@ class DriverJob extends Page
             });
     }
 
+    public function startCharterAction(): Action
+    {
+        return Action::make('startCharter')
+            ->label('Start the charter')
+            ->icon('heroicon-o-play')
+            ->size(ActionSize::ExtraLarge)
+            ->extraAttributes(['class' => 'rp-dv-bigbtn'])
+            ->visible(fn (): bool => DriverWork::canStartCharter($this->record))
+            ->modalHeading('Start · '.($this->booking()?->bookable?->name ?? 'yacht'))
+            ->modalDescription('Guests are on board and you are leaving. The office records any payment.')
+            ->modalSubmitActionLabel('Start now')
+            ->form([
+                Forms\Components\TextInput::make('guests')->label('Guests on board')->numeric()->minValue(1)
+                    ->default(fn () => $this->booking()?->guests),
+                Forms\Components\Textarea::make('notes')->label('Notes')->rows(2),
+            ])
+            ->action(function (array $data, Action $action): void {
+                $this->runSafely($action, fn () => DriverWork::startCharter($this->record->refresh(), auth()->user(), $data));
+                Notification::make()->title('Charter started')->body('The office has been told. Have a good trip.')->success()->send();
+                $this->record->refresh();
+            });
+    }
+
+    public function finishCharterAction(): Action
+    {
+        return Action::make('finishCharter')
+            ->label('Finish the charter')
+            ->icon('heroicon-o-flag')
+            ->size(ActionSize::ExtraLarge)
+            ->extraAttributes(['class' => 'rp-dv-bigbtn'])
+            ->visible(fn (): bool => DriverWork::canFinishCharter($this->record))
+            ->modalHeading('Finish · '.($this->booking()?->bookable?->name ?? 'yacht'))
+            ->modalDescription('Back at the marina. The office closes the booking and any charges.')
+            ->modalSubmitActionLabel('Save')
+            ->form([
+                Forms\Components\Textarea::make('notes')->label('Notes (fuel, extra time, anything to know)')->rows(3),
+                Forms\Components\Textarea::make('damage')->label('Damage or problems (if any)')->rows(2),
+            ])
+            ->action(function (array $data, Action $action): void {
+                $this->runSafely($action, fn () => DriverWork::finishCharter($this->record->refresh(), auth()->user(), $data));
+                Notification::make()->title('Charter finished')->body('The office will close it.')->success()->send();
+                $this->record->refresh();
+            });
+    }
+
     public function damageAction(): Action
     {
         return Action::make('damage')

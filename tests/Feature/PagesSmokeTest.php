@@ -100,11 +100,11 @@ class PagesSmokeTest extends TestCase
         }
     }
 
-    public function test_new_yachts_cannot_be_added_but_old_ones_still_open(): void
+    public function test_yachts_can_be_added_again_and_old_ones_open(): void
     {
-        // RED PRIME does not own yachts (Oct 2026): no new yacht records, old ones stay viewable.
+        // Charters were stopped on 21 Oct and are back from 28 Oct (Bilal).
         $this->actingAs($this->user('Super Admin'));
-        $this->get('/crm/yachts/create')->assertForbidden();
+        $this->get('/crm/yachts/create')->assertOk();
         $this->get('/crm/yachts/'.Yacht::first()->id.'/edit')->assertOk();
     }
 

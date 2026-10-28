@@ -31,6 +31,7 @@ class Yacht extends Model implements HasMedia
             'amenities' => 'array',
             'specifications' => 'array',
             'additional_charges' => 'array',
+            'bareboat_allowed' => 'boolean',
             'hourly_price' => 'decimal:2',
             'half_day_price' => 'decimal:2',
             'full_day_price' => 'decimal:2',

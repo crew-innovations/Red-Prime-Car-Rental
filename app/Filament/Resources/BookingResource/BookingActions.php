@@ -463,15 +463,29 @@ class BookingActions
     {
         $usual = $carId ? Car::find($carId)?->drivers()->pluck('users.id')->all() ?? [] : [];
 
-        return User::role('Driver')->where('is_active', true)->orderBy('name')->get()
+        return User::role('Driver')->with('driverProfile')->where('is_active', true)->orderBy('name')->get()
+            ->filter(fn (User $u) => ! $u->driverProfile || $u->driverProfile->does('driver'))
             ->sortBy(fn (User $u) => in_array($u->id, $usual, true) ? 0 : 1, SORT_REGULAR)
             ->mapWithKeys(function (User $u) use ($usual, $start, $end, $driveMode, $ignoreBookingId) {
-                $clash = $start ? Availability::driverConflict($u->id, $start, $end ?: $start, $ignoreBookingId, $driveMode ?: DriveMode::SelfDrive->value) : null;
+                $clash = $start ? Availability::personConflict($u->id, $start, $end ?: $start, $ignoreBookingId, $driveMode ?: DriveMode::SelfDrive->value) : null;
 
                 return [$u->id => $u->name
                     .(in_array($u->id, $usual, true) ? ' ★ usual driver' : '')
                     .($u->phone ? ' · '.$u->phone : '')
                     .($clash ? self::BUSY.$clash->reference.' '.$clash->start_at->format('d M H:i') : '')];
+            })
+            ->all();
+    }
+
+    /** Captains (role "captain") or crew (crew or captain) for a charter, busy ones marked. */
+    public static function crewOptions(string $role, $start = null, $end = null, ?int $ignoreBookingId = null): array
+    {
+        return User::role('Driver')->with('driverProfile')->where('is_active', true)->orderBy('name')->get()
+            ->filter(fn (User $u) => $u->driverProfile && ($u->driverProfile->does($role) || ($role === 'crew' && $u->driverProfile->does('captain'))))
+            ->mapWithKeys(function (User $u) use ($start, $end, $ignoreBookingId) {
+                $clash = $start ? Availability::personConflict($u->id, $start, $end ?: $start, $ignoreBookingId, DriveMode::WithDriver) : null;
+
+                return [$u->id => $u->name.($u->phone ? ' · '.$u->phone : '').($clash ? self::BUSY.$clash->reference.' '.$clash->start_at->format('d M H:i') : '')];
             })
             ->all();
     }

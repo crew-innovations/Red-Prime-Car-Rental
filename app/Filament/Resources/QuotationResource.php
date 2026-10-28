@@ -147,6 +147,14 @@ class QuotationResource extends Resource
                                 ->live()
                                 ->afterStateUpdated(fn (Get $get, Set $set) => self::recalculate($get, $set))
                                 ->visible($isCar),
+                            Forms\Components\ToggleButtons::make('crew_mode')
+                                ->label('Crew')
+                                ->options(['with_crew' => 'With captain & crew', 'bareboat' => 'Without crew (bareboat)'])
+                                ->default('with_crew')
+                                ->inline()
+                                ->live()
+                                ->disableOptionWhen(fn (string $value, Get $get): bool => $value === 'bareboat' && ! (BookingResource::findItem(ServiceType::Yacht->value, $get('bookable_id'))?->bareboat_allowed))
+                                ->visible(fn (Get $get): bool => $get('service_type') === ServiceType::Yacht->value),
                             Forms\Components\Select::make('trip_date_id')
                                 ->label('Trip date')
                                 ->options(fn (Get $get): array => BookingResource::tripDateOptions($get('bookable_id')))
@@ -533,6 +541,7 @@ class QuotationResource extends Resource
                             'trip_date_id' => $record->trip_date_id,
                             'package_departure_id' => $record->package_departure_id,
                             'drive_mode' => $record->drive_mode,
+                            'crew_mode' => $record->crew_mode,
                             'start_at' => $record->start_at,
                             'end_at' => $record->end_at,
                             'guests' => $record->guests,

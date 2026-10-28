@@ -16,12 +16,15 @@
                 <span class="rp-dv-badge rp-dv-{{ $job->type }}">{{ $job->typeLabel() }}</span>
                 <span class="rp-dv-badge rp-dv-s-{{ $job->statusColor() }}">{{ $job->statusLabel() }}</span>
             </div>
-            <div class="rp-dv-when">{{ $job->scheduled_at->format('D d M') }} · <strong>{{ $job->scheduled_at->format('H:i') }}</strong></div>
-            <div class="rp-dv-car">{{ $car?->name ?? 'Car' }}@if ($car?->registration_number) <span class="rp-dv-plate">{{ $car->registration_number }}</span>@endif</div>
+            <div class="rp-dv-when">{{ $job->scheduled_at->format('D d M') }} · <strong>{{ $job->scheduled_at->format('H:i') }}</strong>@if ($job->ends_at) – <strong>{{ $job->ends_at->format('H:i') }}</strong>@endif</div>
+            <div class="rp-dv-car">{{ $car?->name ?? ($job->type === 'charter' ? 'Yacht' : 'Car') }}@if ($car?->registration_number) <span class="rp-dv-plate">{{ $car->registration_number }}</span>@endif</div>
+            @if ($job->type === 'charter')
+                <div class="rp-dv-meta">{{ $b?->guests ? $b->guests.' guests' : 'Guests not set' }}@if ($car?->max_guests) · max {{ $car->max_guests }}@endif @if ($b?->captain) · captain {{ $b->captain->name }}@endif @if ($b?->crew_ids) · crew {{ $b->crewMembers()->pluck('name')->implode(', ') }}@endif</div>
+            @endif
         </div>
 
         <div class="rp-dv-section">
-            <div class="rp-dv-label">{{ $job->type === 'delivery' ? 'Deliver to' : 'Collect from' }}</div>
+            <div class="rp-dv-label">{{ match ($job->type) { 'delivery' => 'Deliver to', 'charter' => 'Marina / meeting point', default => 'Collect from' } }}</div>
             <div class="rp-dv-value">{{ $job->address ?: 'Address not set yet: call the office' }}</div>
             @if ($map)
                 <a class="rp-dv-link" href="{{ $map }}" target="_blank" rel="noopener"><x-filament::icon icon="heroicon-m-map" class="h-4 w-4" /> Open in maps</a>
@@ -50,7 +53,7 @@
         @endif
 
         @if ($job->isOpen())
-            @php($list = (array) \App\Models\Setting::read($job->type === 'delivery' ? 'handover_checklist' : 'return_checklist', []))
+            @php($list = $job->type === 'charter' ? [] : (array) \App\Models\Setting::read($job->type === 'delivery' ? 'handover_checklist' : 'return_checklist', []))
             @if ($list)
                 <div class="rp-dv-section">
                     <div class="rp-dv-label">You will check</div>
@@ -80,7 +83,7 @@
                     {{ \App\Models\BookingJob::DRIVER_STEPS[$step] }}
                 </x-filament::button>
             @endforeach
-            @foreach ([$this->handoverAction, $this->collectAction, $this->damageAction] as $action)
+            @foreach ([$this->handoverAction, $this->collectAction, $this->startCharterAction, $this->finishCharterAction, $this->damageAction] as $action)
                 @if ($action->isVisible())
                     {{ $action }}
                 @endif
@@ -89,6 +92,9 @@
 
         @if ($job->type === 'delivery' && $job->isOpen() && ! \App\Support\Drivers\DriverWork::canHandOver($job))
             <p class="rp-dv-meta">The handover button appears once the office has confirmed the booking.</p>
+        @endif
+        @if ($job->type === 'charter' && $job->role === 'crew' && $job->isOpen())
+            <p class="rp-dv-meta">The captain starts and finishes the charter.</p>
         @endif
         @if ($job->type === 'collection' && $job->isOpen() && ! \App\Support\Drivers\DriverWork::canCollect($job))
             <p class="rp-dv-meta">The collection button appears once the car has been handed over.</p>

@@ -24,6 +24,7 @@ class DriverDocument extends Model
         'emirates_id' => 'Emirates ID / national ID',
         'visa' => 'Visa / residency',
         'licence' => 'Driving licence',
+        'captain_licence' => 'Captain / boat master licence',
         'permit' => 'Permit / certificate',
         'other' => 'Other document',
     ];

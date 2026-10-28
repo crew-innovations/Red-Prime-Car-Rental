@@ -174,13 +174,12 @@ class TripsAndPackagesTest extends TestCase
         $this->assertSame(2, $d->fresh()->bookedGuests());
     }
 
-    public function test_new_records_cannot_pick_yacht_charter_but_old_ones_keep_it(): void
+    public function test_yacht_charter_is_offered_again_with_the_same_pipeline_keys(): void
     {
-        $this->assertArrayNotHasKey('yacht', ServiceType::pickerOptions());
+        $this->assertArrayHasKey('yacht', ServiceType::pickerOptions());
         $this->assertArrayHasKey('package', ServiceType::pickerOptions());
-        $this->assertArrayHasKey('yacht', ServiceType::pickerOptions(ServiceType::Yacht));
-        $this->assertSame('Yacht Trips', Pipeline::Yacht->getLabel());
-        $this->assertSame('Trip Selected', Pipeline::Yacht->stageLabel('yacht_selected'), 'only the label changed; the stage key is the same');
+        $this->assertSame('Yachts & Trips', Pipeline::Yacht->getLabel());
+        $this->assertSame('Yacht / Trip Selected', Pipeline::Yacht->stageLabel('yacht_selected'), 'only labels changed; the stage keys are the same');
     }
 
     public function test_package_section_switch_hides_packages_from_the_website(): void

@@ -22,7 +22,7 @@ enum Pipeline: string implements HasLabel, HasColor, HasIcon
     {
         return match ($this) {
             self::Car => 'Car Rental',
-            self::Yacht => 'Yacht Trips',
+            self::Yacht => 'Yachts & Trips',
             self::B2b => 'B2B',
         };
     }
@@ -65,12 +65,12 @@ enum Pipeline: string implements HasLabel, HasColor, HasIcon
             self::Yacht => [
                 'new' => 'New Lead',
                 'requirements_confirmed' => 'Requirements Confirmed',
-                'yacht_selected' => 'Trip Selected',
+                'yacht_selected' => 'Yacht / Trip Selected',
                 'availability_confirmed' => 'Availability Confirmed',
                 'quotation_sent' => 'Quotation Sent',
                 'deposit_pending' => 'Deposit Pending',
                 'confirmed' => 'Confirmed',
-                'charter_completed' => 'Trip Completed',
+                'charter_completed' => 'Completed',
                 'balance_paid' => 'Balance Paid',
             ],
             self::B2b => [

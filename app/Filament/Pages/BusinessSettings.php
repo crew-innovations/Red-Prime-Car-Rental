@@ -46,7 +46,8 @@ class BusinessSettings extends Page implements HasForms
     public const KINDS = [
         'self_drive' => 'Car, self-drive',
         'with_driver' => 'Car, with driver',
-        'yacht' => 'Yacht charter (old bookings only)',
+        'yacht' => 'Yacht charter',
+        'bareboat' => 'Extra for yacht charter without crew (bareboat)',
         'trip' => 'Yacht trip',
         'package' => 'Trip / package',
         'corporate' => 'Extra for company / agency customers',
@@ -176,8 +177,7 @@ class BusinessSettings extends Page implements HasForms
                 Forms\Components\Section::make('Price suggestions')
                     ->description('Which rate the CRM suggests on bookings and quotations. Staff can always change the price.')
                     ->columns(3)
-                    // Yacht charter thresholds are no longer shown (charters stopped); stored values stay.
-                    ->schema(collect(Rules::PRICING)->reject(fn ($meta, $key) => str_starts_with($key, 'yacht_'))->map(fn ($meta, $key) => Forms\Components\TextInput::make($key)
+                    ->schema(collect(Rules::PRICING)->map(fn ($meta, $key) => Forms\Components\TextInput::make($key)
                         ->label($meta[0])
                         ->numeric()->minValue(1)->maxValue(365)->suffix($meta[1])->required())->values()->push(
                             Forms\Components\Select::make('hourly_increment_minutes')

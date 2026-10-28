@@ -9,8 +9,8 @@ use Filament\Support\Contracts\HasLabel;
 enum ServiceType: string implements HasLabel, HasColor, HasIcon
 {
     /*
-     * Yacht = private yacht charter. RED PRIME no longer offers charters (Oct 2026):
-     * the value stays only so old charter bookings keep working and showing.
+     * Yacht = private yacht charter (the whole yacht for some hours or days).
+     * Stopped on 21 Oct and offered again from 28 Oct (Bilal).
      */
     case Car = 'car';
     case Yacht = 'yacht';
@@ -22,7 +22,7 @@ enum ServiceType: string implements HasLabel, HasColor, HasIcon
     {
         return match ($this) {
             self::Car => 'Car Rental',
-            self::Yacht => 'Yacht Charter (old)',
+            self::Yacht => 'Yacht Charter',
             self::Trip => 'Yacht Trip',
             self::Package => 'Trip / Package',
             self::Other => 'Other',
@@ -54,7 +54,7 @@ enum ServiceType: string implements HasLabel, HasColor, HasIcon
     /** Services staff can pick for a new lead / quotation / booking. */
     public static function offered(): array
     {
-        return [self::Car, self::Trip, self::Package];
+        return [self::Car, self::Yacht, self::Trip, self::Package];
     }
 
     /** Options for a picker: the offered services, plus the record's own (legacy) service. */

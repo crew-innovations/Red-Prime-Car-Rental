@@ -44,6 +44,90 @@ class DriverWork
             && $job->booking?->status === BookingStatus::InProgress;
     }
 
+    /** Captain starts the charter (guests on board): the booking becomes In progress. */
+    public static function canStartCharter(BookingJob $job): bool
+    {
+        return $job->type === 'charter' && $job->role === 'captain' && $job->isOpen()
+            && in_array($job->booking?->status, [BookingStatus::Confirmed, BookingStatus::PendingPayment], true);
+    }
+
+    /** Captain ends the charter; the office then closes it (extra charges, payment, deposit). */
+    public static function canFinishCharter(BookingJob $job): bool
+    {
+        return $job->type === 'charter' && $job->role === 'captain' && $job->isOpen()
+            && $job->booking?->status === BookingStatus::InProgress;
+    }
+
+    public static function startCharter(BookingJob $job, User $captain, array $data): void
+    {
+        self::ownJob($job, $captain);
+        if (! self::canStartCharter($job)) {
+            throw ValidationException::withMessages(['data' => 'This charter can no longer be started from here. Please call the office.']);
+        }
+        $booking = $job->booking;
+        if ($blockers = BookingActions::handoverBlockers($booking)) {
+            throw ValidationException::withMessages(['data' => 'The office needs to sort this first: '.implode(' ', $blockers)]);
+        }
+        $guests = isset($data['guests']) && $data['guests'] !== '' ? (int) $data['guests'] : null;
+        if ($guests !== null && $booking->bookable?->max_guests && $guests > $booking->bookable->max_guests) {
+            throw ValidationException::withMessages(['data.guests' => 'More guests than this yacht may take ('.$booking->bookable->max_guests.'). Call the office before leaving.']);
+        }
+
+        DB::transaction(function () use ($job, $booking, $data, $guests, $captain) {
+            $fresh = Booking::whereKey($booking->id)->lockForUpdate()->first();
+            if (! in_array($fresh->status, [BookingStatus::Confirmed, BookingStatus::PendingPayment], true)) {
+                throw ValidationException::withMessages(['data' => 'This charter was already started or changed by the office.']);
+            }
+            // No money here: payments, deposits and charges stay with the office.
+            BookingFlow::deliver($fresh, [
+                'delivered_at' => now(),
+                'delivery_notes' => trim('Charter started by '.$captain->name.($guests !== null ? ' · '.$guests.' guests on board' : '').(filled($data['notes'] ?? null) ? "\n".$data['notes'] : '')),
+            ]);
+            $job->refresh()->update([
+                'status' => 'arrived',
+                'status_at' => now(),
+                'acknowledged_at' => $job->acknowledged_at ?? now(),
+                'inspection' => array_filter(['started_at' => now()->toDateTimeString(), 'guests' => $guests, 'start_notes' => $data['notes'] ?? null], fn ($v) => $v !== null && $v !== ''),
+            ]);
+        });
+
+        Notify::staff('operate-fleet', 'Charter started: '.$booking->reference, ($booking->bookable?->name ?? 'Yacht').' · captain '.$captain->name,
+            BookingResource::getUrl('edit', ['record' => $booking]), $booking->assignee, 'success');
+    }
+
+    public static function finishCharter(BookingJob $job, User $captain, array $data): void
+    {
+        self::ownJob($job, $captain);
+        if (! self::canFinishCharter($job)) {
+            throw ValidationException::withMessages(['data' => 'This charter can no longer be finished from here. Please call the office.']);
+        }
+        $booking = $job->booking;
+        $report = null;
+
+        DB::transaction(function () use ($job, $booking, $data, $captain, &$report) {
+            $job = BookingJob::whereKey($job->id)->lockForUpdate()->first();
+            if (! $job->isOpen()) {
+                throw ValidationException::withMessages(['data' => 'This charter was already finished.']);
+            }
+            if (filled($data['damage'] ?? null)) {
+                $report = DamageReport::create(['booking_id' => $booking->id, 'booking_job_id' => $job->id, 'reported_by' => $captain->id,
+                    'stage' => 'collection', 'description' => $data['damage'], 'status' => 'open']);
+            }
+            $job->update([
+                'status' => 'done', 'status_at' => now(), 'done_at' => now(), 'done_by' => $captain->id,
+                'inspection' => array_merge((array) $job->inspection, array_filter(['ended_at' => now()->toDateTimeString(), 'end_notes' => $data['notes'] ?? null, 'damage' => $data['damage'] ?? null])),
+            ]);
+            // The crew's charter jobs end with the captain's.
+            $booking->jobs()->where('type', 'charter')->whereKeyNot($job->id)->open()->update(['status' => 'done', 'status_at' => now(), 'done_at' => now(), 'done_by' => $captain->id]);
+        });
+
+        Notify::staff('operate-fleet', 'Charter finished: '.$booking->reference, 'Captain '.$captain->name.'. Please close it (extra charges, payment, deposit).'.($report ? ' Damage was reported.' : ''),
+            BookingResource::getUrl('edit', ['record' => $booking]), $booking->assignee, $report ? 'danger' : 'warning');
+        if ($report) {
+            self::tellDamage($report);
+        }
+    }
+
     /** Hand the car over. Returns nothing; throws ValidationException with a plain message when something is missing. */
     public static function handOver(BookingJob $job, User $driver, array $data): void
     {

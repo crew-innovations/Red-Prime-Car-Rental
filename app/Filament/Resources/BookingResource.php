@@ -258,18 +258,46 @@ class BookingResource extends Resource
                         if (! $value || ! $get('start_at') || ! $get('end_at') || ! in_array($get('status'), array_map(fn ($s) => $s->value, BookingStatus::blocking()), true)) {
                             return;
                         }
-                        $clash = Availability::driverConflict((int) $value, $get('start_at'), $get('end_at'), $record?->getKey(), $get('drive_mode'));
+                        $clash = Availability::personConflict((int) $value, $get('start_at'), $get('end_at'), $record?->getKey(), $get('drive_mode'));
                         if ($clash) {
                             $fail("This driver is already busy on {$clash->reference} (".$clash->start_at->format('d M H:i').' – '.$clash->end_at->format('d M H:i').').');
                         }
                     }])
                     ->visible(fn (Get $get): bool => $get('service_type') === ServiceType::Car->value),
 
+                // Private yacht charters (28 Oct): captain and crew from Drivers & crew.
+                Forms\Components\ToggleButtons::make('crew_mode')
+                    ->label('Crew')
+                    ->options(['with_crew' => 'With captain & crew', 'bareboat' => 'Without crew (bareboat)'])
+                    ->icons(['with_crew' => 'heroicon-m-user-group', 'bareboat' => 'heroicon-m-key'])
+                    ->default('with_crew')
+                    ->inline()
+                    ->live()
+                    ->disableOptionWhen(fn (string $value, Get $get): bool => $value === 'bareboat' && ! (self::findItem(ServiceType::Yacht->value, $get('bookable_id'))?->bareboat_allowed))
+                    ->helperText('Bareboat only where the yacht is set up for it (licensed customer, allowed by the owner).')
+                    ->visible(fn (Get $get): bool => $get('service_type') === ServiceType::Yacht->value)
+                    ->columnSpanFull(),
+                Forms\Components\Select::make('captain_id')
+                    ->label('Captain')
+                    ->options(fn (Get $get, ?Booking $record): array => BookingActions::crewOptions('captain', $get('start_at'), $get('end_at'), $record?->getKey()))
+                    ->disableOptionWhen(fn (string $label): bool => str_contains($label, BookingActions::BUSY))
+                    ->searchable()
+                    ->placeholder('Assign later')
+                    ->helperText(fn (): ?string => BookingActions::crewOptions('captain') ? null : 'Mark people as Captain under Operations › Drivers & crew.')
+                    ->visible(fn (Get $get): bool => $get('service_type') === ServiceType::Yacht->value && $get('crew_mode') !== 'bareboat'),
+                Forms\Components\Select::make('crew_ids')
+                    ->label('Crew')
+                    ->multiple()
+                    ->options(fn (Get $get, ?Booking $record): array => collect(BookingActions::crewOptions('crew', $get('start_at'), $get('end_at'), $record?->getKey()))->except([(int) $get('captain_id')])->all())
+                    ->disableOptionWhen(fn (string $label): bool => str_contains($label, BookingActions::BUSY))
+                    ->visible(fn (Get $get): bool => $get('service_type') === ServiceType::Yacht->value && $get('crew_mode') !== 'bareboat'),
+
                 Forms\Components\Textarea::make('driver_instructions')
-                    ->label('Instructions for the driver')
+                    ->label(fn (Get $get): string => $get('service_type') === ServiceType::Yacht->value ? 'Instructions for the crew' : 'Instructions for the driver')
                     ->placeholder('Gate code, parking, who to call, child seat…')
                     ->rows(2)
-                    ->visible(fn (Get $get): bool => $get('service_type') === ServiceType::Car->value && filled($get('driver_id')))
+                    ->visible(fn (Get $get): bool => ($get('service_type') === ServiceType::Car->value && filled($get('driver_id')))
+                        || ($get('service_type') === ServiceType::Yacht->value && filled($get('captain_id'))))
                     ->columnSpanFull(),
 
                 Forms\Components\Select::make('trip_date_id')

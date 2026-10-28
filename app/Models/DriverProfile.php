@@ -43,9 +43,25 @@ class DriverProfile extends Model implements HasMedia
         'photo' => 'Profile photo',
     ];
 
+    /** What a person in the driver module can be given (28 Oct: captains and crew for charters). */
+    public const WORK_TYPES = [
+        'driver' => 'Driver (cars)',
+        'captain' => 'Captain (yachts)',
+        'crew' => 'Crew (yachts)',
+    ];
+
+    /** Empty = driver only, as before 28 Oct. */
+    public function does(string $type): bool
+    {
+        $types = $this->work_types ?: ['driver'];
+
+        return in_array($type, $types, true);
+    }
+
     protected function casts(): array
     {
         return [
+            'work_types' => 'array',
             'date_of_birth' => 'date',
             'joined_on' => 'date',
         ];

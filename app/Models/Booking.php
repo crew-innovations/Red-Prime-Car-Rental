@@ -68,6 +68,7 @@ class Booking extends Model implements HasMedia
             'base_amount' => 'decimal:2',
             'extras_amount' => 'decimal:2',
             'extras' => 'array',
+            'crew_ids' => 'array',
             'discount' => 'decimal:2',
             'standard_amount' => 'decimal:2',
             'price_breakdown' => 'array',
@@ -102,6 +103,23 @@ class Booking extends Model implements HasMedia
                 $booking->driver_id = null;
                 $booking->delivery_method = null;
                 $booking->return_method = null;
+            }
+            // Private yacht charters (28 Oct): with captain / crew, or bareboat only where the yacht allows it.
+            if ($booking->service_type === ServiceType::Yacht) {
+                $booking->crew_mode ??= 'with_crew';
+                if ($booking->crew_mode === 'bareboat') {
+                    $yacht = Yacht::withTrashed()->find($booking->bookable_id);
+                    if (! $yacht?->bareboat_allowed) {
+                        throw ValidationException::withMessages(['data.crew_mode' => 'This yacht is not allowed without crew. Book it with a captain.']);
+                    }
+                    $booking->captain_id = null;
+                    $booking->crew_ids = null;
+                }
+                $booking->crew_ids = $booking->crew_ids ? array_values(array_unique(array_map('intval', array_diff((array) $booking->crew_ids, [$booking->captain_id])))) : null;
+            } else {
+                $booking->crew_mode = null;
+                $booking->captain_id = null;
+                $booking->crew_ids = null;
             }
             // A new booking made from a quotation keeps the agreed price and its calculation
             // as they are; any other new booking or price change is worked out again.
@@ -166,6 +184,7 @@ class Booking extends Model implements HasMedia
     public function guardAvailability(): void
     {
         $this->guardDriver();
+        $this->guardCrew();
 
         $relevant = ! $this->exists || $this->isDirty(['status', 'start_at', 'end_at', 'bookable_type', 'bookable_id', 'trip_date_id', 'package_departure_id', 'guests']);
         if (! $relevant) {
@@ -177,6 +196,13 @@ class Booking extends Model implements HasMedia
         if (Availability::holds($this->status) && in_array($type, ['car', 'yacht'], true) && $this->bookable_id) {
             if ($message = Availability::assetConflict($type, (int) $this->bookable_id, $this->start_at, $this->end_at, $this->getKey())) {
                 throw ValidationException::withMessages(['data.end_at' => $message]);
+            }
+        }
+
+        if ($type === 'yacht' && $this->bookable_id && $this->guests) {
+            $yacht = Yacht::withTrashed()->find($this->bookable_id);
+            if ($yacht?->max_guests && (int) $this->guests > $yacht->max_guests) {
+                throw ValidationException::withMessages(['data.guests' => "This yacht takes up to {$yacht->max_guests} guests."]);
             }
         }
 
@@ -221,6 +247,9 @@ class Booking extends Model implements HasMedia
             if (! $driver->is_active) {
                 throw ValidationException::withMessages(['data.driver_id' => $driver->name.' is switched off (inactive) and cannot get new jobs.']);
             }
+            if ($driver->driverProfile && ! $driver->driverProfile->does('driver')) {
+                throw ValidationException::withMessages(['data.driver_id' => $driver->name.' is set up as yacht crew, not as a car driver.']);
+            }
             if (Setting::read('driver_block_incomplete') && ($missing = \App\Support\Drivers\DriverPapers::problems($driver))) {
                 throw ValidationException::withMessages(['data.driver_id' => $driver->name.' cannot get jobs until these are sorted: '.implode(', ', $missing).'.']);
             }
@@ -230,10 +259,53 @@ class Booking extends Model implements HasMedia
             || $this->isDirty(['driver_id', 'start_at', 'end_at', 'drive_mode'])
             || ! Availability::holds($this->getOriginal('status') instanceof BookingStatus ? $this->getOriginal('status') : BookingStatus::tryFrom((string) $this->getOriginal('status')));
         if ($driver && $newlyHolding && Availability::holds($this->status)) {
-            if ($clash = Availability::driverConflict($driver->id, $this->start_at, $this->end_at, $this->getKey(), $this->drive_mode)) {
+            if ($clash = Availability::personConflict($driver->id, $this->start_at, $this->end_at, $this->getKey(), $this->drive_mode)) {
                 throw ValidationException::withMessages(['data.driver_id' => $driver->name.' is already busy on '.$clash->reference.' ('.$clash->start_at->format('d M H:i').' – '.$clash->end_at->format('d M H:i').').']);
             }
         }
+    }
+
+    /**
+     * Captain and crew checks on every save of a yacht charter: people from the
+     * driver module who can do that work, active, and not busy elsewhere.
+     */
+    public function guardCrew(): void
+    {
+        if ($this->service_type !== ServiceType::Yacht) {
+            return;
+        }
+        if ($this->exists && ! $this->isDirty(['captain_id', 'crew_ids', 'start_at', 'end_at', 'status'])) {
+            return;
+        }
+        $people = array_filter(array_merge([$this->captain_id], (array) $this->crew_ids));
+        if (! $people || ! Availability::holds($this->status)) {
+            return;
+        }
+        foreach ($people as $i => $id) {
+            $person = User::with('driverProfile')->find($id);
+            $field = $i === 0 && $this->captain_id ? 'data.captain_id' : 'data.crew_ids';
+            $need = $field === 'data.captain_id' ? 'captain' : 'crew';
+            if (! $person || ! $person->hasRole('Driver') || ! $person->is_active) {
+                throw ValidationException::withMessages([$field => 'Pick active people from the drivers & crew list.']);
+            }
+            if (! ($person->driverProfile?->does($need) || ($need === 'crew' && $person->driverProfile?->does('captain')))) {
+                throw ValidationException::withMessages([$field => $person->name.' is not set up as '.($need === 'captain' ? 'a captain' : 'crew').' (Drivers & crew › profile).']);
+            }
+            if ($clash = Availability::personConflict($person->id, $this->start_at, $this->end_at, $this->getKey(), DriveMode::WithDriver)) {
+                throw ValidationException::withMessages([$field => $person->name.' is already busy on '.$clash->reference.' ('.$clash->start_at->format('d M H:i').' – '.$clash->end_at->format('d M H:i').').']);
+            }
+        }
+    }
+
+    public function captain(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'captain_id');
+    }
+
+    /** @return \Illuminate\Support\Collection<int, User> */
+    public function crewMembers(): \Illuminate\Support\Collection
+    {
+        return $this->crew_ids ? User::whereIn('id', $this->crew_ids)->get() : collect();
     }
 
     /** Documents and handover / return photos are private (staff-only signed links). */
@@ -320,11 +392,11 @@ class Booking extends Model implements HasMedia
     /** Which document checklist applies: self_drive, with_driver, yacht, trip (+ corporate). */
     public function documentKinds(): array
     {
-        return self::documentKindsFor($this->service_type, $this->drive_mode, $this->customer);
+        return self::documentKindsFor($this->service_type, $this->drive_mode, $this->customer, $this->crew_mode);
     }
 
     /** Shared with quotations: the checklist for a service, rental type and customer. */
-    public static function documentKindsFor(?ServiceType $service, ?DriveMode $mode, ?Customer $customer): array
+    public static function documentKindsFor(?ServiceType $service, ?DriveMode $mode, ?Customer $customer, ?string $crewMode = null): array
     {
         $kinds = [match ($service) {
             ServiceType::Yacht => 'yacht',
@@ -332,6 +404,9 @@ class Booking extends Model implements HasMedia
             ServiceType::Package => 'package',
             default => $mode === DriveMode::WithDriver ? 'with_driver' : 'self_drive',
         }];
+        if ($service === ServiceType::Yacht && $crewMode === 'bareboat') {
+            $kinds[] = 'bareboat';
+        }
         if ($customer && $customer->type !== \App\Enums\CustomerType::Individual) {
             $kinds[] = 'corporate';
         }

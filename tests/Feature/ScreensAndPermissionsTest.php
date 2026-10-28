@@ -103,7 +103,7 @@ class ScreensAndPermissionsTest extends TestCase
             ->assertSee('Car readiness')
             ->assertSee('To collect')
             ->assertSee('Trips &amp; Packages', false)
-            ->assertDontSee('/crm/yachts"', false);
+            ->assertSee('/crm/yachts"', false); // charters back (28 Oct)
     }
 
     /** One role per test: switching users inside a test is caught by the session guard. */

@@ -20,7 +20,13 @@ class DriverJobs
 
     public static function sync(Booking $booking): void
     {
-        $jobs = $booking->jobs()->get()->keyBy('type');
+        if ($booking->service_type === \App\Enums\ServiceType::Yacht) {
+            self::syncCharter($booking);
+
+            return;
+        }
+
+        $jobs = $booking->jobs()->where('type', '!=', 'charter')->get()->keyBy('type');
         $active = $booking->isCar()
             && $booking->driver_id
             && in_array($booking->status, self::ACTIVE, true)
@@ -103,6 +109,57 @@ class DriverJobs
 
             if ($doneAt) {
                 $job->update(['status' => 'done', 'status_at' => now(), 'done_at' => $doneAt, 'done_by' => $doneBy]);
+            }
+        }
+    }
+
+    /**
+     * Yacht charters: one "charter" job for the captain and one for each crew
+     * member, from start to end at the marina. Same rules as car jobs: done
+     * jobs stay, removed people are told, a cancelled charter cancels the jobs.
+     */
+    public static function syncCharter(Booking $booking): void
+    {
+        $jobs = $booking->jobs()->where('type', 'charter')->get()->keyBy('driver_id');
+        $active = in_array($booking->status, self::ACTIVE, true) && ! $booking->trashed() && $booking->crew_mode !== 'bareboat';
+        $people = $active ? collect([$booking->captain_id => 'captain'])->filter(fn ($r, $id) => $id)
+            ->union(collect((array) $booking->crew_ids)->mapWithKeys(fn ($id) => [(int) $id => 'crew'])) : collect();
+
+        foreach ($jobs as $personId => $job) {
+            if (! $people->has($personId) && $job->isOpen()) {
+                $job->update(['status' => 'cancelled', 'status_at' => now()]);
+                Notify::driver($job->driver, 'Charter cancelled for you: '.$booking->reference, $job->scheduled_at->format('D d M, H:i').' is no longer yours.', null, 'gray');
+            }
+        }
+
+        foreach ($people as $personId => $role) {
+            /** @var BookingJob|null $job */
+            $job = $jobs[$personId] ?? null;
+            $where = $booking->pickup_location ?: $booking->bookable?->marina;
+            if (! $job) {
+                $job = $booking->jobs()->create([
+                    'type' => 'charter', 'role' => $role, 'driver_id' => $personId,
+                    'scheduled_at' => $booking->start_at, 'ends_at' => $booking->end_at, 'address' => $where,
+                    'status' => $booking->returned_at ? 'done' : 'assigned', 'status_at' => now(),
+                    'assigned_by' => auth()->id(), 'assigned_at' => now(),
+                    'done_at' => $booking->returned_at,
+                ]);
+                if (! $booking->returned_at) {
+                    self::tellNew($job, $booking);
+                }
+
+                continue;
+            }
+            if ($job->status === 'done') {
+                continue;
+            }
+            $changed = ! $job->scheduled_at->equalTo($booking->start_at) || ! optional($job->ends_at)->equalTo($booking->end_at)
+                || (string) $job->address !== (string) $where || $job->role !== $role || $job->status === 'cancelled';
+            if ($changed) {
+                $wasCancelled = $job->status === 'cancelled';
+                $job->fill(['role' => $role, 'scheduled_at' => $booking->start_at, 'ends_at' => $booking->end_at, 'address' => $where,
+                    'status' => $wasCancelled ? 'assigned' : $job->status, 'status_at' => $wasCancelled ? now() : $job->status_at])->save();
+                Notify::driver($job->driver, ($wasCancelled ? 'Charter back on: ' : 'Charter changed: ').$booking->reference, $job->scheduled_at->format('D d M, H:i').($where ? ' · '.$where : ''), self::url($job), 'warning');
             }
         }
     }

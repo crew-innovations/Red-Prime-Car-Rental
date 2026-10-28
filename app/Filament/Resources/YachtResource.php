@@ -41,19 +41,7 @@ class YachtResource extends Resource
 
     protected static ?string $navigationGroup = 'Operations';
 
-    /*
-     * RED PRIME does not own yachts and no longer offers private charters (Oct 2026).
-     * This screen stays reachable only so old charter bookings can still open their yacht.
-     */
-    public static function shouldRegisterNavigation(): bool
-    {
-        return false;
-    }
-
-    public static function canCreate(): bool
-    {
-        return false;
-    }
+    // Private yacht charters are offered again (28 Oct); the yacht screens are back.
 
     protected static ?int $navigationSort = 9;
 
@@ -162,6 +150,11 @@ class YachtResource extends Resource
                         Forms\Components\Toggle::make('captain_included')
                             ->label('Captain included')
                             ->default(true)
+                            ->inline(false),
+                        Forms\Components\Toggle::make('bareboat_allowed')
+                            ->label('May be rented without crew (bareboat)')
+                            ->helperText('Only switch on if the owner and the law allow it. Customers then need a valid boat licence on file.')
+                            ->default(false)
                             ->inline(false),
                     ]),
 
