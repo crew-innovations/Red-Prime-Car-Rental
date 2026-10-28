@@ -25,9 +25,36 @@ class DamageReport extends Model implements HasMedia
         'charged' => 'Reviewed, charge added',
     ];
 
+    /**
+     * A reviewer approved a charge for this damage: add it to the booking once.
+     * Before the return is completed it is filled in on "Receive back" instead.
+     */
+    public function applyChargeIfReturned(): void
+    {
+        $booking = $this->booking;
+        if ($this->status !== 'charged' || (float) $this->charge_amount <= 0 || $this->applied_at || ! $booking
+            || $booking->status !== \App\Enums\BookingStatus::Completed) {
+            return;
+        }
+        $charges = (array) ($booking->charges ?? []);
+        $charges['damage'] = round((float) ($charges['damage'] ?? 0) + (float) $this->charge_amount, 2);
+        $booking->update(['charges' => $charges, 'extra_charges' => round(array_sum(array_map('floatval', $charges)), 2)]);
+        $this->forceFill(['applied_at' => now()])->saveQuietly();
+    }
+
+    /** Approved damage charges not yet on the booking. */
+    public static function approvedUnapplied(int $bookingId): float
+    {
+        return round((float) static::query()->where('booking_id', $bookingId)->where('status', 'charged')->whereNull('applied_at')->sum('charge_amount'), 2);
+    }
+
     protected function casts(): array
     {
-        return ['reviewed_at' => 'datetime'];
+        return [
+            'charge_amount' => 'decimal:2',
+            'applied_at' => 'datetime',
+            'reviewed_at' => 'datetime',
+        ];
     }
 
     public function booking(): BelongsTo

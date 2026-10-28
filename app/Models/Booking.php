@@ -104,6 +104,11 @@ class Booking extends Model implements HasMedia
                 $booking->delivery_method = null;
                 $booking->return_method = null;
             }
+            // With driver: the same person drives from start to end. Collected by the customer: no collection driver.
+            if ($booking->service_type !== ServiceType::Car || $booking->drive_mode === DriveMode::WithDriver || $booking->return_method === 'office'
+                || (int) $booking->return_driver_id === (int) $booking->driver_id) {
+                $booking->return_driver_id = null;
+            }
             // Private yacht charters (28 Oct): with captain / crew, or bareboat only where the yacht allows it.
             if ($booking->service_type === ServiceType::Yacht) {
                 $booking->crew_mode ??= 'with_crew';
@@ -184,6 +189,7 @@ class Booking extends Model implements HasMedia
     public function guardAvailability(): void
     {
         $this->guardDriver();
+        $this->guardReturnDriver();
         $this->guardCrew();
 
         $relevant = ! $this->exists || $this->isDirty(['status', 'start_at', 'end_at', 'bookable_type', 'bookable_id', 'trip_date_id', 'package_departure_id', 'guests']);
@@ -259,10 +265,32 @@ class Booking extends Model implements HasMedia
             || $this->isDirty(['driver_id', 'start_at', 'end_at', 'drive_mode'])
             || ! Availability::holds($this->getOriginal('status') instanceof BookingStatus ? $this->getOriginal('status') : BookingStatus::tryFrom((string) $this->getOriginal('status')));
         if ($driver && $newlyHolding && Availability::holds($this->status)) {
-            if ($clash = Availability::personConflict($driver->id, $this->start_at, $this->end_at, $this->getKey(), $this->drive_mode)) {
+            // With a separate collection driver this driver only does the delivery.
+            $until = $this->return_driver_id && $this->drive_mode !== DriveMode::WithDriver ? $this->start_at : $this->end_at;
+            if ($clash = Availability::personConflict($driver->id, $this->start_at, $until, $this->getKey(), $this->drive_mode)) {
                 throw ValidationException::withMessages(['data.driver_id' => $driver->name.' is already busy on '.$clash->reference.' ('.$clash->start_at->format('d M H:i').' – '.$clash->end_at->format('d M H:i').').']);
             }
         }
+    }
+
+    /** Collection driver (when not the delivery driver): same checks, at the return time only. */
+    public function guardReturnDriver(): void
+    {
+        if (! $this->return_driver_id || ($this->exists && ! $this->isDirty(['return_driver_id', 'end_at', 'status']))) {
+            return;
+        }
+        $driver = User::with('driverProfile')->find($this->return_driver_id);
+        if (! $driver || ! $driver->hasRole('Driver') || ! $driver->is_active || ($driver->driverProfile && ! $driver->driverProfile->does('driver'))) {
+            throw ValidationException::withMessages(['data.return_driver_id' => 'Pick an active driver for the collection.']);
+        }
+        if (Availability::holds($this->status) && ($clash = Availability::personConflict($driver->id, $this->end_at, $this->end_at, $this->getKey(), DriveMode::SelfDrive))) {
+            throw ValidationException::withMessages(['data.return_driver_id' => $driver->name.' is already busy on '.$clash->reference.' ('.$clash->start_at->format('d M H:i').' – '.$clash->end_at->format('d M H:i').').']);
+        }
+    }
+
+    public function returnDriver(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'return_driver_id');
     }
 
     /**

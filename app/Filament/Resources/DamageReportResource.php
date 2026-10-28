@@ -109,18 +109,27 @@ class DamageReportResource extends Resource
                             ->options(['no_charge' => 'No charge', 'charged' => 'Charge added on the booking'])
                             ->colors(['no_charge' => 'gray', 'charged' => 'warning'])
                             ->inline()->required(),
+                        Forms\Components\TextInput::make('charge_amount')
+                            ->label('Charge to the customer')
+                            ->numeric()->minValue(1)->prefix('AED')
+                            ->required(fn (Forms\Get $get): bool => $get('status') === 'charged')
+                            ->visible(fn (Forms\Get $get): bool => $get('status') === 'charged'),
                         Forms\Components\Textarea::make('review_note')->label('Note')->rows(2),
                         Forms\Components\Placeholder::make('how')->hiddenLabel()
-                            ->content('To charge the customer, add it on the booking (return charges when receiving the car, or Record payment). This only records your decision.'),
+                            ->content('An approved charge is filled in as "Damage" when the car is received back. If the return is already completed, it is added to the booking now and shows in To collect.'),
                     ])
                     ->action(function (DamageReport $record, array $data): void {
                         $record->update([
                             'status' => $data['status'],
+                            'charge_amount' => $data['status'] === 'charged' ? round((float) $data['charge_amount'], 2) : null,
                             'review_note' => $data['review_note'] ?? null,
                             'reviewed_by' => auth()->id(),
                             'reviewed_at' => now(),
                         ]);
-                        Notification::make()->title('Review saved')->success()->send();
+                        $record->refresh()->applyChargeIfReturned();
+                        Notification::make()->title('Review saved')
+                            ->body($record->applied_at ? 'AED '.number_format((float) $record->charge_amount, 2).' added to '.$record->booking?->reference.'.' : null)
+                            ->success()->send();
                     }),
             ])
             ->emptyStateIcon('heroicon-o-shield-check')

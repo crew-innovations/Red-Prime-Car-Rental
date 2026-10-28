@@ -36,6 +36,7 @@ class BookingJob extends Model
         'acknowledged' => 'Accepted',
         'on_the_way' => 'On the way',
         'arrived' => 'Arrived',
+        'waiting' => 'Waiting for office OK',
         'done' => 'Done',
         'cancelled' => 'Cancelled',
     ];
@@ -49,6 +50,7 @@ class BookingJob extends Model
             'acknowledged_at' => 'datetime',
             'assigned_at' => 'datetime',
             'done_at' => 'datetime',
+            'approved_at' => 'datetime',
             'inspection' => 'array',
         ];
     }
@@ -115,6 +117,7 @@ class BookingJob extends Model
         return match ($this->status) {
             'assigned' => 'warning',
             'acknowledged', 'on_the_way', 'arrived' => 'info',
+            'waiting' => 'warning',
             'done' => 'success',
             default => 'gray',
         };

@@ -242,7 +242,7 @@ class Availability
         $mine = self::driverWindows($start, $end, $driveMode);
 
         $others = self::latest(Booking::query())->blocking()
-            ->where('driver_id', $driverId)
+            ->where(fn (Builder $q) => $q->where('driver_id', $driverId)->orWhere('return_driver_id', $driverId))
             ->where('service_type', 'car')
             ->where('start_at', '<', $end->copy()->addMinutes($gap))
             ->where('end_at', '>', $start->copy()->subMinutes($gap))
@@ -251,7 +251,7 @@ class Availability
             ->get();
 
         foreach ($others as $other) {
-            foreach (self::driverWindows($other->start_at, $other->end_at, $other->drive_mode) as $b) {
+            foreach (self::windowsFor($other, $driverId) as $b) {
                 foreach ($mine as $a) {
                     if (self::windowsClash($a, $b, $gap)) {
                         return $other;
@@ -297,6 +297,23 @@ class Availability
         }
 
         return null;
+    }
+
+    /** When this person works on that booking: the whole span with driver, else delivery and / or collection. */
+    protected static function windowsFor(Booking $b, int $personId): array
+    {
+        if ($b->drive_mode === DriveMode::WithDriver) {
+            return (int) $b->driver_id === $personId ? [[$b->start_at, $b->end_at]] : [];
+        }
+        $windows = [];
+        if ((int) $b->driver_id === $personId && $b->delivery_method !== 'office') {
+            $windows[] = [$b->start_at, $b->start_at];
+        }
+        if ((int) ($b->return_driver_id ?: $b->driver_id) === $personId && $b->return_method !== 'office') {
+            $windows[] = [$b->end_at, $b->end_at];
+        }
+
+        return $windows;
     }
 
     /** [[from, to], …] when the driver is needed. A point (delivery / collection) has from = to. */

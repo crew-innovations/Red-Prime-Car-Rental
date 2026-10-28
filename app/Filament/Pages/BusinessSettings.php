@@ -385,6 +385,9 @@ class BusinessSettings extends Page implements HasForms
                             ->options(\App\Models\BookingJob::DRIVER_STEPS)
                             ->helperText('Handover and collection are set below.'),
                         Forms\Components\Toggle::make('driver_can_handover')->label('Drivers can hand over cars (with the handover check)'),
+                        Forms\Components\Toggle::make('handover_requires_approval')
+                            ->label('The office approves the driver\'s handover check before the car is released')
+                            ->helperText('The driver sends the check and photos, waits for the OK on the phone, then hands over the keys.'),
                         Forms\Components\Toggle::make('driver_can_return')->label('Drivers can collect cars (with the return check)'),
                         Forms\Components\Toggle::make('driver_can_report_damage')->label('Drivers can report damage'),
                         Forms\Components\Placeholder::make('money_note')->hiddenLabel()
@@ -502,7 +505,7 @@ class BusinessSettings extends Page implements HasForms
     public const DRIVER_AND_ACCOUNT_KEYS = [
         'agent_own_records_only', 'customer_accounts_enabled', 'customer_can_upload_documents', 'customer_sees_payments', 'customer_sees_quotations', 'invite_link_hours',
         'driver_login_enabled', 'driver_self_service', 'driver_editable_fields', 'driver_sees_customer_phone', 'driver_sees_instructions', 'driver_steps',
-        'driver_can_handover', 'driver_can_return', 'driver_can_report_damage',
+        'driver_can_handover', 'handover_requires_approval', 'driver_can_return', 'driver_can_report_damage',
         'handover_require_km', 'handover_require_fuel', 'handover_min_photos', 'return_require_km', 'return_require_fuel', 'return_min_photos',
         'checklist_all_required', 'handover_checklist', 'return_checklist',
         'driver_job_gap_minutes', 'driver_required_fields', 'driver_required_documents', 'driver_block_incomplete',

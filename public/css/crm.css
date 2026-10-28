@@ -623,3 +623,5 @@ a.rp-acc-card:hover { border-color: var(--rp-line-strong); }
 .rp-check-bad { box-shadow: inset 0 0 0 1px rgb(var(--danger-500) / .4); }
 .rp-dv-charter { background: rgba(var(--warning-500), .14); color: rgb(var(--warning-700)); }
 .dark .rp-dv-charter { color: rgb(var(--warning-300)); }
+.rp-dv-photos { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .4rem; margin-top: .4rem; }
+.rp-dv-photos img { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: .6rem; display: block; }

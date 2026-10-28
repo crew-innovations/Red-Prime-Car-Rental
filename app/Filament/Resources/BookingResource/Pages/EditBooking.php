@@ -40,6 +40,7 @@ class EditBooking extends EditRecord
         $after = fn () => $this->redirect(BookingResource::getUrl('edit', ['record' => $this->getRecord()]));
 
         return [
+            BookingActions::approveHandover(Actions\Action::class)->after($after),
             BookingActions::deliver(Actions\Action::class)->after($after),
             BookingActions::receive(Actions\Action::class)->after($after),
             BookingActions::recordPayment(Actions\Action::class)->after($after),

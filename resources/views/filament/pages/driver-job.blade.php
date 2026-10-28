@@ -52,6 +52,32 @@
             </div>
         @endif
 
+        @if ($job->status === 'waiting')
+            <div class="rp-dv-section rp-dv-note">
+                <div class="rp-dv-label">Waiting for the office</div>
+                <div class="rp-dv-value">Your check is sent. Do not give the keys until you get the OK here.</div>
+            </div>
+        @elseif ($job->type === 'delivery' && ! empty($check['rejected']) && $job->isOpen())
+            <div class="rp-dv-section rp-dv-note">
+                <div class="rp-dv-label">The office said</div>
+                <div class="rp-dv-value">{{ $check['rejected'] }}</div>
+            </div>
+        @endif
+
+        @if ($job->type === 'collection' && $b && ($handover = $b->getMedia('delivery')->sortByDesc('id')->take(8))->isNotEmpty())
+            <div class="rp-dv-section">
+                <div class="rp-dv-label">Photos from the handover</div>
+                <div class="rp-dv-photos">
+                    @foreach ($handover as $m)
+                        <a href="{{ $m->getTemporaryUrl(now()->addMinutes(30)) }}" target="_blank" rel="noopener"><img src="{{ $m->getTemporaryUrl(now()->addMinutes(30)) }}" alt="Handover photo" loading="lazy"></a>
+                    @endforeach
+                </div>
+                @if ($b->delivery_km || $b->delivery_fuel)
+                    <div class="rp-dv-meta">At handover: {{ $b->delivery_km ? number_format($b->delivery_km).' km' : '' }}{{ $b->delivery_fuel ? ' · fuel '.(\App\Models\Booking::FUEL_LEVELS[$b->delivery_fuel] ?? $b->delivery_fuel) : '' }}</div>
+                @endif
+            </div>
+        @endif
+
         @if ($job->isOpen())
             @php($list = $job->type === 'charter' ? [] : (array) \App\Models\Setting::read($job->type === 'delivery' ? 'handover_checklist' : 'return_checklist', []))
             @if ($list)

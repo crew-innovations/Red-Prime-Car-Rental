@@ -27,35 +27,46 @@ class DriverJobs
         }
 
         $jobs = $booking->jobs()->where('type', '!=', 'charter')->get()->keyBy('type');
-        $active = $booking->isCar()
-            && $booking->driver_id
-            && in_array($booking->status, self::ACTIVE, true)
-            && ! $booking->trashed();
+        $live = $booking->isCar() && in_array($booking->status, self::ACTIVE, true) && ! $booking->trashed();
+        $withDriver = $booking->drive_mode === \App\Enums\DriveMode::WithDriver;
 
-        if (! $active) {
-            foreach ($jobs as $job) {
-                if ($job->isOpen()) {
+        // 28 Oct: a job only exists when a driver is needed for it. "Collects from us" /
+        // "Customer returns it" need no driver; older bookings (no choice saved) keep both jobs.
+        $plan = [
+            'delivery' => [
+                'driver' => $booking->driver_id,
+                'needed' => $withDriver || $booking->delivery_method !== 'office',
+                'at' => $booking->start_at, 'address' => $booking->pickup_location,
+                'done_at' => $booking->delivered_at, 'done_by' => $booking->delivered_by,
+            ],
+            'collection' => [
+                'driver' => $withDriver ? $booking->driver_id : ($booking->return_driver_id ?: $booking->driver_id),
+                'needed' => $withDriver || $booking->return_method !== 'office',
+                'at' => $booking->end_at, 'address' => $booking->return_location ?: $booking->pickup_location,
+                'done_at' => $booking->returned_at, 'done_by' => $booking->received_by,
+            ],
+        ];
+
+        foreach ($plan as $type => $p) {
+            /** @var BookingJob|null $job */
+            $job = $jobs[$type] ?? null;
+            $wanted = $live && $p['driver'] && $p['needed'];
+
+            if (! $wanted) {
+                if ($job && $job->isOpen()) {
                     $job->update(['status' => 'cancelled', 'status_at' => now()]);
                     Notify::driver($job->driver, 'Job cancelled: '.$booking->reference, $job->typeLabel().' on '.$job->scheduled_at->format('D d M, H:i').' is no longer needed.', null, 'gray');
                 }
+
+                continue;
             }
 
-            return;
-        }
-
-        $plan = [
-            'delivery' => [$booking->start_at, $booking->pickup_location, $booking->delivered_at, $booking->delivered_by],
-            'collection' => [$booking->end_at, $booking->return_location ?: $booking->pickup_location, $booking->returned_at, $booking->received_by],
-        ];
-
-        foreach ($plan as $type => [$at, $address, $doneAt, $doneBy]) {
-            /** @var BookingJob|null $job */
-            $job = $jobs[$type] ?? null;
+            [$at, $address, $doneAt, $doneBy] = [$p['at'], $p['address'], $p['done_at'], $p['done_by']];
 
             if (! $job) {
                 $job = $booking->jobs()->create([
                     'type' => $type,
-                    'driver_id' => $booking->driver_id,
+                    'driver_id' => $p['driver'],
                     'scheduled_at' => $at,
                     'address' => $address,
                     'status' => $doneAt ? 'done' : 'assigned',
@@ -76,10 +87,10 @@ class DriverJobs
                 continue; // history stays as it happened
             }
 
-            if ((int) $job->driver_id !== (int) $booking->driver_id) {
+            if ((int) $job->driver_id !== (int) $p['driver']) {
                 $old = $job->driver;
                 $job->fill([
-                    'driver_id' => $booking->driver_id,
+                    'driver_id' => $p['driver'],
                     'status' => 'assigned',
                     'acknowledged_at' => null,
                     'assigned_by' => auth()->id(),

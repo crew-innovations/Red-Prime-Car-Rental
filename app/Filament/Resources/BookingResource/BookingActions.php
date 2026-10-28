@@ -158,7 +158,10 @@ class BookingActions
                     'return_condition' => $condition,
                     'return_notes' => isset($check['notes']) ? 'Driver: '.$check['notes'] : null,
                     'after_return' => match ($condition) { 'damaged' => 'maintenance', 'minor' => 'inspection', default => 'ready' },
-                    'charges' => array_filter(['late' => \App\Support\Rules::lateCharge($record, isset($check['at']) ? \Illuminate\Support\Carbon::parse($check['at']) : now())]),
+                    'charges' => array_filter([
+                        'late' => \App\Support\Rules::lateCharge($record, isset($check['at']) ? \Illuminate\Support\Carbon::parse($check['at']) : now()),
+                        'damage' => \App\Models\DamageReport::approvedUnapplied($record->id) ?: null, // approved by a reviewer
+                    ]),
                     'deduct_from_deposit' => false,
                     'refund_deposit' => false,
                     'payment_method' => PaymentMethod::Card->value,
@@ -215,6 +218,9 @@ class BookingActions
                         ->label($meta[0])
                         ->numeric()->minValue(0)->prefix('AED')
                         ->live(onBlur: true)
+                        // Damage is only charged once a reviewer approved it (Damage reports).
+                        ->readOnly($key === 'damage' && ! Access::allows('review-damage'))
+                        ->helperText($key === 'damage' ? (($open = $record->damageReports()->where('status', 'open')->count()) ? $open.' report(s) still to review.' : (Access::allows('review-damage') ? null : 'Approved charges only.')) : null)
                         ->visible($record->isCar() || ! $meta[2])
                     )->values()->all()]),
 
@@ -320,6 +326,66 @@ class BookingActions
                     ->icon($result['balance'] > 0 ? 'heroicon-o-exclamation-triangle' : 'heroicon-o-check-circle')
                     ->persistent()
                     ->send();
+            });
+    }
+
+    /** The driver's handover check waits for the office (Business settings › Drivers). */
+    public static function approveHandover(string $class)
+    {
+        $waiting = fn (Booking $record) => $record->jobs()->where('type', 'delivery')->where('status', 'waiting')->first();
+
+        return $class::make('approveHandover')
+            ->label('Approve handover')
+            ->icon('heroicon-o-check-badge')
+            ->color('warning')
+            ->authorize('operate-fleet')
+            ->visible(fn (Booking $record): bool => (bool) $waiting($record))
+            ->modalHeading(fn (Booking $record): string => 'Approve handover · '.$record->title())
+            ->modalDescription('The driver is with the customer and waits for your OK before giving the keys.')
+            ->modalContent(function (Booking $record) use ($waiting): HtmlString {
+                $job = $waiting($record);
+                $c = (array) $job?->inspection;
+                $rows = array_filter([
+                    'Driver' => $job?->driver?->name,
+                    'Checked at' => isset($c['at']) ? \Illuminate\Support\Carbon::parse($c['at'])->format('d M H:i') : null,
+                    'Odometer' => isset($c['km']) ? number_format((int) $c['km']).' km' : null,
+                    'Fuel' => isset($c['fuel']) ? (Booking::FUEL_LEVELS[$c['fuel']] ?? $c['fuel']) : null,
+                    'Photos' => (int) ($c['photos'] ?? 0),
+                    'Notes' => $c['notes_text'] ?? null,
+                ], fn ($v) => $v !== null && $v !== '');
+                $html = '<table style="width:100%;font-size:.875rem">';
+                foreach ($rows as $k => $v) {
+                    $html .= '<tr><td style="padding:.2rem 0;opacity:.7">'.e($k).'</td><td style="text-align:right">'.e((string) $v).'</td></tr>';
+                }
+                $html .= '</table><div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:.4rem;margin-top:.75rem">';
+                foreach ($record->getMedia('delivery')->sortByDesc('id')->take(12) as $m) {
+                    $url = e($m->getTemporaryUrl(now()->addMinutes(10)));
+                    $html .= '<a href="'.$url.'" target="_blank" rel="noopener"><img src="'.$url.'" alt="" style="width:100%;aspect-ratio:4/3;object-fit:cover;border-radius:.5rem"></a>';
+                }
+
+                return new HtmlString($html.'</div>');
+            })
+            ->modalSubmitActionLabel('OK, release the car')
+            ->extraModalFooterActions(fn (Booking $record) => [
+                $class::make('rejectHandover')
+                    ->label('Not OK')
+                    ->color('danger')
+                    ->form([Forms\Components\TextInput::make('reason')->label('What should the driver do?')->required()->maxLength(200)])
+                    ->action(function (array $data) use ($record, $waiting) {
+                        \App\Support\Drivers\DriverWork::rejectHandover($waiting($record), auth()->user(), $data['reason']);
+                        Notification::make()->title('The driver was told')->success()->send();
+                    })
+                    ->cancelParentActions(),
+            ])
+            ->action(function (Booking $record) use ($waiting) {
+                try {
+                    \App\Support\Drivers\DriverWork::approveHandover($waiting($record), auth()->user());
+                } catch (\Illuminate\Validation\ValidationException $e) {
+                    Notification::make()->title('Not released')->body(collect($e->errors())->flatten()->implode(' '))->danger()->persistent()->send();
+
+                    return;
+                }
+                Notification::make()->title('Handover approved. The driver was told.')->success()->send();
             });
     }
 

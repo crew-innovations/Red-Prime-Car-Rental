@@ -240,7 +240,7 @@ class BookingResource extends Resource
                     ->visible(fn (Get $get): bool => $get('service_type') === ServiceType::Car->value),
 
                 Forms\Components\Select::make('driver_id')
-                    ->label('Driver')
+                    ->label(fn (Get $get): string => $get('drive_mode') === DriveMode::WithDriver->value ? 'Driver' : 'Delivery driver')
                     ->options(fn (Get $get, ?Booking $record): array => BookingActions::driverOptions(
                         $get('bookable_id') ? (int) $get('bookable_id') : null,
                         $get('start_at'), $get('end_at'), $get('drive_mode'), $record?->getKey(),
@@ -263,7 +263,20 @@ class BookingResource extends Resource
                             $fail("This driver is already busy on {$clash->reference} (".$clash->start_at->format('d M H:i').' – '.$clash->end_at->format('d M H:i').').');
                         }
                     }])
-                    ->visible(fn (Get $get): bool => $get('service_type') === ServiceType::Car->value),
+                    ->visible(fn (Get $get): bool => $get('service_type') === ServiceType::Car->value
+                        && ($get('drive_mode') === DriveMode::WithDriver->value || $get('delivery_method') !== 'office' || filled($get('driver_id')))),
+                Forms\Components\Select::make('return_driver_id')
+                    ->label('Collection driver')
+                    ->options(fn (Get $get, ?Booking $record): array => BookingActions::driverOptions(
+                        $get('bookable_id') ? (int) $get('bookable_id') : null,
+                        $get('end_at'), $get('end_at'), DriveMode::SelfDrive->value, $record?->getKey(),
+                    ))
+                    ->disableOptionWhen(fn (string $label): bool => str_contains($label, BookingActions::BUSY))
+                    ->searchable()
+                    ->placeholder(fn (Get $get): string => filled($get('driver_id')) ? 'Same as the delivery driver' : 'Pick who collects the car')
+                    ->helperText('Change it if the delivery driver is not free at the return time.')
+                    ->visible(fn (Get $get): bool => $get('service_type') === ServiceType::Car->value
+                        && $get('drive_mode') !== DriveMode::WithDriver->value && $get('return_method') === 'collection'),
 
                 // Private yacht charters (28 Oct): captain and crew from Drivers & crew.
                 Forms\Components\ToggleButtons::make('crew_mode')
@@ -438,7 +451,8 @@ class BookingResource extends Resource
                         && $get('bookable_id')
                         && Availability::restriction($get('service_type'), (int) $get('bookable_id')) !== null),
                 Forms\Components\TextInput::make('pickup_location')
-                    ->label(fn (Get $get): string => $isCar($get) ? 'Delivery / pick-up location' : 'Meeting point / marina')
+                    ->label(fn (Get $get): string => $isCar($get) ? ($get('delivery_method') === 'delivery' ? 'Delivery address' : 'Pick-up location') : 'Meeting point / marina')
+                    ->required(fn (Get $get): bool => $isCar($get) && $get('delivery_method') === 'delivery')
                     ->placeholder(fn (Get $get): string => $isCar($get) ? 'Office, hotel, airport…' : 'Dubai Marina')
                     ->datalist(fn (): array => \App\Support\Options::list('pickup_locations'))
                     ->maxLength(255),

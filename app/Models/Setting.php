@@ -67,6 +67,7 @@ class Setting extends Model
         'driver_sees_instructions' => true,
         'driver_steps' => ['acknowledged', 'on_the_way', 'arrived'],
         'driver_can_handover' => true,
+        'handover_requires_approval' => false, // 28 Oct: office OK before the car is released
         'driver_can_return' => true,
         'driver_can_report_damage' => true,
         'handover_require_km' => true,

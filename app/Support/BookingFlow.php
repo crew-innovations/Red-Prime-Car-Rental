@@ -63,6 +63,12 @@ class BookingFlow
                 ->map(fn ($meta, $key) => round((float) ($data['charges'][$key] ?? 0), 2))
                 ->filter(fn ($v) => $v > 0);
 
+            // 28 Oct, 4.4: damage becomes payable only once approved.
+            $approved = \App\Models\DamageReport::approvedUnapplied($booking->id);
+            if (($charges['damage'] ?? 0) > $approved + 0.005 && ! \App\Support\Access::allows('review-damage')) {
+                throw \Illuminate\Validation\ValidationException::withMessages(['data.charges.damage' => 'A damage charge needs approval first (Operations › Damage reports). Approved so far: AED '.number_format($approved, 2).'.']);
+            }
+
             $booking->update([
                 'status' => BookingStatus::Completed,
                 'returned_at' => $data['returned_at'] ?? now(),
@@ -76,6 +82,9 @@ class BookingFlow
                 'extra_charges' => $charges->sum(),
             ]);
             $booking->refresh();
+            if (($charges['damage'] ?? 0) > 0) {
+                \App\Models\DamageReport::query()->where('booking_id', $booking->id)->where('status', 'charged')->whereNull('applied_at')->update(['applied_at' => now()]);
+            }
 
             if (($paid = (float) ($data['payment_amount'] ?? 0)) > 0) {
                 $booking->recordPayment($paid, $data['payment_method'] ?? null, $charges->isNotEmpty() ? 'extras' : null);

@@ -32,6 +32,7 @@ class DriverWork
     {
         return $job->type === 'delivery'
             && $job->isOpen()
+            && $job->status !== 'waiting'
             && Setting::read('driver_can_handover', true)
             && in_array($job->booking?->status, [BookingStatus::Confirmed, BookingStatus::PendingPayment], true);
     }
@@ -42,6 +43,48 @@ class DriverWork
             && $job->isOpen()
             && Setting::read('driver_can_return', true)
             && $job->booking?->status === BookingStatus::InProgress;
+    }
+
+    /** The office approves the driver's handover check: now the car is released. */
+    public static function approveHandover(BookingJob $job, User $staff): void
+    {
+        abort_unless($job->type === 'delivery' && $job->status === 'waiting', 404);
+        $booking = $job->booking;
+        if ($blockers = BookingActions::handoverBlockers($booking)) {
+            throw ValidationException::withMessages(['data' => implode(' ', $blockers)]);
+        }
+        $check = (array) $job->inspection;
+
+        DB::transaction(function () use ($job, $booking, $check, $staff) {
+            $fresh = Booking::whereKey($booking->id)->lockForUpdate()->first();
+            if (! in_array($fresh->status, [BookingStatus::Confirmed, BookingStatus::PendingPayment], true)) {
+                throw ValidationException::withMessages(['data' => 'This booking was already handed over or changed.']);
+            }
+            BookingFlow::deliver($fresh, [
+                'delivered_at' => isset($check['at']) ? \Illuminate\Support\Carbon::parse($check['at']) : now(),
+                'delivery_km' => $check['km'] ?? null,
+                'delivery_fuel' => $check['fuel'] ?? null,
+                'delivery_notes' => $check['notes_text'] ?? null,
+            ]);
+            $fresh->forceFill(['delivered_by' => $job->driver_id])->saveQuietly();
+            $job->refresh()->update([
+                'status' => 'done', 'status_at' => now(), 'done_at' => now(), 'done_by' => $job->driver_id,
+                'approved_at' => now(), 'approved_by' => $staff->id,
+            ]);
+        });
+
+        Notify::driver($job->driver, 'OK to hand over: '.$booking->reference, 'The office approved your check. You can give the keys now.', DriverJobs::url($job), 'success');
+    }
+
+    public static function rejectHandover(BookingJob $job, User $staff, string $reason): void
+    {
+        abort_unless($job->type === 'delivery' && $job->status === 'waiting', 404);
+        $job->update([
+            'status' => 'arrived',
+            'status_at' => now(),
+            'inspection' => array_merge((array) $job->inspection, ['rejected' => $reason, 'rejected_by' => $staff->name]),
+        ]);
+        Notify::driver($job->driver, 'Handover not approved yet: '.$job->booking?->reference, $reason.' Please do the check again or call the office.', DriverJobs::url($job), 'danger');
     }
 
     /** Captain starts the charter (guests on board): the booking becomes In progress. */
@@ -141,6 +184,24 @@ class DriverWork
 
         if ($blockers = BookingActions::handoverBlockers($booking)) {
             throw ValidationException::withMessages(['data' => 'The office needs to sort this first: '.implode(' ', $blockers)]);
+        }
+
+        // Business settings may ask for the office's OK first: keep the check, wait for approval.
+        if (Setting::read('handover_requires_approval')) {
+            DB::transaction(function () use ($job, $booking, $checked) {
+                foreach ($checked['photos'] as $path) {
+                    $booking->addMediaFromDisk($path, 'private')->toMediaCollection('delivery');
+                }
+                $job->refresh()->update([
+                    'inspection' => self::stored($checked) + ['notes_text' => self::notesText($checked)],
+                    'status' => 'waiting',
+                    'status_at' => now(),
+                ]);
+            });
+            Notify::staff('operate-fleet', 'Approve handover: '.$booking->reference, $driver->name.' sent the handover check for '.($booking->bookable?->name ?? 'the car').'. The car is not released until you approve.',
+                BookingResource::getUrl('edit', ['record' => $booking]), $booking->assignee, 'warning');
+
+            return;
         }
 
         DB::transaction(function () use ($job, $booking, $checked, $driver) {
