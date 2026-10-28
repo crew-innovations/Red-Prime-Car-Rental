@@ -25,6 +25,7 @@ class OutstandingPayments extends BaseWidget
                 Transaction::query()
                     ->where('type', TransactionType::Income)
                     ->whereIn('status', [PaymentStatus::Pending, PaymentStatus::Overdue, PaymentStatus::PartiallyPaid])
+                    ->counting()
                     ->with(['customer', 'related'])
             )
             ->description('Pending, overdue and partly paid')

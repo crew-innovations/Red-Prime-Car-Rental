@@ -530,8 +530,8 @@ class Booking extends Model implements HasMedia
     /** Security deposit still held (received minus refunded). */
     public function depositHeld(): float
     {
-        $in = (float) $this->transactions()->where('type', TransactionType::Income)->where('category', 'deposit')->where('status', PaymentStatus::Paid)->sum('amount');
-        $out = (float) $this->transactions()->where('type', TransactionType::Expense)->where('category', 'deposit_refund')->where('status', PaymentStatus::Paid)->sum('amount');
+        $in = (float) $this->transactions()->where('type', TransactionType::Income)->where('category', 'deposit')->where('status', PaymentStatus::Paid)->whereNull('reversed_at')->sum('amount');
+        $out = (float) $this->transactions()->where('type', TransactionType::Expense)->where('category', 'deposit_refund')->where('status', PaymentStatus::Paid)->whereNull('reversed_at')->sum('amount');
 
         return round($in - $out, 2);
     }

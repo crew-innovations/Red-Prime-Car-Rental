@@ -614,6 +614,17 @@ class BookingResource extends Resource
                     ->content(fn (?Booking $record): HtmlString => new HtmlString($record?->payment_status
                         ? '<span style="font-weight:600;color:rgb(var(--'.$record->payment_status->getColor().'-500))">'.$record->payment_status->getLabel().'</span> · see the Payments tab below'
                         : 'No payment due yet')),
+                Forms\Components\Actions::make([
+                    Forms\Components\Actions\Action::make('balanceHistory')
+                        ->label('Why is the balance this?')
+                        ->icon('heroicon-o-clock')
+                        ->link()
+                        ->modalHeading('Balance history')
+                        ->modalDescription('Price changes, return charges, payments and corrections, oldest first.')
+                        ->modalSubmitAction(false)
+                        ->modalCancelActionLabel('Close')
+                        ->modalContent(fn (?Booking $record): HtmlString => new HtmlString($record ? \App\Support\Accounts\BalanceHistory::html($record) : '')),
+                ]),
             ]);
     }
 

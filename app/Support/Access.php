@@ -25,6 +25,8 @@ class Access
         'record-payments' => ['Admin', 'Manager', 'Sales', 'Agent', 'Operations', 'Finance'],
         // Refunds, deposit deductions, editing / deleting money records, expenses
         'manage-finance' => ['Admin', 'Manager', 'Finance'],
+        // Enter an operating expense (fuel, parking, cleaning…) without seeing the accounts (28 Oct)
+        'record-expenses' => ['Admin', 'Manager', 'Finance', 'Operations', 'Sales', 'Agent'],
         // Upload, request and approve / reject customer documents
         'review-documents' => ['Admin', 'Manager', 'Sales', 'Agent', 'Operations', 'Staff'],
         // Create, send and convert quotations
@@ -58,7 +60,8 @@ class Access
         'manage-bookings' => 'Create and edit bookings',
         'operate-fleet' => 'Hand over, receive, mark cars / yachts ready',
         'record-payments' => 'Record money received',
-        'manage-finance' => 'Refunds, deposits, edit / delete money records, expenses, accounts',
+        'manage-finance' => 'Refunds, deposits, edit / reverse money records, approve expenses, accounts and reports',
+        'record-expenses' => 'Enter operating expenses (they wait for approval unless entered by finance)',
         'review-documents' => 'Upload, request and approve customer documents',
         'manage-quotations' => 'Create, send and convert quotations',
         'manage-fleet' => 'Cars, yachts, trips, rates, website publishing',

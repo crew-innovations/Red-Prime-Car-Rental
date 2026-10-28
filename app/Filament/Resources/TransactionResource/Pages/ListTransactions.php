@@ -37,7 +37,7 @@ class ListTransactions extends ListRecords
 
     public function getTabs(): array
     {
-        $outstanding = fn (Builder $query) => $query->where('type', TransactionType::Income)
+        $outstanding = fn (Builder $query) => $query->where('type', TransactionType::Income)->whereNull('reversed_at')
             ->whereIn('status', [PaymentStatus::Pending, PaymentStatus::Overdue, PaymentStatus::PartiallyPaid]);
 
         return [
@@ -51,6 +51,14 @@ class ListTransactions extends ListRecords
             'expense' => Tab::make('Expenses')
                 ->icon('heroicon-o-arrow-up-right')
                 ->modifyQueryUsing(fn (Builder $query) => $query->where('type', TransactionType::Expense)),
+            'approval' => Tab::make('Waiting for approval')
+                ->icon('heroicon-o-check-badge')
+                ->badge(fn () => Transaction::query()->where('approval_status', 'pending')->count() ?: null)
+                ->badgeColor('warning')
+                ->modifyQueryUsing(fn (Builder $query) => $query->where('approval_status', 'pending')),
+            'estimates' => Tab::make('Estimates')
+                ->icon('heroicon-o-calculator')
+                ->modifyQueryUsing(fn (Builder $query) => $query->where('is_estimate', true)->whereNull('reversed_at')),
             'outstanding' => Tab::make('To collect')
                 ->icon('heroicon-o-clock')
                 ->badge(fn () => $outstanding(Transaction::query())->count() ?: null)

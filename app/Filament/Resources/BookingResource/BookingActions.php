@@ -389,6 +389,53 @@ class BookingActions
             });
     }
 
+    /** A cost for this booking (fuel, parking, delivery…), for the booking's profit (28 Oct, 8.2). */
+    public static function addExpense(string $class)
+    {
+        return $class::make('addExpense')
+            ->label('Add expense')
+            ->icon('heroicon-o-arrow-up-right')
+            ->color('gray')
+            ->authorize('record-expenses')
+            ->modalWidth('lg')
+            ->modalDescription(fn (): string => Access::allows('manage-finance') ? 'Counted as a cost of this booking.' : 'Finance approves it before it counts.')
+            ->form([
+                Forms\Components\Select::make('category')->options(fn () => collect(\App\Models\Transaction::categories('expense'))->except(\App\Models\Transaction::NON_COST_CATEGORIES)->all())->required()->native(false),
+                Forms\Components\Grid::make(2)->schema([
+                    Forms\Components\TextInput::make('amount')->numeric()->minValue(0.01)->prefix('AED')->required(),
+                    Forms\Components\DatePicker::make('date')->default(today())->native(false)->required(),
+                ]),
+                Forms\Components\TextInput::make('vendor')->label('Paid to')->maxLength(255),
+                Forms\Components\TextInput::make('description')->maxLength(255),
+                Forms\Components\Select::make('method')->label('Paid by')->options(PaymentMethod::class)->native(false),
+                Forms\Components\Toggle::make('is_estimate')->label('Estimate (not final yet)'),
+                Forms\Components\FileUpload::make('receipt')->label('Receipt photo / PDF')
+                    ->disk('private')->directory('tmp')->visibility('private')
+                    ->acceptedFileTypes(['image/jpeg', 'image/png', 'image/webp', 'application/pdf'])->maxSize(10240),
+            ])
+            ->action(function (Booking $record, array $data) {
+                $t = \App\Models\Transaction::create([
+                    'type' => \App\Enums\TransactionType::Expense,
+                    'booking_id' => $record->id,
+                    'category' => $data['category'],
+                    'amount' => $data['amount'],
+                    'date' => $data['date'],
+                    'status' => \App\Enums\PaymentStatus::Paid,
+                    'method' => $data['method'] ?? null,
+                    'vendor' => $data['vendor'] ?? null,
+                    'description' => $data['description'] ?? null,
+                    'is_estimate' => (bool) ($data['is_estimate'] ?? false),
+                ]);
+                // Action forms do not save files on their own.
+                if (! empty($data['receipt']) && $paths = \App\Support\PrivateFiles::freshUploads((array) $data['receipt'], 'tmp')) {
+                    foreach ($paths as $path) {
+                        $t->addMediaFromDisk($path, 'private')->toMediaCollection('receipts');
+                    }
+                }
+                Notification::make()->title($t->approval_status === 'pending' ? 'Expense saved: waiting for approval' : 'Expense saved')->success()->send();
+            });
+    }
+
     public static function recordPayment(string $class)
     {
         return $class::make('payment')

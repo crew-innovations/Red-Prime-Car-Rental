@@ -111,6 +111,28 @@ class TransactionResource extends Resource
                         ->placeholder(fn (Get $get): string => $isIncome($get) ? 'e.g. Urus rental 12-15 Oct' : 'e.g. Oil change, ENOC fuel')
                         ->maxLength(255)
                         ->columnSpanFull(),
+                    Forms\Components\TextInput::make('vendor')
+                        ->label('Paid to (vendor)')
+                        ->placeholder('ENOC, Al Futtaim service, car wash…')
+                        ->maxLength(255)
+                        ->visible(fn (Get $get): bool => ! $isIncome($get)),
+                    Forms\Components\Select::make('booking_id')
+                        ->label('Booking')
+                        ->relationship('booking', 'reference', fn (Builder $query) => \App\Support\Access::scopeOwn($query, 'booking'))
+                        ->searchable()
+                        ->helperText(fn (Get $get): ?string => $isIncome($get) ? null : 'Link a cost to a booking to see that booking\'s profit.')
+                        ->visible($withRelated),
+                    Forms\Components\Toggle::make('is_estimate')
+                        ->label('Estimate (not paid / not final yet)')
+                        ->helperText('Shown apart from actual costs until you untick it.')
+                        ->visible(fn (Get $get): bool => ! $isIncome($get))
+                        ->inline(false),
+                    Forms\Components\SpatieMediaLibraryFileUpload::make('receipts')
+                        ->label('Receipt / invoice')
+                        ->collection('receipts')->disk('private')->visibility('private')
+                        ->multiple()->maxFiles(5)->maxSize(10240)
+                        ->acceptedFileTypes(['image/jpeg', 'image/png', 'image/webp', 'application/pdf'])
+                        ->columnSpanFull(),
                     Forms\Components\Select::make('customer_id')
                         ->label('Customer')
                         ->relationship('customer', 'name')
@@ -195,8 +217,41 @@ class TransactionResource extends Resource
             ])
             ->actions([
                 self::markPaidAction(),
-                Tables\Actions\EditAction::make()->iconButton(),
+                Tables\Actions\Action::make('approve')
+                    ->label('Approve')
+                    ->icon('heroicon-o-check')
+                    ->color('success')
+                    ->authorize('manage-finance')
+                    ->visible(fn (Transaction $record): bool => $record->approval_status === 'pending')
+                    ->requiresConfirmation()
+                    ->modalDescription(fn (Transaction $record): string => 'Counts AED '.number_format((float) $record->amount, 2).' as a cost from now on. Entered by '.($record->user?->name ?? 'someone').'.')
+                    ->action(fn (Transaction $record) => $record->approve()),
+                Tables\Actions\EditAction::make()->iconButton()
+                    ->visible(fn (Transaction $record): bool => ! $record->reversed_at),
                 Tables\Actions\ActionGroup::make([
+                    Tables\Actions\Action::make('reject')
+                        ->label('Reject')
+                        ->icon('heroicon-o-x-mark')
+                        ->color('danger')
+                        ->authorize('manage-finance')
+                        ->visible(fn (Transaction $record): bool => $record->approval_status === 'pending')
+                        ->form([Forms\Components\TextInput::make('reason')->required()->maxLength(200)])
+                        ->action(fn (Transaction $record, array $data) => $record->reject($data['reason'])),
+                    Tables\Actions\Action::make('reverse')
+                        ->label('Reverse (correction)')
+                        ->icon('heroicon-o-arrow-uturn-left')
+                        ->color('danger')
+                        ->authorize('manage-finance')
+                        ->visible(fn (Transaction $record): bool => ! $record->reversed_at && ! $record->is_balance)
+                        ->form([Forms\Components\TextInput::make('reason')->label('Why?')->required()->maxLength(200)])
+                        ->modalDescription('The row stays in the list, marked reversed with your reason, and leaves every total and balance. Enter the correct amount as a new row if needed.')
+                        ->action(function (Transaction $record, array $data) {
+                            try {
+                                $record->reverse($data['reason']);
+                            } catch (\Illuminate\Validation\ValidationException $e) {
+                                \Filament\Notifications\Notification::make()->title(collect($e->errors())->flatten()->first())->danger()->send();
+                            }
+                        }),
                     Tables\Actions\Action::make('receipt')
                         ->label('Receipt (PDF)')
                         ->icon('heroicon-o-receipt-percent')
@@ -209,7 +264,9 @@ class TransactionResource extends Resource
                             $replica->date = today();
                         })
                         ->successRedirectUrl(fn (Transaction $replica): string => self::getUrl('edit', ['record' => $replica])),
-                    Tables\Actions\DeleteAction::make(),
+                    // Paid money is corrected with "Reverse", never deleted; unpaid rows typed by mistake can go.
+                    Tables\Actions\DeleteAction::make()
+                        ->visible(fn (Transaction $record): bool => ! $record->is_balance && $record->status !== PaymentStatus::Paid && $record->status !== PaymentStatus::PartiallyPaid),
                     Tables\Actions\RestoreAction::make(),
                 ]),
             ])
@@ -261,9 +318,24 @@ class TransactionResource extends Resource
                 ->toggleable(isToggledHiddenByDefault: true),
             Tables\Columns\TextColumn::make('status')
                 ->badge()
-                ->description(fn (Transaction $record): ?string => $record->status === PaymentStatus::PartiallyPaid
-                    ? 'AED '.number_format((float) $record->amount_paid).' received'
-                    : ($record->due_date && in_array($record->status, [PaymentStatus::Pending, PaymentStatus::Overdue], true) ? 'Due '.$record->due_date->format('d M') : null)),
+                ->formatStateUsing(fn (Transaction $record, $state): string => match (true) {
+                    (bool) $record->reversed_at => 'Reversed',
+                    $record->approval_status === 'pending' => 'Waiting for approval',
+                    $record->approval_status === 'rejected' => 'Rejected',
+                    $record->is_estimate => 'Estimate',
+                    default => $state instanceof PaymentStatus ? $state->getLabel() : (string) $state,
+                })
+                ->color(fn (Transaction $record): string => match (true) {
+                    (bool) $record->reversed_at, $record->approval_status === 'rejected' => 'gray',
+                    $record->approval_status === 'pending', $record->is_estimate => 'warning',
+                    default => $record->status?->getColor() ?? 'gray',
+                })
+                ->description(fn (Transaction $record): ?string => match (true) {
+                    (bool) $record->reversed_at => $record->reversal_reason,
+                    $record->status === PaymentStatus::PartiallyPaid => 'AED '.number_format((float) $record->amount_paid).' received',
+                    $record->due_date && in_array($record->status, [PaymentStatus::Pending, PaymentStatus::Overdue], true) => 'Due '.$record->due_date->format('d M'),
+                    default => $record->vendor,
+                }),
             Tables\Columns\TextColumn::make('amount')
                 ->alignEnd()
                 ->sortable()
@@ -274,11 +346,11 @@ class TransactionResource extends Resource
                     Tables\Columns\Summarizers\Sum::make()
                         ->label('Income')
                         ->money('AED')
-                        ->query(fn ($query) => $query->where('type', TransactionType::Income->value)),
+                        ->query(fn ($query) => $query->where('type', TransactionType::Income->value)->whereRaw(Transaction::COUNTS_SQL)),
                     Tables\Columns\Summarizers\Sum::make()
                         ->label('Expenses')
                         ->money('AED')
-                        ->query(fn ($query) => $query->where('type', TransactionType::Expense->value)),
+                        ->query(fn ($query) => $query->where('type', TransactionType::Expense->value)->whereRaw(Transaction::COUNTS_SQL)),
                 ]),
         ]));
     }

@@ -34,7 +34,7 @@ class PagesSmokeTest extends TestCase
     {
         $this->actingAs($this->user('Super Admin'));
 
-        $urls = ['/crm', '/crm/pipeline', '/crm/accounts', '/crm/business-settings'];
+        $urls = ['/crm', '/crm/pipeline', '/crm/accounts', '/crm/business-settings', '/crm/profit-reports', '/crm/profit-reports?by=month', '/crm/profit-reports?by=category', '/crm/rate-card', '/crm/price-check'];
         foreach (['leads', 'quotations', 'bookings', 'customers', 'cars', 'yachts', 'trips', 'packages', 'drivers', 'transactions', 'users', 'categories', 'lead-sources', 'documents', 'history', 'damage-reports'] as $r) {
             $urls[] = "/crm/{$r}";
         }

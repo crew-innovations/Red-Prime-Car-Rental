@@ -11,10 +11,19 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Validation\ValidationException;
+use Spatie\MediaLibrary\HasMedia;
+use Spatie\MediaLibrary\InteractsWithMedia;
 
-class Transaction extends Model
+class Transaction extends Model implements HasMedia
 {
-    use Audited, SoftDeletes;
+    use Audited, InteractsWithMedia, SoftDeletes;
+
+    /**
+     * Rows that count in totals and reports (28 Oct): not reversed, not an
+     * estimate, and approved (or entered by finance, which needs no approval).
+     */
+    public const COUNTS_SQL = "reversed_at IS NULL AND is_estimate = 0 AND (approval_status IS NULL OR approval_status = 'approved')";
 
     protected $guarded = ['id'];
 
@@ -64,6 +73,9 @@ class Transaction extends Model
             'amount' => 'decimal:2',
             'amount_paid' => 'decimal:2',
             'is_balance' => 'boolean',
+            'is_estimate' => 'boolean',
+            'approved_at' => 'datetime',
+            'reversed_at' => 'datetime',
         ];
     }
 
@@ -71,6 +83,26 @@ class Transaction extends Model
     {
         static::creating(function (Transaction $t) {
             $t->user_id ??= auth()->id();
+
+            // Expenses from staff without finance rights wait for approval (Business settings).
+            if ($t->type === TransactionType::Expense && $t->approval_status === null && auth()->check()
+                && ! \App\Support\Access::allows('manage-finance') && (bool) Setting::read('expense_approval_required', true)
+                && ! in_array($t->category, self::NON_COST_CATEGORIES, true)) {
+                $t->approval_status = 'pending';
+            }
+
+            // The same money typed twice within 30 seconds (a double click) is refused.
+            if ($t->type === TransactionType::Income && ! $t->is_balance && $t->booking_id && auth()->check()) {
+                $twin = static::query()->where('booking_id', $t->booking_id)->where('type', TransactionType::Income)->where('is_balance', false)
+                    ->where('amount', round((float) $t->amount, 2))->where('category', $t->category)->whereNull('reversed_at')
+                    ->where('method', $t->method instanceof \BackedEnum ? $t->method->value : $t->method)->where('description', $t->description)
+                    ->where('user_id', $t->user_id)->where('created_at', '>=', now()->subSeconds(30))
+                    ->when($t->reference, fn ($q, $ref) => $q->where('reference', $ref))
+                    ->exists();
+                if ($twin) {
+                    throw ValidationException::withMessages(['data.amount' => 'This payment was just recorded. Check the list before adding it again.']);
+                }
+            }
 
             // Payments added on a booking inherit its customer and car / yacht / trip.
             if ($t->booking_id && ($booking = Booking::find($t->booking_id))) {
@@ -98,6 +130,48 @@ class Transaction extends Model
     public function booking(): BelongsTo
     {
         return $this->belongsTo(Booking::class);
+    }
+
+    public function registerMediaCollections(): void
+    {
+        $this->addMediaCollection('receipts')->useDisk('private');
+    }
+
+    public function counts(): bool
+    {
+        return ! $this->reversed_at && ! $this->is_estimate && in_array($this->approval_status, [null, 'approved'], true);
+    }
+
+    /** Corrections keep the row: it is marked reversed and leaves every total. */
+    public function reverse(string $reason): void
+    {
+        if ($this->reversed_at) {
+            return;
+        }
+        if ($this->is_balance) {
+            throw ValidationException::withMessages(['reason' => 'The balance row follows the booking. Change the booking instead.']);
+        }
+        $this->update(['reversed_at' => now(), 'reversed_by' => auth()->id(), 'reversal_reason' => mb_substr($reason, 0, 255)]);
+    }
+
+    public function approve(): void
+    {
+        $this->update(['approval_status' => 'approved', 'approved_by' => auth()->id(), 'approved_at' => now()]);
+    }
+
+    public function reject(string $reason): void
+    {
+        $this->update(['approval_status' => 'rejected', 'approved_by' => auth()->id(), 'approved_at' => now(), 'notes' => trim(($this->notes ? $this->notes."\n" : '').'Rejected: '.$reason)]);
+    }
+
+    public function reverser(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'reversed_by');
+    }
+
+    public function scopeCounting(Builder $query): Builder
+    {
+        return $query->whereRaw(self::COUNTS_SQL);
     }
 
     public static function categories(TransactionType|string|null $type = null): array
@@ -159,7 +233,7 @@ class Transaction extends Model
     {
         $exclude = "'".implode("','", self::NON_REVENUE_CATEGORIES)."'";
 
-        return "SUM(CASE WHEN type = 'income' AND category NOT IN ({$exclude}) THEN
+        return "SUM(CASE WHEN type = 'income' AND category NOT IN ({$exclude}) AND ".self::COUNTS_SQL." THEN
             CASE status WHEN 'paid' THEN amount WHEN 'partially_paid' THEN COALESCE(amount_paid, 0) ELSE 0 END
         ELSE 0 END)";
     }
@@ -167,7 +241,7 @@ class Transaction extends Model
     /** Income still to be collected. */
     public static function outstandingSql(): string
     {
-        return "SUM(CASE WHEN type = 'income' THEN
+        return "SUM(CASE WHEN type = 'income' AND ".self::COUNTS_SQL." THEN
             CASE status WHEN 'pending' THEN amount WHEN 'overdue' THEN amount
                 WHEN 'partially_paid' THEN amount - COALESCE(amount_paid, 0) ELSE 0 END
         ELSE 0 END)";
@@ -178,7 +252,7 @@ class Transaction extends Model
     {
         $exclude = "'".implode("','", self::NON_COST_CATEGORIES)."'";
 
-        return "SUM(CASE WHEN type = 'expense' AND status <> 'refunded' AND category NOT IN ({$exclude}) THEN amount ELSE 0 END)";
+        return "SUM(CASE WHEN type = 'expense' AND status <> 'refunded' AND category NOT IN ({$exclude}) AND ".self::COUNTS_SQL." THEN amount ELSE 0 END)";
     }
 
     /** @return array{received: float, outstanding: float, expenses: float, net: float} */

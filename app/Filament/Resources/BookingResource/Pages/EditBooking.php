@@ -45,6 +45,7 @@ class EditBooking extends EditRecord
             BookingActions::receive(Actions\Action::class)->after($after),
             BookingActions::recordPayment(Actions\Action::class)->after($after),
             BookingActions::refundDeposit(Actions\Action::class)->after($after),
+            BookingActions::addExpense(Actions\Action::class)->after($after),
             BookingActions::whatsapp(Actions\Action::class),
             // Customer documents (28 Oct): confirmation, invoice, return statement.
             Actions\ActionGroup::make([

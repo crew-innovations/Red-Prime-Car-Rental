@@ -365,6 +365,12 @@ class BusinessSettings extends Page implements HasForms
                     ->description('Rename or add categories. Ones the CRM uses itself (rentals, deposits, deposit refunds, extras…) come back if removed, so reports keep working.')
                     ->columns(2)
                     ->schema([$repeater('income'), $repeater('expense')]),
+                Forms\Components\Section::make('Expense controls')
+                    ->schema([
+                        Forms\Components\Toggle::make('expense_approval_required')
+                            ->label('Expenses entered by staff without finance rights wait for approval')
+                            ->helperText('Until Finance approves them they are shown apart and do not count in profit. Finance and admins are never held.'),
+                    ]),
             ]);
     }
 
@@ -518,6 +524,7 @@ class BusinessSettings extends Page implements HasForms
         'driver_doc_warn_days', 'driver_doc_reminders', 'notify_drivers_by_email', 'notify_staff_by_email',
         // 28 Oct: pricing and sales workflow
         'hourly_increment_minutes', 'price_max_discount_percent', 'booking_requires_accepted_quote', 'doc_block_confirm',
+        'expense_approval_required',
     ];
 
     public function save(): void
