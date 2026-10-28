@@ -80,7 +80,7 @@ class Invoice extends Model
         };
     }
 
-    public static function seller(): array
+    public static function sellerDetails(): array
     {
         $s = Setting::values();
         $vat = Tax::enabled();
@@ -96,7 +96,7 @@ class Invoice extends Model
         ], fn ($v) => filled($v));
     }
 
-    public static function buyer(?Customer $c): array
+    public static function buyerDetails(?Customer $c): array
     {
         return array_filter([
             'name' => $c?->type !== \App\Enums\CustomerType::Individual && $c?->company_name ? $c->company_name : $c?->name,
@@ -162,8 +162,8 @@ class Invoice extends Model
                 'issued_on' => today(),
                 'supply_date' => $b->start_at?->toDateString(),
                 'is_tax_invoice' => Tax::enabled() && (float) $b->tax_amount > 0,
-                'seller' => self::seller(),
-                'buyer' => self::buyer($b->customer),
+                'seller' => self::sellerDetails(),
+                'buyer' => self::buyerDetails($b->customer),
                 'lines' => $lines,
                 'subtotal' => $subtotal,
                 'discount' => (float) $b->discount,
@@ -198,7 +198,7 @@ class Invoice extends Model
             'issued_on' => today(),
             'supply_date' => $invoice->supply_date,
             'is_tax_invoice' => $invoice->is_tax_invoice,
-            'seller' => self::seller(),
+            'seller' => self::sellerDetails(),
             'buyer' => $invoice->buyer,
             'lines' => [['label' => $reason, 'qty' => 1, 'unit_price' => round($amount, 2), 'amount' => round($amount, 2)]],
             'subtotal' => round($amount, 2),

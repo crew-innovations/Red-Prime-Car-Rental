@@ -58,7 +58,7 @@ class InvoiceResource extends Resource
             ->columns([
                 Tables\Columns\TextColumn::make('number')->weight(FontWeight::SemiBold)->searchable()->sortable()
                     ->description(fn (Invoice $r): string => $r->title()),
-                Tables\Columns\TextColumn::make('buyer.name')->label('Customer')->searchable(query: fn (Builder $q, string $search) => $q->whereHas('customer', fn ($c) => $c->where('name', 'like', "%{$search}%"))),
+                Tables\Columns\TextColumn::make('buyer_name')->label('Customer')->state(fn (Invoice $record): ?string => ((array) $record->buyer)['name'] ?? $record->customer?->name)->searchable(query: fn (Builder $q, string $search) => $q->whereHas('customer', fn ($c) => $c->where('name', 'like', "%{$search}%"))),
                 Tables\Columns\TextColumn::make('booking.reference')->label('Booking')->placeholder('-')
                     ->url(fn (Invoice $r): ?string => $r->booking_id ? BookingResource::getUrl('edit', ['record' => $r->booking_id]) : null),
                 Tables\Columns\TextColumn::make('issued_on')->label('Date')->date('d M Y')->sortable(),

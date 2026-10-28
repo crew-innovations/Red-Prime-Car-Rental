@@ -162,4 +162,15 @@ class DocumentsPdfTest extends TestCase
             $this->assertArrayHasKey('invoice', $e->errors());
         }
     }
+
+    public function test_invoice_list_shows_rows_with_the_customer(): void
+    {
+        $this->actingAs($this->user('Finance'));
+        $b = $this->paidBooking();
+        $inv = Invoice::issueFor($b);
+        \Livewire\Livewire::test(\App\Filament\Resources\InvoiceResource\Pages\ListInvoices::class)
+            ->assertCanSeeTableRecords([$inv])
+            ->assertSee($inv->number)
+            ->assertSee($b->customer->name);
+    }
 }
