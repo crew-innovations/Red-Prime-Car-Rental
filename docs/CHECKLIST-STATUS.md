@@ -165,6 +165,8 @@
 | No duplicate payments | Working | Tested (a double click within 30 seconds is ignored) |
 | Charges reconciled against the deposit | Working | Tested |
 | Deposit deduction, refund, holding for Salik / fines | Working | Tested |
+| Expense approval, estimates, reversals | **Built** (28 Oct) | Staff expenses wait for Finance; estimates and reversed rows never count; paid rows reversed, never deleted. Tested. |
+| Profit report with definitions | **Built** (28 Oct) | Finance › Profit & reports. Tested. |
 | Refunds separate from approval | Partial | Deposit refunds are tracked separately. Refunds of rental money on a cancelled booking are recorded by Finance in Accounts by hand; a proper refund flow needs your refund policy (**Decide**). |
 | Deposit separate from revenue | Working | Tested: deposits are not revenue, and refunds are not costs. |
 | History of payments and adjustments | Working | History tab and audit log |
@@ -211,6 +213,7 @@
 | Website requests create leads, never bookings; server-side price | **Built** | Tested. |
 | Duplicates, idempotency, bot honeypot, rate limit | **Built** | Tested. |
 | CORS limited to website addresses in Business settings | **Built** | Tested. |
+| Cars, yachts, price estimate, charter requests | **Built** (28 Oct) | Same price engine as the CRM; nothing held. Tested. |
 | The website itself | N/A | Not built and not connected (M3). |
 
 ## 15. Dashboard and navigation
@@ -222,7 +225,8 @@
 | Monthly revenue, to collect | Working | |
 | All screens, tabs and widgets open | **Fixed** | Tested every page, tab and widget. Found and fixed two crashes: the Quotations list, and "New transaction" (it crashed on open). |
 | Desktop / phone layout | Working | Checked in a real browser at 1366, 1024 and 390 px in both themes (21 Oct): no sideways scrolling. On phones each page starts with the menu closed. |
-| Menu groups and permissions | **Built** (21 Oct) | Overview, Sales, Operations, Finance, Administration. Tested per role. |
+| Menu groups and permissions | **Built** (28 Oct) | Overview, Sales, Bookings & drivers, Fleet, Yachts & trips, Accounts & reports, Pricing, Settings. Tested per role. |
+| Dashboard numbers open their records; agent work list | **Built** (28 Oct) | Tested. |
 | Global Documents and History lists | **Built** (21 Oct) | Tested (permissions, approve from the list). |
 
 ## 16. Security and data integrity

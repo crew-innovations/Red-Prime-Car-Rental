@@ -1,5 +1,89 @@
 # Development log — RED PRIME RENTALS CRM
 
+## 2026-10-28 · Complete system correction (brief Priorities 1–10)
+
+Brief: "COMPLETE SYSTEM CORRECTION AND DEVELOPMENT PROMPT" (28 Oct). Bilal's answers:
+- yacht charters come back ("Charter wapas lao")
+- VAT stays off for now
+- PDFs with dompdf
+- discounts never need approval: agents change prices freely, but a reason and history are always kept
+
+Contract mapping: **change request** for the redesign, pricing engine, charters with crew, approvals and profit reports; **M2** for bookings, accounts and documents; **M3** for the website API (built early).
+
+Commits, in order: landing page, pricing, sales workflow, charters, car operations, PDFs, accounts, dashboard and menu, website API, end-to-end tests.
+
+### 1. Look and menu
+- Menu: Overview · Sales (leads, pipeline, quotations, customers, documents) · Bookings & drivers · Fleet · Yachts & trips · Accounts & reports · Pricing · Settings.
+- Dashboard "At a glance": bookings, sales, fleet and (Finance only) money this month. Every number opens the list behind it.
+- "My work" for agents: enquiries to accept, follow-ups, drafts to send, quotes waiting, accepted quotes to book, unpaid bookings, bookings this week.
+- Bookings list: new tabs "Late returns" and "Waiting for payment". Tab counts respect "agents only see their own work".
+- Landing page at the CRM address with a login button.
+
+### 2. Prices (`App\Support\Pricing\PriceEngine`)
+- One engine for quotations, bookings, the Price check page and the website.
+- Standard rates stay on each car / yacht / trip / package (Pricing › Rate card edits them in one table).
+- Special rates (season, dates, weekdays, one item or a whole category; "set" or "± %"; optional "charge at least").
+- Extras & fees: catalogue extras, delivery, collection and fixed fees.
+- Car and yacht minimums are **warnings only**, never charged automatically.
+- Every price change keeps the price-list amount, the reason and who changed it. Optional limit: "largest discount %" (empty = no limit).
+
+### 3. Sales to booking
+- Leads given to an agent wait for "Accept"; the agent can hand them back with a reason.
+- Customers accept or decline on the secure link or in their account (name, time, IP and the accepted terms are saved). The customer profile is created or linked, never duplicated, and a document request goes out for anything missing.
+- "Create booking" shows the checks first. Two switches, both **off** by default: "documents approved before confirming" and "bookings only from an accepted quote".
+- Progress timeline on quotations and bookings.
+
+### 4–5. Car operations and charters
+- Delivery / collection choices decide which driver jobs exist; a separate collection driver is possible.
+- Optional (off by default): the office approves the driver's handover check before the keys are released.
+- Damage reported by drivers is only charged after staff review it.
+- Charters: captain and crew picked from Drivers & crew ("Can work as" driver / captain / crew). No clashes between car jobs and charters for the same person. Bareboat only where the yacht allows it. The captain starts and finishes the charter on the phone; no money is recorded by crew.
+
+### 6. Customer portal and website API
+- Account area: quotations (accept / decline), bookings with progress, documents, payments, invoices and receipts.
+- API: `GET /cars`, `/cars/{slug}`, `/yachts`, `/yachts/{slug}`; `POST /price-estimate` (engine price and a yes / no availability answer, nothing held); charter requests. See `docs/API.md`.
+
+### 7. PDFs
+- Quotation, booking confirmation, invoice and credit note, payment receipt, return statement.
+- Invoice numbers INV-00001, credit notes CN-00001. Invoices are voided or credited, never deleted.
+- While VAT is off the invoice says "Invoice" and "Not a tax invoice", with no TRN. With VAT on it becomes "Tax Invoice" with the TRN.
+- **UAE e-invoicing:** the UAE is moving to structured e-invoices through an accredited service provider (Peppol). The announced timeline: pilot from July 2026; businesses with revenue of AED 50m or more from 1 January 2027; the rest from 1 July 2027. These PDFs are **not** e-invoices. When it applies to RED PRIME, an accredited provider has to be connected; we make no compliance claim.
+
+### 8. Accounts
+- Expenses: vendor, receipt files, link to a booking, "estimate" flag.
+- Expenses from staff without finance rights wait for Finance approval (switch in Business settings › Money categories, **on** by default).
+- Paid money is corrected with "Reverse" (the row stays, with the reason) and is never deleted.
+- Booking page: "Add expense" and "Why is the balance this?" (price changes, charges, payments, corrections).
+- Finance › Profit & reports, with the definitions on the page:
+  - **Earned revenue:** bookings completed in the period (by return date), without VAT, plus return charges. Money kept on cancelled / no-show bookings counts when the booking ends.
+  - **Cash received:** payments dated in the period. Deposits are never revenue; deposit refunds are never costs.
+  - **Costs:** actual, approved expenses. Estimates, waiting and reversed rows never count.
+  - **Contribution:** earned revenue minus the costs linked to those bookings.
+  - **Net result:** earned revenue minus all actual costs dated in the period (a full net profit only if every cost is entered).
+  - Group by booking, car, yacht, agent, month or category.
+- Not built (contract rule): payroll, commissions, general ledger.
+
+### 9. Settings and permissions
+New abilities: manage-pricing, adjust-prices, assign-leads, record-expenses. New settings and their starting values (**Bilal to confirm**):
+
+| Setting | Starting value |
+|---|---|
+| Hourly rates bill in steps of | 60 minutes |
+| Largest discount % | empty (no limit) |
+| Documents approved before confirming | off |
+| Bookings only from an accepted quote | off |
+| Office approves driver handover | off |
+| Staff expenses wait for approval | on |
+| VAT | off |
+| Company legal name, trade licence, cancellation and late-return texts on PDFs | empty until filled in |
+
+Still open from before: driver gap (90 minutes), minimum photos, document warning days (30), handover / return checklists.
+
+### 10. Testing
+- 202 automated tests, all passing (1,436 checks), including whole journeys: website enquiry → agent → quotation → customer accepts → documents → booking → handover → return → invoice → profit; hourly charter with captain; daily yacht and trip seats; access by role.
+- Checked in a real browser (1366 and 390 px, dark and light): dashboard for admin and agent, Profit & reports, balance history, rate card, price check, public quotation page, captain's phone screen, all PDFs.
+- **Not tested here:** the live server (deploy not run yet), dompdf on Hostinger, real emails, the website (not built).
+
 ## 2026-10-26 · One shared CRM: agents, driver accounts, mobile driver screens, customer accounts
 
 Brief: "Updated requirements: shared system, driver management and mobile dashboard" (26 Oct). Bilal's answers:
