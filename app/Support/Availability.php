@@ -58,7 +58,7 @@ class Availability
      * Another holding booking (or, for a yacht, a scheduled trip departure) in
      * the same time window. Returns a message for staff, or null when free.
      */
-    public static function assetConflict(string $type, int $id, $start, $end, ?int $ignoreBookingId = null): ?string
+    public static function assetConflict(string $type, int $id, $start, $end, ?int $ignoreBookingId = null, bool $lock = true): ?string
     {
         if (! in_array($type, ['car', 'yacht'], true) || ! $start || ! $end) {
             return null;
@@ -68,7 +68,9 @@ class Availability
         $end = Carbon::parse($end);
         $buffer = Rules::bufferMinutes(); // gap kept free between bookings (Business settings)
 
-        self::lock($type, $id);
+        if ($lock) {
+            self::lock($type, $id); // read-only checks (website) take no lock
+        }
 
         $clash = self::latest(Booking::query())
             ->blocking()

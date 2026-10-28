@@ -30,7 +30,7 @@ use Illuminate\Validation\ValidationException;
  */
 class BookingRequestController extends Controller
 {
-    public const TYPES = ['yacht_trip', 'package', 'car'];
+    public const TYPES = ['yacht_trip', 'package', 'car', 'yacht'];
 
     public function store(Request $request): JsonResponse
     {
@@ -47,6 +47,10 @@ class BookingRequestController extends Controller
             'date' => ['nullable', 'date_format:Y-m-d', 'after_or_equal:today'],
             'end_date' => ['nullable', 'date_format:Y-m-d', 'after_or_equal:date'],
             'guests' => ['nullable', 'integer', 'min:1', 'max:500'],
+            // Cars and yacht charters (28 Oct): exact times give a server price estimate.
+            'start_at' => ['nullable', 'date_format:Y-m-d H:i', 'after_or_equal:today'],
+            'end_at' => ['nullable', 'date_format:Y-m-d H:i', 'after:start_at'],
+            'drive_mode' => ['nullable', Rule::in(['self_drive', 'with_driver'])],
             'name' => ['required', 'string', 'max:120'],
             'phone' => ['required', 'string', 'max:30', 'regex:/^[0-9+()\-\s]{6,30}$/'],
             'email' => ['nullable', 'email:rfc', 'max:255'],
@@ -81,7 +85,7 @@ class BookingRequestController extends Controller
                 return $this->respond($recent, $item, $type, $guests, $departure ?? $tripDate, true, 200);
             }
 
-            $estimate = $this->estimate($item, $guests, $departure);
+            $estimate = $this->estimate($item, $guests, $departure, $data);
 
             $lead = Lead::create([
                 'name' => trim($data['name']),
@@ -97,7 +101,7 @@ class BookingRequestController extends Controller
                 'end_date' => $end?->toDateString(),
                 'guests' => $guests,
                 'budget' => $estimate['amount'] ?? null,
-                'message' => $this->message($type, $item, $guests, $departure ?? $tripDate, $estimate, $data['message'] ?? null),
+                'message' => $this->message($type, $item, $guests, $departure ?? $tripDate, $estimate, $data['message'] ?? null, $data),
                 'utm_source' => $data['utm_source'] ?? null,
                 'utm_medium' => $data['utm_medium'] ?? null,
                 'utm_campaign' => $data['utm_campaign'] ?? null,
@@ -116,13 +120,14 @@ class BookingRequestController extends Controller
             'yacht_trip' => Trip::query()->publiclyVisible()->where('status', TripStatus::Active)->where('slug', $slug)->first(),
             'package' => Package::query()->publiclyVisible()->active()->where('slug', $slug)->first(),
             'car' => Car::query()->publiclyVisible()->where('slug', $slug)->first(),
+            'yacht' => \App\Models\Yacht::query()->publiclyVisible()->where('slug', $slug)->first(),
         };
 
         if (! $item) {
             throw ValidationException::withMessages(['product_slug' => 'This product is not available.']);
         }
 
-        return [match ($type) { 'yacht_trip' => ServiceType::Trip, 'package' => ServiceType::Package, default => ServiceType::Car }, $item];
+        return [match ($type) { 'yacht_trip' => ServiceType::Trip, 'package' => ServiceType::Package, 'yacht' => ServiceType::Yacht, default => ServiceType::Car }, $item];
     }
 
     /** Departure / date checks, done with the latest data (and rows locked) on the server. */
@@ -131,6 +136,10 @@ class BookingRequestController extends Controller
         $departure = $tripDate = null;
         $start = ! empty($data['date']) ? Carbon::parse($data['date']) : null;
         $end = ! empty($data['end_date']) ? Carbon::parse($data['end_date']) : null;
+        if (! empty($data['start_at'])) {
+            $start = Carbon::parse($data['start_at']);
+            $end = ! empty($data['end_at']) ? Carbon::parse($data['end_at']) : $end;
+        }
 
         if ($item instanceof Package) {
             if ($item->min_guests && $guests && $guests < $item->min_guests) {
@@ -184,8 +193,23 @@ class BookingRequestController extends Controller
     }
 
     /** Server-side price estimate (never confirmed here). */
-    protected function estimate($item, ?int $guests, ?PackageDeparture $departure): array
+    protected function estimate($item, ?int $guests, ?PackageDeparture $departure, array $data = []): array
     {
+        // Car or charter with exact times: the CRM's own price engine.
+        if (($item instanceof Car || $item instanceof \App\Models\Yacht) && ! empty($data['start_at']) && ! empty($data['end_at'])) {
+            $q = \App\Support\Pricing\PriceEngine::calculate([
+                'service_type' => $item instanceof Car ? ServiceType::Car->value : ServiceType::Yacht->value, 'item' => $item,
+                'start_at' => $data['start_at'], 'end_at' => $data['end_at'], 'guests' => $guests,
+                'drive_mode' => $item instanceof Car ? ($data['drive_mode'] ?? ($item->self_drive ? 'self_drive' : 'with_driver')) : null,
+            ]);
+            if ($q) {
+                $t = \App\Support\Pricing\PriceEngine::totals((float) $q['base_amount'], $q['lines'], 0, \App\Support\Tax::defaultRate(), \App\Support\Tax::defaultInclusive());
+
+                return ['amount' => $t['total'], 'currency' => 'AED', 'unit_amount' => (float) $q['rate'], 'unit' => $q['rate_type']];
+            }
+
+            return [];
+        }
         if ($item instanceof Package && ($q = $item->priceFor($guests, $departure))) {
             return ['amount' => $q[3], 'currency' => $item->currency ?: 'AED', 'unit_amount' => $q[2], 'unit' => $item->isPerPerson() ? 'per_person' : 'per_package'];
         }
@@ -199,11 +223,12 @@ class BookingRequestController extends Controller
         return [];
     }
 
-    protected function message(string $type, $item, ?int $guests, $date, array $estimate, ?string $text): string
+    protected function message(string $type, $item, ?int $guests, $date, array $estimate, ?string $text, array $data = []): string
     {
         $lines = [
             $type === 'booking_request' ? '[Website booking request]' : '[Website enquiry]',
             $item->name.($date instanceof PackageDeparture ? ' · departure '.$date->start_date->format('d M Y') : '').($date instanceof TripDate ? ' · '.$date->date->format('d M Y') : ''),
+            ! empty($data['start_at']) ? 'From '.$data['start_at'].(! empty($data['end_at']) ? ' to '.$data['end_at'] : '').(! empty($data['drive_mode']) ? ' · '.str_replace('_', '-', $data['drive_mode']) : '') : null,
             $guests ? $guests.' guest(s)' : null,
             ! empty($estimate['amount']) ? 'Website price estimate: '.$estimate['currency'].' '.number_format($estimate['amount'], 2).' (to be confirmed)' : null,
             filled($text) ? "\n".trim($text) : null,

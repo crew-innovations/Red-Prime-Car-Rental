@@ -2,7 +2,7 @@
 
 **Status:** the API exists in the CRM and is tested, but **no website is connected to it yet**. There is no website code in this project. This document is the contract the website developer will build against.
 
-- Base URL: `https://<crm-domain>/api/v1` (staging: `https://darkviolet-llama-836605.hostingersite.com/api/v1`)
+- Base URL: `https://crm.redprimerentals.com/api/v1`
 - Format: JSON in and out. Send `Accept: application/json`.
 - Authentication: none. The API only shows content that is published, and it only accepts enquiries.
 - Contract mapping: M3 (website integration), built early. Trips & Packages is a change request.
@@ -11,7 +11,7 @@
 
 | Does | Does not |
 |---|---|
-| Lists published Yacht Trips and Trips & Packages, with dates and seats left | Show anything unpublished, paused, archived or in a hidden website section |
+| Lists published cars, yachts, Yacht Trips and Trips & Packages, with dates and seats left | Show anything unpublished, paused, archived or in a hidden website section |
 | Accepts an enquiry or a booking request and creates a **lead** in the CRM | Create, confirm or pay for a booking |
 | Calculates a price **estimate** on the server | Accept prices, totals or statuses from the browser (they are ignored) |
 | | Expose internal notes, operators, customers, bookings or private files |
@@ -147,6 +147,66 @@ One package with the full day-by-day itinerary. `404` if it is not published or 
 }
 ```
 
+## Cars and yachts (read-only)
+
+Added 28 Oct. Same rules as the other catalogue lists: only published items in an enabled website section; anything else is a 404.
+
+### GET /cars
+Filters: `featured=1`, `brand`, `body` (car type, e.g. SUV), `mode=self_drive|with_driver`, `per_page` (1–50).
+Each car: `slug`, `name`, `brand`, `model`, `year`, `body`, `transmission`, `fuel`, `seats`, `doors`, `luggage`, `self_drive`, `with_driver`, `prices` (`daily`, `weekly`, `monthly`, `hourly`, `chauffeur_daily`, `chauffeur_hourly`, only those set), `deposit`, `images.cover`.
+
+### GET /cars/{slug}
+Adds `description_html`, `features`, `specifications`, `add_ons`, `rules` (minimum days, km limit, extra km charge, minimum driver age, delivery), `terms`, `images.gallery`, `seo`.
+
+### GET /yachts and GET /yachts/{slug}
+Filters: `featured=1`, `guests` (yachts that take at least that many), `per_page`.
+Each yacht: `slug`, `name`, `yacht_type`, `length_ft`, `guests`, `cabins`, `crew`, `captain_included`, `marina`, `minimum_hours`, `fuel_included`, `prices` (`hourly`, `half_day`, `full_day`, `sunset`), `deposit`. Detail adds amenities, specifications, restrictions, add-ons, mandatory charges, terms and the gallery.
+
+Never returned: registration, VIN, licence and insurance numbers, partner or commission, internal notes, status details, bookings or customers.
+
+## POST /price-estimate
+
+Works out a price with the CRM's own price engine (standard rates, special rates, fees and VAT when VAT is on) and says whether the item looks free. **Nothing is booked or held.** Rate limit: 120 per minute per IP.
+
+| Field | Required | Rules |
+|---|---|---|
+| `product_type` | yes | `car`, `yacht`, `yacht_trip` or `package` |
+| `product_slug` | yes | Slug of a published item |
+| `start_at`, `end_at` | cars, yachts | `YYYY-MM-DD HH:MM`, from today, end after start |
+| `drive_mode` | no | Cars: `self_drive` or `with_driver` (default: what the car offers) |
+| `guests` | no | Integer 1–500 |
+| `departure_id` | trips, packages with departures | Trip date or package departure id |
+| `delivery`, `collection` | no | `true` to add the delivery / collection fee from the price list |
+| `extras` | no | Keys from `optional_extras` in an earlier reply |
+
+**200 OK**
+
+```json
+{
+  "data": {
+    "available": true,
+    "reason": null,
+    "product": { "type": "car", "slug": "lamborghini-urus", "name": "Lamborghini Urus" },
+    "start_at": "2026-11-10 10:00:00", "end_at": "2026-11-12 10:00:00",
+    "currency": "AED",
+    "price": {
+      "base": { "label": "2 × AED 1,200.00 / day", "amount": 2400 },
+      "lines": [ { "key": "delivery", "label": "Delivery", "kind": "delivery", "amount": 150 } ],
+      "subtotal": 2550, "vat": null, "total": 2550
+    },
+    "security_deposit": 2000,
+    "conditions": [],
+    "optional_extras": [ { "key": "addon:child-seat", "label": "Child seat", "price": 50, "unit": "per_day" } ],
+    "note": "Estimate only. Nothing is booked or held. Our team confirms availability and the final price."
+  }
+}
+```
+
+- `available` is `true`, `false` or `null` (on request). When `false`, `reason` is a short customer message ("Not available for these dates.", "Only 2 seat(s) left on this date."). No booking or customer details are ever given.
+- `vat` is `null` while VAT is off in the CRM. When on: `{ "rate": 5, "amount": …, "included": false }`.
+- `conditions` are customer notes such as a minimum rental length; staff setup hints are never shown.
+- The website must show this as an estimate. To go ahead, send `POST /booking-requests`.
+
 ## POST /booking-requests
 
 Sends an enquiry or booking request. Creates a lead; never a booking.
@@ -155,13 +215,15 @@ Rate limit: 5 per minute and 50 per day per IP.
 
 | Field | Required | Rules |
 |---|---|---|
-| `product_type` | yes | `yacht_trip`, `package` or `car` |
+| `product_type` | yes | `yacht_trip`, `package`, `car` or `yacht` (charter) |
 | `product_slug` | yes | Slug of a published item |
 | `request_type` | no | `enquiry` (default) or `booking_request` |
 | `departure_id` | see below | Trip date id or package departure id |
 | `date` | see below | `YYYY-MM-DD`, today or later |
 | `end_date` | no | `YYYY-MM-DD`, on or after `date` |
 | `guests` | no | Integer 1–500 |
+| `start_at`, `end_at` | no | Cars and charters: `YYYY-MM-DD HH:MM`. With both, the reply has a price estimate and the times go to staff on the lead. |
+| `drive_mode` | no | Cars: `self_drive` or `with_driver` |
 | `name` | yes | Up to 120 characters |
 | `phone` | yes | 6–30 characters: digits, spaces, `+ ( ) -` |
 | `email` | no | Valid email |
@@ -175,7 +237,7 @@ Rate limit: 5 per minute and 50 per day per IP.
 - Package on request: `date` is required and must respect the package's booking cut-off. Multi-day packages get an end date automatically.
 - Package minimum and maximum guests are enforced.
 - Yacht trip: `departure_id` (a trip date) or `date` is required. A trip date must be available with enough seats. Guests cannot exceed the trip capacity.
-- Car: dates are optional and are passed to staff as the preferred date. No price estimate is given.
+- Car or yacht charter: dates are optional and are passed to staff as the preferred date. With `start_at` and `end_at` the reply includes a server price estimate (same engine as the CRM).
 
 **201 Created**
 

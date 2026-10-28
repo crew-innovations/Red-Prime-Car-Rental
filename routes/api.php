@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Api\V1\BookingRequestController;
 use App\Http\Controllers\Api\V1\CatalogController;
+use App\Http\Controllers\Api\V1\PriceEstimateController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -16,6 +17,11 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
         Route::get('packages', [CatalogController::class, 'packages'])->name('packages.index');
         Route::get('packages/{slug}', [CatalogController::class, 'package'])->name('packages.show')->where('slug', '[A-Za-z0-9\-]+');
         Route::get('package-categories', [CatalogController::class, 'packageCategories'])->name('package-categories');
+        Route::get('cars', [CatalogController::class, 'cars'])->name('cars.index');
+        Route::get('cars/{slug}', [CatalogController::class, 'car'])->name('cars.show')->where('slug', '[A-Za-z0-9\-]+');
+        Route::get('yachts', [CatalogController::class, 'yachts'])->name('yachts.index');
+        Route::get('yachts/{slug}', [CatalogController::class, 'yacht'])->name('yachts.show')->where('slug', '[A-Za-z0-9\-]+');
+        Route::post('price-estimate', PriceEstimateController::class)->name('price-estimate');
     });
 
     Route::post('booking-requests', [BookingRequestController::class, 'store'])
