@@ -671,7 +671,8 @@ a.rp-acc-card:hover { border-color: var(--rp-line-strong); }
 .rp-glance { display: grid; gap: 1rem; grid-template-columns: 1fr; }
 @media (min-width: 768px) { .rp-glance { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (min-width: 1100px) { .rp-glance-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
-@media (min-width: 1280px) { .rp-glance-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+@media (min-width: 1280px) { .rp-glance-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); } .rp-glance-5 { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (min-width: 1100px) { .rp-glance-5 { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 .rp-glance-panel { background: var(--rp-surface); border: 1px solid var(--rp-line); border-radius: var(--rp-radius); box-shadow: var(--rp-shadow); padding: 1rem 1.1rem .6rem; }
 .rp-glance-title { display: flex; align-items: center; gap: .5rem; font-size: .78rem; font-weight: 600; text-transform: uppercase; letter-spacing: .07em; color: var(--rp-text-3); margin-bottom: .35rem; }
 .rp-glance-icon { width: 1rem; height: 1rem; }
@@ -712,3 +713,90 @@ a.rp-acc-card:hover { border-color: var(--rp-line-strong); }
 .rp-work-more { align-self: flex-start; margin-top: .3rem; font-size: .78rem; font-weight: 600; color: rgb(var(--primary-600)); }
 .dark .rp-work-more { color: rgb(var(--primary-400)); }
 .rp-work-done { margin-top: .85rem; font-size: .78rem; color: var(--rp-text-3); }
+
+/* ---------- Calendar (28 Oct-2) ---------- */
+.rp-cal-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .75rem 1.5rem; }
+.rp-cal-nav { display: flex; align-items: center; gap: .4rem; flex-wrap: wrap; }
+.rp-cal-nav button, .rp-cal-views button, .rp-cal-clear { display: inline-flex; align-items: center; justify-content: center; min-height: 2.25rem; padding: .35rem .8rem; border-radius: var(--rp-radius-sm); border: 1px solid var(--rp-line-strong); background: var(--rp-surface); color: var(--rp-text); font-size: .84rem; font-weight: 600; }
+.rp-cal-nav button:hover, .rp-cal-views button:hover, .rp-cal-clear:hover { background: var(--rp-hover); }
+.rp-cal-nav button:focus-visible, .rp-cal-views button:focus-visible, .rp-cal-daynum:focus-visible, .rp-cal-colhead:focus-visible { outline: 2px solid rgb(var(--primary-500)); outline-offset: 2px; }
+.rp-cal-i { width: 1.1rem; height: 1.1rem; }
+.rp-cal-title { font-size: 1.1rem; font-weight: 600; margin-left: .5rem; color: var(--rp-text); }
+.rp-cal-views { display: inline-flex; gap: 0; border-radius: var(--rp-radius-sm); }
+.rp-cal-views button { border-radius: 0; margin-left: -1px; }
+.rp-cal-views button:first-child { border-radius: var(--rp-radius-sm) 0 0 var(--rp-radius-sm); margin-left: 0; }
+.rp-cal-views button:last-child { border-radius: 0 var(--rp-radius-sm) var(--rp-radius-sm) 0; }
+.rp-cal-views button.is-on { background: rgb(var(--primary-600)); border-color: rgb(var(--primary-600)); color: #fff; }
+.rp-cal-filters { display: flex; flex-wrap: wrap; gap: .6rem .9rem; align-items: flex-end; }
+.rp-cal-filters label { display: flex; flex-direction: column; gap: .2rem; font-size: .74rem; font-weight: 600; color: var(--rp-text-3); }
+.rp-cal-filters select { min-width: 9.5rem; max-width: 14rem; border: 1px solid var(--rp-line-strong); border-radius: var(--rp-radius-sm); padding: .35rem 2rem .35rem .6rem; font-size: .84rem; background-color: var(--rp-surface); color: var(--rp-text); }
+.dark .rp-cal-filters select { color-scheme: dark; }
+.rp-cal-filters .rp-cal-check { flex-direction: row; align-items: center; gap: .4rem; font-size: .82rem; color: var(--rp-text-2); min-height: 2.25rem; }
+.rp-cal-filtertoggle { display: none; }
+@media (max-width: 1023px) { .rp-cal-filtertoggle { display: inline-flex; align-self: flex-start; align-items: center; gap: .35rem; min-height: 2.25rem; padding: .35rem .8rem; border-radius: var(--rp-radius-sm); border: 1px solid var(--rp-line-strong); background: var(--rp-surface); color: var(--rp-text); font-size: .84rem; font-weight: 600; } }
+.rp-cal-alert { display: flex; flex-wrap: wrap; gap: .5rem 1.25rem; padding: .7rem 1rem; border-radius: var(--rp-radius-sm); background: rgba(var(--danger-500), .08); color: rgb(var(--danger-700)); font-size: .86rem; }
+.dark .rp-cal-alert { color: rgb(var(--danger-300)); }
+.rp-cal-loading { font-size: .8rem; color: var(--rp-text-3); }
+.is-busy { opacity: .55; transition: opacity .15s; }
+
+.rp-cal-month { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); border: 1px solid var(--rp-line); border-radius: var(--rp-radius); overflow: hidden; background: var(--rp-surface); }
+.rp-cal-dow { padding: .5rem .6rem; font-size: .7rem; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; color: var(--rp-text-3); border-bottom: 1px solid var(--rp-line); }
+.rp-cal-cell { min-height: 7.5rem; padding: .35rem; border-right: 1px solid var(--rp-line); border-bottom: 1px solid var(--rp-line); display: flex; flex-direction: column; gap: .2rem; min-width: 0; }
+.rp-cal-cell:nth-child(7n) { border-right: 0; }
+.rp-cal-cell.is-out { background: var(--rp-workspace); }
+.rp-cal-cell.is-out .rp-cal-daynum { color: var(--rp-text-3); }
+.rp-cal-daynum { align-self: flex-start; font-size: .8rem; font-weight: 600; min-width: 1.6rem; height: 1.6rem; border-radius: 999px; color: var(--rp-text); }
+.rp-cal-cell.is-today .rp-cal-daynum { background: rgb(var(--primary-600)); color: #fff; }
+.rp-cal-chip { display: block; font-size: .72rem; line-height: 1.3; padding: .18rem .4rem; border-radius: .35rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; border-left: 3px solid var(--tone); background: var(--tone-bg); color: var(--rp-text); }
+.rp-cal-more { align-self: flex-start; font-size: .72rem; font-weight: 600; color: rgb(var(--primary-600)); }
+
+.rp-cal-week { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: .6rem; }
+.rp-cal-col { display: flex; flex-direction: column; gap: .45rem; min-width: 0; }
+.rp-cal-colhead { text-align: left; padding: .45rem .55rem; border-radius: var(--rp-radius-sm); font-size: .84rem; font-weight: 600; color: var(--rp-text); background: var(--rp-surface); border: 1px solid var(--rp-line); }
+.rp-cal-colhead span { color: var(--rp-text-3); font-weight: 500; margin-right: .2rem; }
+.rp-cal-col.is-today .rp-cal-colhead { border-color: rgb(var(--primary-500)); box-shadow: inset 0 2px 0 rgb(var(--primary-500)); }
+.rp-cal-card { display: flex; flex-direction: column; gap: .15rem; padding: .5rem .6rem; border-radius: var(--rp-radius-sm); background: var(--rp-surface); border: 1px solid var(--rp-line); border-left: 3px solid var(--tone); font-size: .8rem; color: var(--rp-text); min-width: 0; }
+.rp-cal-card:hover, .rp-cal-row:hover { background: var(--rp-hover); }
+.rp-cal-card strong, .rp-cal-row strong { font-weight: 600; overflow-wrap: anywhere; }
+.rp-cal-time { font-size: .74rem; font-weight: 600; color: var(--rp-text-2); font-variant-numeric: tabular-nums; }
+.rp-cal-sub { display: block; font-size: .74rem; color: var(--rp-text-3); overflow-wrap: anywhere; }
+.rp-cal-empty { font-size: .76rem; color: var(--rp-text-3); padding: .2rem .3rem; }
+
+.rp-cal-list { display: flex; flex-direction: column; gap: 1rem; }
+.rp-cal-group h3 { font-size: .82rem; font-weight: 600; color: var(--rp-text-2); margin-bottom: .4rem; }
+.rp-cal-group h3.is-today { color: rgb(var(--primary-600)); }
+.rp-cal-row { display: grid; grid-template-columns: 7.5rem 1fr auto; gap: .75rem; align-items: start; padding: .65rem .8rem; border-radius: var(--rp-radius-sm); background: var(--rp-surface); border: 1px solid var(--rp-line); border-left: 3px solid var(--tone); color: var(--rp-text); font-size: .86rem; margin-bottom: .4rem; }
+.rp-cal-flags { display: flex; gap: .3rem; flex-wrap: wrap; justify-content: flex-end; }
+.rp-cal-flag { display: inline-block; font-size: .66rem; font-weight: 700; padding: .1rem .45rem; border-radius: 999px; background: var(--rp-hover); color: var(--rp-text-2); margin-top: .15rem; }
+.rp-cal-flag.is-clash { background: rgba(var(--danger-500), .14); color: rgb(var(--danger-700)); }
+.rp-cal-flag.is-nodriver { background: rgba(var(--warning-500), .18); color: rgb(var(--warning-700)); }
+.dark .rp-cal-flag.is-clash { color: rgb(var(--danger-300)); }
+.dark .rp-cal-flag.is-nodriver { color: rgb(var(--warning-300)); }
+.is-problem { box-shadow: 0 0 0 1px rgba(var(--danger-500), .45); }
+.rp-cal-none { display: flex; flex-direction: column; align-items: center; gap: .5rem; padding: 3rem 1rem; color: var(--rp-text-3); font-size: .9rem; text-align: center; }
+.rp-cal-none-i { width: 2rem; height: 2rem; }
+.rp-cal-legend { display: flex; flex-wrap: wrap; gap: .4rem 1rem; font-size: .74rem; color: var(--rp-text-3); }
+.rp-cal-legend span { display: inline-flex; align-items: center; gap: .35rem; }
+.rp-cal-legend span::before { content: ""; width: .7rem; height: .7rem; border-radius: .2rem; background: var(--tone); }
+
+.tone-out { --tone: #16a34a; --tone-bg: rgba(22, 163, 74, .12); }
+.tone-back { --tone: #3b82f6; --tone-bg: rgba(59, 130, 246, .12); }
+.tone-charter { --tone: #0ea5a4; --tone-bg: rgba(14, 165, 164, .12); }
+.tone-transfer { --tone: #8b5cf6; --tone-bg: rgba(139, 92, 246, .12); }
+.tone-departure { --tone: rgb(var(--rp-gold)); --tone-bg: rgba(var(--rp-gold), .14); }
+.tone-task { --tone: #64748b; --tone-bg: rgba(100, 116, 139, .12); }
+.tone-late { --tone: rgb(var(--danger-600)); --tone-bg: rgba(var(--danger-500), .12); }
+
+@media (max-width: 1023px) {
+    .rp-cal-week { grid-template-columns: 1fr; }
+    .rp-cal-cell { min-height: 4.5rem; }
+    .rp-cal-chip { font-size: 0; padding: 0; height: .4rem; border-left-width: 0; background: var(--tone); }
+    .rp-cal-chip b { display: none; }
+    .rp-cal-row { grid-template-columns: 1fr; gap: .25rem; }
+    .rp-cal-flags { justify-content: flex-start; }
+    .rp-cal-filters label { flex: 1 1 9rem; }
+    .rp-cal-filters select { width: 100%; min-width: 0; max-width: none; }
+    .rp-cal-filters.is-closed { display: none; }
+}
+.rp-cal-filterwrap { display: flex; flex-direction: column; gap: .6rem; }
+@media (min-width: 1024px) { .rp-cal-filters.is-closed { display: flex; } }

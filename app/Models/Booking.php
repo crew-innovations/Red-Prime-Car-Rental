@@ -268,7 +268,8 @@ class Booking extends Model implements HasMedia
             // With a separate collection driver this driver only does the delivery.
             $until = $this->return_driver_id && $this->drive_mode !== DriveMode::WithDriver ? $this->start_at : $this->end_at;
             if ($clash = Availability::personConflict($driver->id, $this->start_at, $until, $this->getKey(), $this->drive_mode)) {
-                throw ValidationException::withMessages(['data.driver_id' => $driver->name.' is already busy on '.$clash->reference.' ('.$clash->start_at->format('d M H:i').' – '.$clash->end_at->format('d M H:i').').']);
+                throw ValidationException::withMessages(['data.driver_id' => $driver->name.' is already busy on '.$clash->reference.' ('.$clash->start_at->format('d M H:i').' – '.$clash->end_at->format('d M H:i').').'
+                    .Availability::freeText('driver', $this->start_at, $until, $this->getKey(), $this->drive_mode, $driver->id)]);
             }
         }
     }
@@ -284,7 +285,8 @@ class Booking extends Model implements HasMedia
             throw ValidationException::withMessages(['data.return_driver_id' => 'Pick an active driver for the collection.']);
         }
         if (Availability::holds($this->status) && ($clash = Availability::personConflict($driver->id, $this->end_at, $this->end_at, $this->getKey(), DriveMode::SelfDrive))) {
-            throw ValidationException::withMessages(['data.return_driver_id' => $driver->name.' is already busy on '.$clash->reference.' ('.$clash->start_at->format('d M H:i').' – '.$clash->end_at->format('d M H:i').').']);
+            throw ValidationException::withMessages(['data.return_driver_id' => $driver->name.' is already busy on '.$clash->reference.' ('.$clash->start_at->format('d M H:i').' – '.$clash->end_at->format('d M H:i').').'
+                .Availability::freeText('driver', $this->end_at, $this->end_at, $this->getKey(), DriveMode::SelfDrive, $driver->id)]);
         }
     }
 
@@ -320,7 +322,8 @@ class Booking extends Model implements HasMedia
                 throw ValidationException::withMessages([$field => $person->name.' is not set up as '.($need === 'captain' ? 'a captain' : 'crew').' (Drivers & crew › profile).']);
             }
             if ($clash = Availability::personConflict($person->id, $this->start_at, $this->end_at, $this->getKey(), DriveMode::WithDriver)) {
-                throw ValidationException::withMessages([$field => $person->name.' is already busy on '.$clash->reference.' ('.$clash->start_at->format('d M H:i').' – '.$clash->end_at->format('d M H:i').').']);
+                throw ValidationException::withMessages([$field => $person->name.' is already busy on '.$clash->reference.' ('.$clash->start_at->format('d M H:i').' – '.$clash->end_at->format('d M H:i').').'
+                    .Availability::freeText($need, $this->start_at, $this->end_at, $this->getKey(), DriveMode::WithDriver, $person->id)]);
             }
         }
     }

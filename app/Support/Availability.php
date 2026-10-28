@@ -345,4 +345,24 @@ class Availability
     {
         return $status !== null && in_array($status, BookingStatus::blocking(), true);
     }
+
+    /**
+     * Who else is free for the same window (brief 28 Oct-2, 9.4: offer valid
+     * alternatives instead of only refusing). Returns up to $limit names.
+     */
+    public static function freePeople(string $work, $start, $end, ?int $ignoreBookingId = null, DriveMode|string|null $driveMode = DriveMode::WithDriver, array $except = [], int $limit = 4): array
+    {
+        return \App\Models\User::role('Driver')->with('driverProfile')->where('is_active', true)->whereNotIn('id', $except)->orderBy('name')->get()
+            ->filter(fn ($u) => $work === 'driver' ? (! $u->driverProfile || $u->driverProfile->does('driver')) : ($u->driverProfile && ($u->driverProfile->does($work) || ($work === 'crew' && $u->driverProfile->does('captain')))))
+            ->reject(fn ($u) => self::personConflict($u->id, $start, $end, $ignoreBookingId, $driveMode))
+            ->take($limit)->pluck('name')->all();
+    }
+
+    /** " Free at that time: A, B." or "" — appended to clash messages. */
+    public static function freeText(string $work, $start, $end, ?int $ignoreBookingId, DriveMode|string|null $driveMode, int $busyId): string
+    {
+        $free = rescue(fn () => self::freePeople($work, $start, $end, $ignoreBookingId, $driveMode, [$busyId]), [], false);
+
+        return $free ? ' Free at that time: '.implode(', ', $free).'.' : ' Nobody else is free at that time.';
+    }
 }

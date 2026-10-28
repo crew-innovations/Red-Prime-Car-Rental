@@ -65,6 +65,20 @@ class BusinessBoard extends Widget
             $row('Enquiries not confirmed', $bookings()->whereIn('status', [BookingStatus::Inquiry, BookingStatus::Quotation])->count(), $b('enquiries')),
         ]];
 
+        // Next 7 days from the calendar: clashes, jobs nobody drives yet, charters, departures.
+        $week = (new \App\Support\Schedule\CalendarFeed(now()->startOfDay(), now()->addDays(7)->endOfDay()))->events();
+        $cal = fn (array $q = []) => \App\Filament\Pages\Calendar::getUrl(['view' => 'agenda'] + $q);
+        $clash = $week->where('conflict', true)->count();
+        $nodriver = $week->where('needs_driver', true)->count();
+        $panels[] = ['title' => 'Schedule · next 7 days', 'icon' => 'heroicon-o-calendar', 'rows' => [
+            $row('Clashes (same person twice)', $clash, $cal(['problems' => 1]), $clash ? 'danger' : ''),
+            $row('Jobs without a driver', $nodriver, $cal(['problems' => 1]), $nodriver ? 'warning' : ''),
+            $row('Handovers and deliveries', $week->where('kind', 'out')->count(), $cal(['kind' => 'out'])),
+            $row('Returns and collections', $week->where('kind', 'back')->count(), $cal(['kind' => 'back'])),
+            $row('Yacht charters', $week->where('kind', 'charter')->count(), $cal(['kind' => 'charter'])),
+            $row('Trip departures', $week->where('kind', 'departure')->count(), $cal(['kind' => 'departure'])),
+        ]];
+
         $panels[] = ['title' => 'Sales', 'icon' => 'heroicon-o-chat-bubble-left-right', 'rows' => array_values(array_filter([
             $row('New enquiries not contacted', $leads()->where('status', LeadStatus::New)->count(), LeadResource::getUrl('index', ['activeTab' => 'new'])),
             Access::allows('assign-leads')
