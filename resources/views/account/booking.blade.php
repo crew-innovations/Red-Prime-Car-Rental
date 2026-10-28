@@ -30,6 +30,17 @@
                     <tr><td><strong>Balance due</strong></td><td class="r"><strong>AED {{ number_format((float) $b->balance, 2) }}</strong></td></tr>
                     @if ((float) $b->security_deposit > 0)<tr><td class="rp-acc-muted">Refundable security deposit</td><td class="r rp-acc-muted">AED {{ number_format((float) $b->security_deposit, 2) }}</td></tr>@endif
                 </table>
+                @php($online = $this->onlinePayment())
+                @if ($online['open']->isNotEmpty() || $online['balance'] > 0)
+                    <div class="rp-acc-links" style="margin-top:1rem">
+                        @foreach ($online['open'] as $link)
+                            <a class="rp-acc-link" href="{{ $link->url() }}">Pay AED {{ number_format((float) $link->amount, 2) }} online · {{ \App\Models\PaymentRequest::PURPOSES[$link->purpose] ?? 'Payment' }}</a>
+                        @endforeach
+                        @if ($online['balance'] > 0)
+                            <x-filament::button wire:click="payOnline" icon="heroicon-o-credit-card">Pay the balance online (AED {{ number_format($online['balance'], 2) }})</x-filament::button>
+                        @endif
+                    </div>
+                @endif
                 @if ($payments->isNotEmpty())
                     <div class="rp-acc-label" style="margin-top:1rem">Payments</div>
                     <table class="rp-acc-table">

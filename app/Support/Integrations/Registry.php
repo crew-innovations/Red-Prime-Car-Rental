@@ -40,6 +40,7 @@ class Registry
                 ],
                 'tester' => \App\Support\Maps\GoogleMaps::class,
             ],
+            ...\App\Support\Payments\Payments::registryEntries(),
         ];
     }
 

@@ -550,7 +550,8 @@ class QuotationResource extends Resource
                     ->inline()
                     ->required(),
                 Forms\Components\TextInput::make('advance')->label('Advance received now')->numeric()->minValue(0)->prefix('AED')
-                    ->default(fn (Quotation $record) => $record->advance_required ?: null),
+                    ->default(fn (Quotation $record) => max(0, (float) $record->advance_required - \App\Support\Payments\Payments::paidOnQuotation($record)) ?: null)
+                    ->helperText(fn (Quotation $record): ?string => ($online = \App\Support\Payments\Payments::paidOnQuotation($record)) > 0 ? 'AED '.number_format($online, 2).' already paid online: it moves onto the booking. Enter only other money received now.' : null),
                 Forms\Components\Select::make('method')->label('Paid by')->options(PaymentMethod::class)->default(PaymentMethod::Card->value)->native(false),
             ])
             ->action(function (Quotation $record, array $data, $livewire) {
@@ -600,6 +601,9 @@ class QuotationResource extends Resource
                         ]);
 
                         $record->update(['booking_id' => $booking->id, 'customer_id' => $customerId]);
+
+                        // Money already paid online on the quotation moves onto the booking (28 Oct-2).
+                        \App\Support\Payments\Payments::moveToBooking($record, $booking);
 
                         if (($advance = (float) ($data['advance'] ?? 0)) > 0) {
                             $booking->recordPayment($advance, $data['method'] ?? null, null, 'Advance · '.$booking->reference);

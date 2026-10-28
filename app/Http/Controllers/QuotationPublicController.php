@@ -34,6 +34,7 @@ class QuotationPublicController extends Controller
         return response()->view('public.quotation', [
             'q' => $quotation,
             's' => Setting::values(),
+            'payNow' => \App\Support\Payments\Payments::quotationAmount($quotation),
         ])->withHeaders(['X-Robots-Tag' => 'noindex, nofollow', 'Referrer-Policy' => 'no-referrer']);
     }
 
@@ -59,6 +60,23 @@ class QuotationPublicController extends Controller
 
         return redirect()->route('quotations.public', ['token' => $token])
             ->with(['accepted' => true, 'documents_url' => $result['documents_url'], 'missing' => $result['missing']]);
+    }
+
+    /** Pay the advance (or the full price) online once the quotation is accepted. */
+    public function pay(Request $request, string $token)
+    {
+        $quotation = $this->find($token);
+        $user = auth()->user();
+        if ($user?->isCustomerAccount() && $quotation->customer_id && (int) $quotation->customer_id !== (int) $user->customer_id) {
+            abort(403);
+        }
+        try {
+            $link = \App\Support\Payments\Payments::quotationLink($quotation);
+        } catch (ValidationException $e) {
+            return redirect()->route('quotations.public', ['token' => $token])->withErrors(['quotation' => collect($e->errors())->flatten()->first()]);
+        }
+
+        return redirect()->route('pay.show', $link->token);
     }
 
     public function decline(Request $request, string $token)

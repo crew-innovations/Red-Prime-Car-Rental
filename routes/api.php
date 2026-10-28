@@ -30,3 +30,10 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
         ->middleware('throttle:api-booking-requests')
         ->name('booking-requests.store');
 });
+
+// Payment provider webhooks (28 Oct-2, Phase 13): signature / token checked per provider, idempotent.
+Route::post('webhooks/payments/{provider}', function (\Illuminate\Http\Request $request, string $provider) {
+    $status = \App\Support\Payments\Payments::webhook($provider, $request);
+
+    return response()->json(['received' => $status === 200], $status);
+})->whereIn('provider', array_keys(\App\Support\Payments\Payments::GATEWAYS))->middleware('throttle:240,1')->name('payments.webhook');

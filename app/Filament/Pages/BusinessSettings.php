@@ -497,6 +497,15 @@ class BusinessSettings extends Page implements HasForms
                         Forms\Components\Toggle::make('customer_sees_payments')->label('Customers see their payments and balance'),
                         Forms\Components\Toggle::make('customer_can_upload_documents')->label('Customers can upload documents from their account'),
                     ]),
+                Forms\Components\Section::make('Online payments')
+                    ->description('Gateways (Stripe, Paymob, Tabby, Tamara, PayPal) are connected in Settings › Integrations. Money is recorded only when the provider confirms it.')
+                    ->schema([
+                        Forms\Components\TextInput::make('payment_link_days')
+                            ->label('A payment link stays open for (days)')
+                            ->numeric()->minValue(1)->maxValue(365)
+                            ->placeholder('Until paid or cancelled')
+                            ->helperText('Empty = no expiry. Staff can cancel a link any time.'),
+                    ]),
                 Forms\Components\Section::make('Audit log')
                     ->description('Every sign-in, change, export and document opening is kept in Settings › Audit log. Lines cannot be edited or deleted from the CRM.')
                     ->schema([
@@ -538,7 +547,7 @@ class BusinessSettings extends Page implements HasForms
         'driver_doc_warn_days', 'driver_doc_reminders', 'notify_drivers_by_email', 'notify_staff_by_email',
         // 28 Oct: pricing and sales workflow
         'hourly_increment_minutes', 'price_max_discount_percent', 'price_approval_required', 'booking_requires_accepted_quote', 'doc_block_confirm',
-        'expense_approval_required', 'audit_retention_days',
+        'expense_approval_required', 'audit_retention_days', 'payment_link_days',
     ];
 
     public function save(): void
@@ -643,6 +652,9 @@ class BusinessSettings extends Page implements HasForms
                 is_array($default) => array_values(array_unique(array_filter(array_map(fn ($v) => is_string($v) ? trim($v) : $v, (array) $out[$key])))),
                 default => $out[$key],
             };
+        }
+        if (array_key_exists('payment_link_days', $out)) {
+            $out['payment_link_days'] = filled($out['payment_link_days']) && (int) $out['payment_link_days'] > 0 ? (int) $out['payment_link_days'] : null;
         }
         $max = $out['price_max_discount_percent'] ?? null;
         $out['price_max_discount_percent'] = $max === null || $max === '' ? null : (float) $max;

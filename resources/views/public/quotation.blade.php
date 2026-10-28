@@ -129,6 +129,17 @@
         </div>
     @endif
 
+    @if ($payNow)
+        <div class="card no-print" style="border-color:#fcd34d">
+            <h2>{{ (float) $q->advance_required > 0 ? 'Pay the advance online' : 'Pay online' }}</h2>
+            <p class="muted" style="margin:0 0 12px">AED {{ number_format($payNow, 2) }} · secure payment page. Our team confirms the booking once it is received.</p>
+            <form method="post" action="{{ route('quotations.public.pay', ['token' => $q->public_token]) }}">
+                @csrf
+                <button class="btn btn-primary" type="submit">Pay AED {{ number_format($payNow, 2) }}</button>
+            </form>
+        </div>
+    @endif
+
     <div class="card">
         <div style="font-weight:600">{{ $s['company_name'] ?? 'RED PRIME RENTALS' }}</div>
         <div class="muted" style="white-space:pre-line">{{ collect([$s['company_address'] ?? null, $s['company_phone'] ?? null, $s['company_email'] ?? null, ! empty($s['company_trn']) && ! empty($s['vat_enabled']) ? 'TRN '.$s['company_trn'] : null])->filter()->implode("\n") }}</div>

@@ -29,7 +29,8 @@ class AuditLog extends Model
         'override' => 'Override', 'login' => 'Signed in', 'logout' => 'Signed out', 'login_failed' => 'Failed sign-in',
         'export' => 'Export', 'settings' => 'Settings changed', 'permissions' => 'Roles / permissions changed',
         'download' => 'Document downloaded', 'invite' => 'Login link created', 'integration' => 'Integration changed',
-        'payment' => 'Online payment', 'webhook' => 'Webhook',
+        'payment' => 'Online payment', 'webhook' => 'Webhook', 'payment_link' => 'Payment link', 'refund' => 'Refund',
+        'job_report' => 'Job report',
     ];
 
     protected static ?string $requestId = null;

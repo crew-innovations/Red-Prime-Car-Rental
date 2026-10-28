@@ -63,6 +63,8 @@ class EditQuotation extends EditRecord
             ...$buttons,
             Actions\ActionGroup::make([
                 ...$menu,
+                \App\Filament\Resources\PaymentRequestResource::linkAction(Actions\Action::class, fn () => $this->getRecord())
+                    ->visible(fn (): bool => $this->getRecord()->status === \App\Enums\QuotationStatus::Accepted && ! $this->getRecord()->booking_id),
                 Actions\Action::make('customer')
                     ->label('Open customer')
                     ->icon('heroicon-o-user')

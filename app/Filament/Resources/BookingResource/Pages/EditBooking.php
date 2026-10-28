@@ -45,6 +45,10 @@ class EditBooking extends EditRecord
             BookingActions::deliver(Actions\Action::class)->after($after),
             BookingActions::receive(Actions\Action::class)->after($after),
             BookingActions::recordPayment(Actions\Action::class)->after($after),
+            \App\Filament\Resources\PaymentRequestResource::linkAction(Actions\Action::class, fn () => $this->getRecord()->fresh())
+                ->visible(fn (): bool => ! in_array($this->getRecord()->status, [\App\Enums\BookingStatus::Cancelled, \App\Enums\BookingStatus::NoShow], true)
+                    && (\App\Support\Payments\Payments::limit($this->getRecord(), 'balance') > 0 || \App\Support\Payments\Payments::limit($this->getRecord(), 'security_deposit') > 0))
+                ->color('gray')->after($after),
             BookingActions::refundDeposit(Actions\Action::class)->after($after),
             BookingActions::addExpense(Actions\Action::class)->after($after),
             BookingActions::whatsapp(Actions\Action::class),

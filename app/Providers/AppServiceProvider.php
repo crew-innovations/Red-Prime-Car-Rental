@@ -35,6 +35,7 @@ class AppServiceProvider extends ServiceProvider
             'transaction' => Transaction::class,
             'booking' => Booking::class,
             'job_report' => \App\Models\JobReport::class,
+            'payment_request' => \App\Models\PaymentRequest::class,
             'quotation' => \App\Models\Quotation::class,
             'customer_document' => \App\Models\CustomerDocument::class,
             'driver_profile' => \App\Models\DriverProfile::class,

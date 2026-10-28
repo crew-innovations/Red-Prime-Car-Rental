@@ -44,6 +44,34 @@ class BookingDetail extends Page
         return [Bookings::getUrl() => 'My bookings', $this->record->reference];
     }
 
+    /** Online payment (28 Oct-2): open links for this booking and what can be paid now. */
+    public function onlinePayment(): array
+    {
+        $b = $this->record->fresh();
+        if (! CustomerArea::allows('customer_sees_payments') || in_array($b->status, [\App\Enums\BookingStatus::Cancelled, \App\Enums\BookingStatus::NoShow], true)
+            || ! \App\Support\Payments\Payments::connected()) {
+            return ['open' => collect(), 'balance' => 0];
+        }
+        $open = \App\Models\PaymentRequest::query()->where('booking_id', $b->id)->whereIn('status', ['open', 'processing', 'failed'])
+            ->where(fn ($q) => $q->whereNull('expires_at')->orWhere('expires_at', '>', now()))->orderBy('id')->get();
+
+        return ['open' => $open, 'balance' => \App\Support\Payments\Payments::limit($b, 'balance')];
+    }
+
+    public function payOnline()
+    {
+        abort_unless(CustomerArea::bookings()->whereKey($this->record->id)->exists(), 404);
+        try {
+            $link = \App\Support\Payments\Payments::balanceLink($this->record->fresh());
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            \Filament\Notifications\Notification::make()->title(collect($e->errors())->flatten()->first())->warning()->send();
+
+            return null;
+        }
+
+        return redirect()->route('pay.show', $link->token);
+    }
+
     public function payments()
     {
         return CustomerArea::allows('customer_sees_payments')
