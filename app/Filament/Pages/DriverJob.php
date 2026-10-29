@@ -49,6 +49,14 @@ class DriverJob extends Page
         $this->record = $record;
     }
 
+    /** Driver ↔ office conversation for this booking (28 Oct-2). */
+    public function messageOffice()
+    {
+        abort_unless($this->record->booking && (int) $this->record->driver_id === (int) auth()->id(), 404);
+
+        return redirect(Messages::getUrl(['thread' => \App\Support\Chat\Chat::driverThread($this->record->booking, auth()->user())->id]));
+    }
+
     public function getTitle(): string|Htmlable
     {
         return $this->record->typeLabel().' · '.$this->record->booking?->reference;

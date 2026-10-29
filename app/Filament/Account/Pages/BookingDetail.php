@@ -72,6 +72,11 @@ class BookingDetail extends Page
         return redirect()->route('pay.show', $link->token);
     }
 
+    public function messageUs()
+    {
+        return redirect(Messages::getUrl(['thread' => \App\Support\Chat\Chat::threadForCustomer($this->record)->id]));
+    }
+
     public function payments()
     {
         return CustomerArea::allows('customer_sees_payments')

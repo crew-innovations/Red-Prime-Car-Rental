@@ -134,6 +134,17 @@ class EditBooking extends EditRecord
                     ->icon('heroicon-o-inbox-arrow-down')
                     ->visible(fn (): bool => (bool) $this->getRecord()->lead_id)
                     ->url(fn (): ?string => $this->getRecord()->lead_id ? LeadResource::getUrl('edit', ['record' => $this->getRecord()->lead_id]) : null),
+                // Messages (28 Oct-2): conversations stay in the CRM, per booking.
+                Actions\Action::make('messageCustomer')
+                    ->label('Message the customer')
+                    ->icon('heroicon-o-chat-bubble-left-right')
+                    ->visible(fn (): bool => (bool) $this->getRecord()->customer_id)
+                    ->action(fn () => $this->redirect(\App\Filament\Pages\Messages::getUrl(['thread' => \App\Support\Chat\Chat::customerThread($this->getRecord())->id]))),
+                Actions\Action::make('messageDriver')
+                    ->label(fn (): string => 'Message the driver'.($this->getRecord()->driver ? ' ('.$this->getRecord()->driver->name.')' : ''))
+                    ->icon('heroicon-o-truck')
+                    ->visible(fn (): bool => (bool) $this->getRecord()->driver_id)
+                    ->action(fn () => $this->redirect(\App\Filament\Pages\Messages::getUrl(['thread' => \App\Support\Chat\Chat::driverThread($this->getRecord(), $this->getRecord()->driver)->id]))),
                 BookingActions::cancel(Actions\Action::class)->after($after),
                 Actions\DeleteAction::make(),
                 Actions\RestoreAction::make(),

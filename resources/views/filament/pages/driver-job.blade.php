@@ -151,6 +151,7 @@
             <p class="rp-dv-meta">The collection button appears once the car has been handed over.</p>
         @endif
 
+        <button type="button" wire:click="messageOffice" class="rp-dv-link" style="margin-bottom:.5rem"><x-filament::icon icon="heroicon-m-chat-bubble-left-right" class="h-4 w-4" /> Message the office about this job</button>
         <a href="{{ \App\Filament\Pages\MyJobs::getUrl() }}" class="rp-dv-back">← All my jobs</a>
     </div>
 </x-filament-panels::page>
