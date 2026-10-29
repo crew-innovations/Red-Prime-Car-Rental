@@ -1,7 +1,7 @@
 # Test report: complete upgrade brief (28 Oct-2), 29 Oct 2026
 
 **How it was tested**
-- Local install: Laravel 12, Filament 3.3, MariaDB 10.11. Full suite `php vendor/bin/phpunit`: **257 tests, all passing**.
+- Local install: Laravel 12, Filament 3.3, MariaDB 10.11. Full suite `php vendor/bin/phpunit`: **258 tests, all passing**.
 - Screens opened in a real browser at desktop (1366 px) and phone (390 px) width, in light and dark themes.
 - Every outside service (Stripe, Paymob, Tabby, Tamara, PayPal, Meta, TikTok, Snapchat, Google Maps) is **mocked** in the tests. No real charge, refund or message was made.
 
