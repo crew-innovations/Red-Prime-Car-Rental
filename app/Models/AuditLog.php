@@ -30,7 +30,7 @@ class AuditLog extends Model
         'export' => 'Export', 'settings' => 'Settings changed', 'permissions' => 'Roles / permissions changed',
         'download' => 'Document downloaded', 'invite' => 'Login link created', 'integration' => 'Integration changed',
         'payment' => 'Online payment', 'webhook' => 'Webhook', 'payment_link' => 'Payment link', 'refund' => 'Refund',
-        'job_report' => 'Job report',
+        'job_report' => 'Job report', 'supplier_bill' => 'Supplier bill', 'supplier_payment' => 'Supplier payment',
     ];
 
     protected static ?string $requestId = null;

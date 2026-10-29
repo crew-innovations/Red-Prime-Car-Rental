@@ -113,6 +113,21 @@ class Transaction extends Model implements HasMedia
             }
         });
 
+        // Supplier bills (29 Oct): their paid status follows the supplier payments only, and a bill
+        // with payments on it can't be reversed or changed until those payments are reversed.
+        static::updating(function (Transaction $t) {
+            if (! $t->supplier_id || $t->type !== TransactionType::Expense || \App\Support\Suppliers\SupplierLedger::$writing) {
+                return;
+            }
+            $hasPayments = \App\Support\Suppliers\SupplierLedger::paidOn($t) > 0;
+            if ($t->isDirty(['status', 'amount_paid']) && ! $t->isDirty('reversed_at')) {
+                throw ValidationException::withMessages(['data.status' => 'Supplier bills are paid from Suppliers › Record payment, so the balance stays right.']);
+            }
+            if ($hasPayments && ($t->isDirty('reversed_at') || $t->isDirty('amount') || $t->isDirty('supplier_id'))) {
+                throw ValidationException::withMessages(['data.amount' => 'Payments are recorded against this bill. Reverse those payments first (Suppliers › payments).']);
+            }
+        });
+
         // The system "balance due" row becomes a normal payment once it is paid.
         static::updating(function (Transaction $t) {
             if ($t->is_balance && $t->status === PaymentStatus::Paid) {
@@ -126,6 +141,11 @@ class Transaction extends Model implements HasMedia
         static::saved($sync);
         static::deleted($sync);
         static::restored($sync);
+    }
+
+    public function supplier(): \Illuminate\Database\Eloquent\Relations\BelongsTo
+    {
+        return $this->belongsTo(\App\Models\Supplier::class)->withTrashed();
     }
 
     public function booking(): BelongsTo

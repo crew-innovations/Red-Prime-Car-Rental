@@ -165,6 +165,11 @@ class TransferFields
                             ->placeholder('Same as the way out')
                             ->live(onBlur: true)->afterStateUpdated($recalc)
                             ->visible(fn (Get $get): bool => $get('journey_type') === 'return'),
+                        Forms\Components\TextInput::make('route_override_reason')->label('Why typed by hand?')
+                            ->placeholder('Google Maps not set up / customer route via Hatta…')
+                            ->maxLength(255)->columnSpanFull()
+                            ->visible(fn (Get $get): bool => $get('route_source') === 'manual')
+                            ->helperText('Needed before the booking is confirmed or the quotation is sent. Only people allowed to change prices can type a distance.'),
                         Forms\Components\Hidden::make('route_source'),
                         Forms\Components\Hidden::make('route'),
                         Forms\Components\Actions::make([
@@ -178,14 +183,18 @@ class TransferFields
                                     try {
                                         $r = GoogleMaps::route((string) $get('pickup_location'), (string) $get('dropoff_location'), $stops,
                                             $get('start_at') ? Carbon::parse($get('start_at')) : null);
-                                        $set('route_km', $r['km']);
-                                        $set('route_minutes', $r['minutes']);
-                                        $set('route_source', 'google');
-                                        $set('route', ['legs' => $r['legs'], 'at' => now()->toDateTimeString()]);
+                                        $back = null;
                                         if ($get('journey_type') === 'return' && $get('return_at')) {
                                             $back = GoogleMaps::route((string) $get('dropoff_location'), (string) $get('pickup_location'), array_reverse($stops), Carbon::parse($get('return_at')));
-                                            $set('return_route_km', $back['km']);
                                         }
+                                        $set('route_km', $r['km']);
+                                        $set('route_minutes', $r['minutes']);
+                                        $set('return_route_km', $back['km'] ?? null);
+                                        $set('route_source', 'google');
+                                        $set('route_override_reason', null);
+                                        // Signed by the server: a distance changed afterwards counts as typed by hand.
+                                        $set('route', GoogleMaps::stamp((string) $get('pickup_location'), (string) $get('dropoff_location'), $stops, (float) $r['km'], $back ? (float) $back['km'] : null,
+                                            ['meters' => $r['meters'] ?? null, 'return_meters' => $back['meters'] ?? null, 'legs' => $r['legs']]));
                                         $recalc($get, $set);
                                         Notification::make()->title($r['km'].' km · about '.$r['minutes'].' min')->success()->send();
                                     } catch (\Throwable $e) {

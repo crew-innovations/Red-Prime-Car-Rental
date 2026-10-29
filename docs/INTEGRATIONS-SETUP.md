@@ -14,7 +14,8 @@ Nothing in the CRM charges money, refunds or sends a message to a customer until
 - Google Cloud project with billing on. Enable **Routes API**, **Places API (New)** and **Maps Embed API**.
 - **Server key**: restrict it to Routes API + Places API (New) and to the server IP.
 - **Browser key**: restrict it to Maps Embed API and to `https://crm.redprimerentals.com/*`.
-- Until this is connected, route transfers show "price on request" (hourly hire works without it).
+- Until this is connected, route transfers show "price on request" on the website (hourly hire works without it). In the CRM, staff type the distance and give a reason before confirming.
+- The distance is billed to 0.1 km by default (Business settings › Price suggestions › Road distance rounding).
 
 ## Payments
 

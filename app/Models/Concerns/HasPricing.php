@@ -97,7 +97,7 @@ trait HasPricing
 
         if (! $result) {
             // Nothing on the price list for this: the price is typed by hand.
-            $this->extras_amount = $this->extras !== null ? round(collect((array) $this->extras)->sum(fn ($l) => (float) ($l['amount'] ?? 0)), 2) : $this->extras_amount;
+            $this->extras_amount = $this->extras !== null ? round(collect((array) $this->extras)->sum(fn ($l) => (float) ($l['amount'] ?? 0)), 2) : ($this->extras_amount ?? 0);
             $this->standard_amount = null;
             $this->price_breakdown = null;
             $this->guardAdjustment(null);
@@ -150,6 +150,21 @@ trait HasPricing
         $this->price_breakdown = $result;
 
         $this->guardAdjustment($result);
+    }
+
+    /** Set to price a confirmed transfer with today's rate (explicit, "Change prices" permission). */
+    public bool $repriceWithCurrentRate = false;
+
+    public function repriceWithCurrentRate(string $reason): void
+    {
+        abort_unless(\App\Support\Access::allows('adjust-prices'), 403);
+        $before = (float) $this->total;
+        $this->repriceWithCurrentRate = true;
+        $this->base_amount = null; // follow the current price list
+        $this->adjustment_reason = $this->adjustment_reason ?: $reason;
+        $this->save();
+        $this->repriceWithCurrentRate = false;
+        \App\Models\AuditLog::note($this, 'override', 'Priced again with the current transfer rate: AED '.number_format($before, 2).' → AED '.number_format((float) $this->total, 2).'. '.$reason);
     }
 
     /** Is the agreed price different from the price list (other price, discount or waived fee)? */

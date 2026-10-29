@@ -36,10 +36,10 @@ class PagesSmokeTest extends TestCase
 
         $urls = ['/crm', '/crm/pipeline', '/crm/accounts', '/crm/business-settings', '/crm/profit-reports', '/crm/profit-reports?by=month', '/crm/profit-reports?by=category', '/crm/profit-reports?by=service', '/crm/rate-card', '/crm/price-check',
             '/crm/lead-reports', '/crm/lead-reports?by=agent', '/crm/lead-reports?by=campaign', '/crm/messages', '/crm/integrations', '/crm/calendar'];
-        foreach (['leads', 'quotations', 'bookings', 'customers', 'cars', 'yachts', 'trips', 'packages', 'drivers', 'transactions', 'users', 'categories', 'lead-sources', 'documents', 'history', 'damage-reports', 'payment-requests', 'lead-forms', 'transfer-services', 'vehicle-categories', 'transfer-rates', 'transfer-fixed-routes'] as $r) {
+        foreach (['leads', 'quotations', 'bookings', 'customers', 'cars', 'yachts', 'trips', 'packages', 'drivers', 'transactions', 'users', 'categories', 'lead-sources', 'documents', 'history', 'damage-reports', 'payment-requests', 'lead-forms', 'transfer-services', 'vehicle-categories', 'transfer-rates', 'transfer-fixed-routes', 'suppliers'] as $r) {
             $urls[] = "/crm/{$r}";
         }
-        foreach (['leads', 'quotations', 'bookings', 'customers', 'cars', 'trips', 'packages', 'drivers', 'transactions', 'users'] as $r) {
+        foreach (['leads', 'quotations', 'bookings', 'customers', 'cars', 'trips', 'packages', 'drivers', 'transactions', 'users', 'suppliers'] as $r) {
             $urls[] = "/crm/{$r}/create";
         }
         foreach (\App\Models\Package::all() as $p) {

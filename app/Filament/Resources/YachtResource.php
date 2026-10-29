@@ -409,7 +409,8 @@ class YachtResource extends Resource
                 WebsitePublishing::filter(),
                 Tables\Filters\TernaryFilter::make('is_featured')->label('Featured'),
                 Tables\Filters\SelectFilter::make('ownership')
-                    ->options(['own' => 'Our yachts', 'partner' => 'Partner yachts']),
+                    ->options(['own' => 'Our yachts', 'partner' => 'Supplier yachts', 'cross_hire' => 'Hired in']),
+                Tables\Filters\SelectFilter::make('supplier_id')->label('Supplier')->relationship('supplier', 'name')->visible(fn (): bool => \App\Support\Access::allows('manage-suppliers')),
                 FleetFields::documentsDueFilter(),
                 Tables\Filters\TrashedFilter::make()->label('Archived yachts'),
             ])

@@ -100,14 +100,58 @@ class GoogleMaps
             throw new RuntimeException('No road route found between these addresses. Check them, or type the distance by hand.');
         }
 
-        IntegrationEvent::log('google_maps', 'out', 'ok', 'route', null, ['km' => round($route['distanceMeters'] / 1000, 1), 'stops' => count($stops)]);
+        $meters = (int) $route['distanceMeters'];
+        if ($meters <= 0) {
+            IntegrationEvent::log('google_maps', 'out', 'failed', 'route', null, [], 'Route with no distance');
+            throw new RuntimeException('Google returned a route without a distance. Check the addresses, or type the distance by hand.');
+        }
+        IntegrationEvent::log('google_maps', 'out', 'ok', 'route', null, ['meters' => $meters, 'stops' => count($stops)]);
 
         return [
-            'km' => round($route['distanceMeters'] / 1000, 1),
+            'km' => self::km($meters),
+            'meters' => $meters,
             'minutes' => self::minutes($route['duration'] ?? '0s'),
-            'legs' => collect($route['legs'] ?? [])->map(fn ($l) => ['km' => round(((int) ($l['distanceMeters'] ?? 0)) / 1000, 1), 'minutes' => self::minutes($l['duration'] ?? '0s')])->all(),
+            'legs' => collect($route['legs'] ?? [])->map(fn ($l) => ['km' => self::km((int) ($l['distanceMeters'] ?? 0)), 'meters' => (int) ($l['distanceMeters'] ?? 0), 'minutes' => self::minutes($l['duration'] ?? '0s')])->all(),
             'source' => 'google',
         ];
+    }
+
+    /**
+     * Metres → billed km (Bilal, 29 Oct: to 0.1 km). Business settings › "Road distance rounding":
+     *  0.1   to the nearest 0.1 km (28.64 → 28.6)
+     *  up_1  up to the next whole km (28.1 → 29)
+     *  0.01  two decimals (28.64)
+     */
+    public static function km(int $meters): float
+    {
+        $km = $meters / 1000;
+
+        return match ((string) \App\Models\Setting::read('transfer_km_rounding', '0.1')) {
+            'up_1' => (float) ceil(round($km, 3)),
+            '0.01' => round($km, 2),
+            default => round($km, 1),
+        };
+    }
+
+    /** Proof that a distance came from Google for these addresses (checked on every save). */
+    public static function stamp(string $from, string $to, array $stops, float $km, ?float $returnKm = null, array $extra = []): array
+    {
+        return $extra + ['km' => $km, 'return_km' => $returnKm, 'at' => now()->toDateTimeString(), 'sig' => self::signature($from, $to, $stops, $km, $returnKm)];
+    }
+
+    public static function signature(?string $from, ?string $to, array $stops, ?float $km, ?float $returnKm): string
+    {
+        $norm = fn ($v) => mb_strtolower(trim((string) $v));
+        $payload = implode('|', [$norm($from), $norm($to), implode('>', array_map($norm, $stops)), number_format((float) $km, 2, '.', ''), $returnKm === null ? '' : number_format($returnKm, 2, '.', '')]);
+
+        return hash_hmac('sha256', $payload, (string) config('app.key'));
+    }
+
+    public static function stampValid(?array $route, ?string $from, ?string $to, array $stops, ?float $km, ?float $returnKm): bool
+    {
+        $sig = (string) data_get($route, 'sig');
+
+        return $sig !== '' && $km !== null && hash_equals(self::signature($from, $to, $stops, $km, $returnKm), $sig);
     }
 
     /** "1234s" → 21 minutes. */

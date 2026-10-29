@@ -39,27 +39,43 @@ class FleetFields
     public static function ownershipFieldset(string $ownLabel, string $partnerLabel): Forms\Components\Fieldset
     {
         $isPartner = fn (Get $get): bool => $get('ownership') === 'partner';
+        $fromSupplier = fn (Get $get): bool => in_array($get('ownership'), ['partner', 'cross_hire'], true);
 
         return Forms\Components\Fieldset::make('Ownership')
             ->columns(3)
             ->schema([
                 Forms\Components\ToggleButtons::make('ownership')
-                    ->options(['own' => $ownLabel, 'partner' => $partnerLabel])
-                    ->icons(['own' => 'heroicon-o-building-office', 'partner' => 'heroicon-o-users'])
+                    ->options(['own' => $ownLabel, 'partner' => $partnerLabel, 'cross_hire' => 'Hired in when needed'])
+                    ->icons(['own' => 'heroicon-o-building-office', 'partner' => 'heroicon-o-users', 'cross_hire' => 'heroicon-o-arrows-right-left'])
                     ->default('own')
                     ->inline()
-                    ->live(),
-                Forms\Components\TextInput::make('partner_name')
+                    ->live()
+                    ->columnSpanFull()
+                    ->helperText(fn (Get $get): ?string => match ($get('ownership')) {
+                        'partner' => 'Owned by a supplier. Its cost comes from the supplier\'s cost rates.',
+                        'cross_hire' => 'Hired from a supplier for a booking; the booking says which supplier.',
+                        default => null,
+                    }),
+                // Supplier (29 Oct). Only managers / finance see and change it.
+                Forms\Components\Select::make('supplier_id')
+                    ->label('Supplier')
+                    ->relationship('supplier', 'name', fn ($query) => $query->whereIn('status', ['active', 'pending']))
+                    ->searchable()->preload()
                     ->required($isPartner)
-                    ->visible($isPartner)
+                    ->visible(fn (Get $get): bool => $fromSupplier($get) && \App\Support\Access::allows('manage-suppliers'))
+                    ->helperText(fn (Get $get): ?string => $get('ownership') === 'cross_hire' ? 'Usual supplier (can be changed on each booking).' : null),
+                Forms\Components\TextInput::make('partner_name')
+                    ->label('Partner name (old field)')
+                    ->visible(fn (Get $get, ?Model $record): bool => $isPartner($get) && filled($record?->partner_name))
                     ->maxLength(100),
                 Forms\Components\TextInput::make('partner_commission')
-                    ->label('Partner share')
+                    ->label('Partner share (old field)')
                     ->numeric()
                     ->minValue(0)
                     ->maxValue(100)
                     ->suffix('%')
-                    ->visible($isPartner),
+                    ->helperText('Not used for costs any more: set the supplier\'s cost rates.')
+                    ->visible(fn (Get $get, ?Model $record): bool => $isPartner($get) && filled($record?->partner_commission)),
             ]);
     }
 
@@ -191,9 +207,9 @@ class FleetFields
     {
         return Tables\Columns\TextColumn::make('ownership')
             ->badge()
-            ->formatStateUsing(fn (string $state): string => $state === 'partner' ? 'Partner' : 'Own')
-            ->color(fn (string $state): string => $state === 'partner' ? 'info' : 'gray')
-            ->description(fn (Model $record): ?string => $record->partner_name)
+            ->formatStateUsing(fn (string $state): string => match ($state) { 'partner' => 'Supplier', 'cross_hire' => 'Hired in', default => 'Own' })
+            ->color(fn (string $state): string => $state === 'own' ? 'gray' : 'info')
+            ->description(fn (Model $record): ?string => $record->supplier?->name ?? $record->partner_name)
             ->toggleable(isToggledHiddenByDefault: true);
     }
 

@@ -55,6 +55,8 @@ class Access
         'export-data' => ['Admin', 'Manager', 'Finance'],
         // Outside services: Google Maps, payment gateways, social platforms (keys, tests)
         'manage-integrations' => ['Admin'],
+        // Suppliers and their cost rates (29 Oct); payments, cost overrides and profit stay with manage-finance.
+        'manage-suppliers' => ['Admin', 'Manager', 'Finance'],
         // Team, roles, business settings
         'manage-team' => ['Admin'],
     ];
@@ -82,6 +84,7 @@ class Access
         'review-damage' => 'Review damage reported by drivers',
         'export-data' => 'Export lists to Excel / CSV (logged)',
         'manage-integrations' => 'Integrations: Google Maps, payment gateways, social platforms (keys)',
+        'manage-suppliers' => 'Suppliers, their vehicles and cost rates',
         'manage-team' => 'Team, roles and business settings',
     ];
 

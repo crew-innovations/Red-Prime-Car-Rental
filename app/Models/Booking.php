@@ -90,6 +90,8 @@ class Booking extends Model implements HasMedia
             'extra_charges' => 'decimal:2',
             'paid_amount' => 'decimal:2',
             'balance' => 'decimal:2',
+            'supplier_cost' => 'decimal:2',
+            'supplier_cost_snapshot' => 'array',
         ];
     }
 
@@ -167,6 +169,9 @@ class Booking extends Model implements HasMedia
             }
 
             $booking->guardAvailability();
+
+            // Supplier cost snapshot (29 Oct); stops confirmation while a supplier vehicle has no cost.
+            \App\Support\Suppliers\SupplierCost::apply($booking);
         });
 
         static::created(function (Booking $booking) {
@@ -185,6 +190,11 @@ class Booking extends Model implements HasMedia
             $booking->advanceLead();
 
             \App\Support\Drivers\DriverJobs::sync($booking);
+
+            // Supplier bill (Bilal, 29 Oct): posted once when the job is completed, with the completion.
+            if ($booking->wasChanged('status') && $booking->status === BookingStatus::Completed && $booking->supplier_id) {
+                \App\Support\Suppliers\SupplierLedger::postForBooking($booking);
+            }
 
             // Job completion report (28 Oct-2, Phase 6): made when the job is completed, after the save is final.
             if ($booking->wasChanged('status') && $booking->status === BookingStatus::Completed) {
@@ -412,6 +422,16 @@ class Booking extends Model implements HasMedia
     }
 
     /** Delivery and collection for the driver (kept in step by DriverJobs). */
+    public function supplier(): BelongsTo
+    {
+        return $this->belongsTo(\App\Models\Supplier::class)->withTrashed();
+    }
+
+    public function supplierBill(): BelongsTo
+    {
+        return $this->belongsTo(Transaction::class, 'supplier_bill_id')->withTrashed();
+    }
+
     public function jobs(): HasMany
     {
         return $this->hasMany(BookingJob::class);

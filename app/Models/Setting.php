@@ -53,6 +53,7 @@ class Setting extends Model
         // Sales workflow (28 Oct). Off keeps the way staff worked before.
         'booking_requires_accepted_quote' => false,
         'doc_block_confirm' => false,
+        'transfer_km_rounding' => '0.1',     // Bilal, 29 Oct: road distance billed to 0.1 km
         'lead_assignment' => 'manual',       // manual / round_robin / by_service (28 Oct-2)
         'lead_assignment_people' => [],
         'lead_assignment_by_service' => [],  // [{service, user_id}]

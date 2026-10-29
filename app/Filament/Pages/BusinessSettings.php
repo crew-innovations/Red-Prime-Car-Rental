@@ -187,6 +187,11 @@ class BusinessSettings extends Page implements HasForms
                     ->schema(collect(Rules::PRICING)->map(fn ($meta, $key) => Forms\Components\TextInput::make($key)
                         ->label($meta[0])
                         ->numeric()->minValue(1)->maxValue(365)->suffix($meta[1])->required())->values()->push(
+                            Forms\Components\Select::make('transfer_km_rounding')
+                                ->label('Road distance rounding (limousine)')
+                                ->options(['0.1' => 'To 0.1 km (28.64 → 28.6)', 'up_1' => 'Up to the whole km (28.1 → 29)', '0.01' => 'Two decimals (28.64)'])
+                                ->default('0.1')->required()->native(false)
+                                ->helperText('How the Google Maps road distance is billed. Bookings already priced keep their distance.'),
                             Forms\Components\Select::make('hourly_increment_minutes')
                                 ->label('Hourly rates are charged per')
                                 ->options([15 => '15 minutes', 30 => '30 minutes', 60 => 'Full hour'])
@@ -565,7 +570,7 @@ class BusinessSettings extends Page implements HasForms
         // 28 Oct: pricing and sales workflow
         'hourly_increment_minutes', 'price_max_discount_percent', 'price_approval_required', 'booking_requires_accepted_quote', 'doc_block_confirm',
         'expense_approval_required', 'audit_retention_days', 'payment_link_days',
-        'lead_assignment', 'lead_assignment_people',
+        'lead_assignment', 'lead_assignment_people', 'transfer_km_rounding',
     ];
 
     public function save(): void
@@ -684,6 +689,7 @@ class BusinessSettings extends Page implements HasForms
         }
         $max = $out['price_max_discount_percent'] ?? null;
         $out['price_max_discount_percent'] = $max === null || $max === '' ? null : (float) $max;
+        $out['transfer_km_rounding'] = in_array((string) ($out['transfer_km_rounding'] ?? '0.1'), ['0.1', 'up_1', '0.01'], true) ? (string) $out['transfer_km_rounding'] : '0.1';
         $out['hourly_increment_minutes'] = in_array((int) ($out['hourly_increment_minutes'] ?? 60), [15, 30, 60], true) ? (int) $out['hourly_increment_minutes'] : 60;
         $out['driver_steps'] = array_values(array_intersect($out['driver_steps'] ?? [], array_keys(\App\Models\BookingJob::DRIVER_STEPS)));
         $out['driver_editable_fields'] = array_values(array_intersect($out['driver_editable_fields'] ?? [], array_keys(\App\Models\DriverProfile::SELF_SERVICE_FIELDS)));

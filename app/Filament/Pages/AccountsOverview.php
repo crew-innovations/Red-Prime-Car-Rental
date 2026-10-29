@@ -35,6 +35,7 @@ class AccountsOverview extends Dashboard
             Widgets\ExpenseBreakdown::class,
             Widgets\TopEarners::class,
             Widgets\OutstandingPayments::class,
+            Widgets\SupplierPayables::class,
         ];
     }
 

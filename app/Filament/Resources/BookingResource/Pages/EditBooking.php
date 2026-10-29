@@ -134,6 +134,60 @@ class EditBooking extends EditRecord
                     ->icon('heroicon-o-inbox-arrow-down')
                     ->visible(fn (): bool => (bool) $this->getRecord()->lead_id)
                     ->url(fn (): ?string => $this->getRecord()->lead_id ? LeadResource::getUrl('edit', ['record' => $this->getRecord()->lead_id]) : null),
+                // Confirmed transfers keep their rate (29 Oct); pricing again with today's rate is a deliberate step.
+                Actions\Action::make('repriceTransfer')
+                    ->label('Price again with the current transfer rate')
+                    ->icon('heroicon-o-arrow-path')
+                    ->authorize('adjust-prices')
+                    ->visible(fn (): bool => $this->getRecord()->service_type === \App\Enums\ServiceType::Transfer
+                        && in_array($this->getRecord()->status, \App\Enums\BookingStatus::billable(), true) && $this->getRecord()->status !== \App\Enums\BookingStatus::Completed)
+                    ->modalDescription('The agreed price was worked out with the rate in force then. This uses today\'s rate instead, and is logged.')
+                    ->form([\Filament\Forms\Components\TextInput::make('reason')->label('Why?')->required()->maxLength(200)])
+                    ->action(function (array $data) {
+                        $this->getRecord()->fresh()->repriceWithCurrentRate($data['reason']);
+                        \Filament\Notifications\Notification::make()->title('Priced with the current rate')->success()->send();
+                        $this->redirect(\App\Filament\Resources\BookingResource::getUrl('edit', ['record' => $this->getRecord()]));
+                    }),
+                // Supplier cost (29 Oct): Finance sets an exceptional cost or posts the bill by hand.
+                Actions\Action::make('supplierCost')
+                    ->label('Set supplier cost')
+                    ->icon('heroicon-o-building-storefront')
+                    ->authorize('manage-finance')
+                    ->visible(fn (): bool => (bool) $this->getRecord()->supplier_cost_status && ! \App\Support\Suppliers\SupplierCost::billPosted($this->getRecord()))
+                    ->modalDescription(fn (): string => 'Calculated now: '.(($c = \App\Support\Suppliers\SupplierCost::calculate($this->getRecord())) && isset($c['cost']) ? 'AED '.number_format($c['cost'], 2) : ($c['reason'] ?? 'not known')).'. The calculated figure is kept on the record next to yours.')
+                    ->form([
+                        \Filament\Forms\Components\TextInput::make('amount')->label('Supplier cost for this booking')->numeric()->prefix('AED')->minValue(0)->required()
+                            ->default(fn () => $this->getRecord()->supplier_cost),
+                        \Filament\Forms\Components\TextInput::make('reason')->label('Why?')->required()->maxLength(200)->placeholder('Agreed a special price with the owner'),
+                    ])
+                    ->action(function (array $data) {
+                        \App\Support\Suppliers\SupplierCost::override($this->getRecord(), (float) $data['amount'], $data['reason']);
+                        \Filament\Notifications\Notification::make()->title('Supplier cost set')->success()->send();
+                        $this->redirect(\App\Filament\Resources\BookingResource::getUrl('edit', ['record' => $this->getRecord()]));
+                    }),
+                Actions\Action::make('supplierCostClear')
+                    ->label('Use the calculated supplier cost')
+                    ->icon('heroicon-o-arrow-uturn-left')
+                    ->authorize('manage-finance')
+                    ->requiresConfirmation()
+                    ->visible(fn (): bool => $this->getRecord()->supplier_cost_status === 'override' && ! \App\Support\Suppliers\SupplierCost::billPosted($this->getRecord()))
+                    ->action(function () {
+                        \App\Support\Suppliers\SupplierCost::clearOverride($this->getRecord());
+                        $this->redirect(\App\Filament\Resources\BookingResource::getUrl('edit', ['record' => $this->getRecord()]));
+                    }),
+                Actions\Action::make('supplierBill')
+                    ->label('Post the supplier bill')
+                    ->icon('heroicon-o-document-plus')
+                    ->authorize('manage-finance')
+                    ->requiresConfirmation()
+                    ->modalDescription(fn (): string => 'Adds the bill of AED '.number_format((float) $this->getRecord()->supplier_cost, 2).' to Accounts, once. Normally done automatically when the job is completed.')
+                    ->visible(fn (): bool => $this->getRecord()->status === \App\Enums\BookingStatus::Completed && $this->getRecord()->supplier_id
+                        && in_array($this->getRecord()->supplier_cost_status, ['calculated', 'override'], true) && ! \App\Support\Suppliers\SupplierCost::billPosted($this->getRecord()))
+                    ->action(function () {
+                        $bill = \App\Support\Suppliers\SupplierLedger::postForBooking($this->getRecord()->fresh(), 'Posted by hand');
+                        \Filament\Notifications\Notification::make()->title($bill ? 'Supplier bill posted' : 'Nothing to post')->success()->send();
+                        $this->redirect(\App\Filament\Resources\BookingResource::getUrl('edit', ['record' => $this->getRecord()]));
+                    }),
                 // Messages (28 Oct-2): conversations stay in the CRM, per booking.
                 Actions\Action::make('messageCustomer')
                     ->label('Message the customer')

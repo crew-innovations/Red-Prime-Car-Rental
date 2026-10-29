@@ -1,5 +1,16 @@
 # Development log — RED PRIME RENTALS CRM
 
+## 2026-10-29 (2) · Limousine pricing, suppliers, accounts integration
+
+Brief: "Limousine Module, Supplier & Vehicle Management, and Accounts Integration". Plan approved by Bilal.
+
+Bilal's decisions:
+- Supplier bill on job completion.
+- Road distance to 0.1 km.
+- No confirmation without a supplier cost.
+
+Full report: `docs/REPORT-2026-10-29-LIMOUSINE-SUPPLIERS.md`. Migration `2026_10_29_000010` (additive). 272 tests passing.
+
 ## 2026-10-29 · Complete upgrade brief (28 Oct-2)
 
 Bilal's answers:

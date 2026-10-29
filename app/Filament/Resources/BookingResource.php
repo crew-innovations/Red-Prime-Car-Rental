@@ -98,6 +98,7 @@ class BookingResource extends Resource
                                     ->content(fn (?Booking $record): HtmlString => new HtmlString($record ? \App\Support\Sales\Journey::html(\App\Support\Sales\Journey::forBooking($record)) : '')),
                             ]),
                         self::paymentSection(),
+                        self::supplierSection(),
                         self::operationsSection(),
                         self::documentsSection(),
                         Forms\Components\Section::make('Team & notes')
@@ -218,6 +219,17 @@ class BookingResource extends Resource
                         self::recalculate($get, $set);
                     })
                     ->helperText(fn (Get $get): ?HtmlString => self::itemHint($get))
+                    ->columnSpanFull(),
+
+                // Cross-hired vehicle (29 Oct): which supplier it comes from this time.
+                Forms\Components\Select::make('supplier_id')
+                    ->label('Hired from (supplier)')
+                    ->options(fn () => \App\Models\Supplier::query()->whereIn('status', ['active', 'pending'])->orderBy('name')->pluck('name', 'id')->all())
+                    ->searchable()
+                    ->visible(fn (Get $get): bool => ($v = self::findItem($get('service_type') === ServiceType::Transfer->value ? ServiceType::Car->value : $get('service_type'), $get('bookable_id'))) instanceof Model && ($v->ownership ?? null) === 'cross_hire')
+                    ->required(fn (Get $get): bool => ($v = self::findItem($get('service_type') === ServiceType::Transfer->value ? ServiceType::Car->value : $get('service_type'), $get('bookable_id'))) instanceof Model && ($v->ownership ?? null) === 'cross_hire' && ! $v->supplier_id)
+                    ->default(fn (Get $get) => self::findItem($get('service_type'), $get('bookable_id'))?->supplier_id)
+                    ->helperText('Its cost comes from this supplier\'s cost rates.')
                     ->columnSpanFull(),
 
                 Forms\Components\ToggleButtons::make('drive_mode')
@@ -634,6 +646,51 @@ class BookingResource extends Resource
                         ->modalCancelActionLabel('Close')
                         ->modalContent(fn (?Booking $record): HtmlString => new HtmlString($record ? \App\Support\Accounts\BalanceHistory::html($record) : '')),
                 ]),
+            ]);
+    }
+
+    /** Supplier cost and profit (29 Oct). The warning is for everyone; figures for Finance only. */
+    protected static function supplierSection(): Forms\Components\Section
+    {
+        $aed = fn ($v) => $v === null ? '—' : 'AED '.number_format((float) $v, 2);
+
+        return Forms\Components\Section::make('Supplier & profit')
+            ->icon('heroicon-o-building-storefront')
+            ->hiddenOn('create')
+            ->collapsible()
+            ->visible(fn (?Booking $record): bool => $record && ($record->supplier_cost_status || \App\Support\Access::allows('manage-finance')))
+            ->schema([
+                Forms\Components\Placeholder::make('supplier_state')
+                    ->hiddenLabel()
+                    ->visible(fn (?Booking $record): bool => (bool) $record?->supplier_cost_status)
+                    ->content(function (?Booking $record) use ($aed): HtmlString {
+                        $s = (array) $record->supplier_cost_snapshot;
+                        $who = e(($s['supplier'] ?? 'Supplier').' · '.($s['vehicle'] ?? ''));
+                        $finance = \App\Support\Access::allows('manage-finance');
+
+                        return new HtmlString(match ($record->supplier_cost_status) {
+                            'missing' => '<p style="color:rgb(var(--danger-600));font-weight:600">Supplier cost not set</p><p style="font-size:.85rem">'.e($s['reason'] ?? '').'</p>',
+                            'pending' => '<p style="font-weight:600">'.$who.'</p><p style="font-size:.85rem;opacity:.8">'.e($s['reason'] ?? '').'</p>',
+                            'override' => '<p style="font-weight:600">'.$who.'</p>'.($finance ? '<p style="font-size:.85rem">Cost set by hand: '.$aed($record->supplier_cost).' · '.e(data_get($s, 'override.reason')).' ('.e(data_get($s, 'override.by_name')).')</p>' : ''),
+                            default => '<p style="font-weight:600">'.$who.'</p>'.($finance ? '<p style="font-size:.85rem;opacity:.85">'.e(\App\Support\Suppliers\SupplierLedger::explain($s)).' = '.$aed($record->supplier_cost).'</p>' : ''),
+                        });
+                    }),
+                Forms\Components\Placeholder::make('profit')
+                    ->hiddenLabel()
+                    ->visible(fn (): bool => \App\Support\Access::allows('manage-finance'))
+                    ->content(function (?Booking $record) use ($aed): HtmlString {
+                        $p = \App\Support\Suppliers\BookingProfit::for($record);
+                        $row = fn (string $a, string $b, string $style = '') => "<tr><td style=\"padding:.2rem 0;opacity:.8\">{$a}</td><td style=\"text-align:right;{$style}\">{$b}</td></tr>";
+                        $pct = fn ($m) => $m === null ? '' : ' · '.rtrim(rtrim(number_format($m, 1), '0'), '.').'%';
+
+                        return new HtmlString('<table style="width:100%;font-size:.875rem">'
+                            .$row('Revenue (no VAT)', $aed($p['revenue']))
+                            .($record->supplier_id ? $row('Supplier'.($p['supplier_posted'] ? ' (bill posted'.($p['supplier_paid'] ? ', '.e(strtolower($p['supplier_paid'])) : '').')' : ' (estimate)'), $p['supplier'] === null ? '<span style="color:rgb(var(--danger-600))">not known</span>' : $aed($p['supplier'])) : '')
+                            .$row('Other direct costs', $aed($p['other']))
+                            .$row('<b>Estimated profit</b>', '<b>'.$aed($p['estimated']).'</b>'.$pct($p['estimated_margin']), ($p['estimated'] ?? 0) < 0 ? 'color:rgb(var(--danger-600))' : '')
+                            .$row('Actual profit', $p['actual'] === null ? '<span style="opacity:.7">'.e($p['why_no_actual']).'</span>' : $aed($p['actual']).$pct($p['actual_margin']), ($p['actual'] ?? 0) < 0 ? 'color:rgb(var(--danger-600))' : '')
+                            .'</table>');
+                    }),
             ]);
     }
 

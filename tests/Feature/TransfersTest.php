@@ -78,14 +78,25 @@ class TransfersTest extends TestCase
         ]);
     }
 
+    /** A "Google" distance carries the server's signature for its addresses (29 Oct). */
+    protected function signed(array $a): array
+    {
+        if (($a['route_source'] ?? null) === 'google' && ! isset($a['route']) && isset($a['route_km'])) {
+            $a['route'] = \App\Support\Maps\GoogleMaps::stamp((string) $a['pickup_location'], (string) ($a['dropoff_location'] ?? ''),
+                collect($a['stops'] ?? [])->pluck('address')->all(), (float) $a['route_km'], isset($a['return_route_km']) ? (float) $a['return_route_km'] : null);
+        }
+
+        return $a;
+    }
+
     protected function transfer(array $attrs = []): Booking
     {
-        return Booking::create($attrs + [
+        return Booking::create($this->signed($attrs + [
             'status' => BookingStatus::Confirmed, 'customer_id' => $this->customer()->id, 'service_type' => ServiceType::Transfer,
             'transfer_service_id' => $this->airport->id, 'vehicle_category_id' => $this->sedan->id,
             'start_at' => '2026-11-10 14:00', 'pickup_location' => 'DXB Terminal 3', 'dropoff_location' => 'Atlantis The Palm',
             'flight_number' => 'EK 202', 'guests' => 2, 'route_km' => 32, 'route_minutes' => 33, 'route_source' => 'google',
-        ]);
+        ]));
     }
 
     /* ---------- prices ---------- */
@@ -196,25 +207,41 @@ class TransfersTest extends TestCase
         }
         // As an inquiry the flight can come later.
         $this->assertNotNull($this->transfer(['flight_number' => null, 'status' => BookingStatus::Inquiry])->id);
-        // A typed distance is marked manual.
-        $b = $this->transfer(['route_source' => null]);
+        // A typed distance is marked manual, and confirming it needs a reason (29 Oct).
+        try {
+            $this->transfer(['route_source' => null]);
+            $this->fail('typed distance without a reason');
+        } catch (ValidationException $e) {
+            $this->assertArrayHasKey('data.route_km', $e->errors());
+        }
+        $b = $this->transfer(['route_source' => null, 'route_override_reason' => 'Google Maps not set up yet']);
+        $this->assertSame('manual', $b->fresh()->route_source);
         $b->update(['route_km' => 40]);
         $this->assertSame('manual', $b->fresh()->route_source);
+        $this->assertSame(auth()->id(), $b->fresh()->route_override_by);
     }
 
     public function test_quotation_to_booking_keeps_the_journey_and_price(): void
     {
         $this->actingAs($this->user('Manager'));
-        $q = Quotation::create(['customer_id' => $this->customer()->id, 'service_type' => ServiceType::Transfer, 'transfer_service_id' => $this->airport->id,
+        $q = Quotation::create($this->signed(['customer_id' => $this->customer()->id, 'service_type' => ServiceType::Transfer, 'transfer_service_id' => $this->airport->id,
             'vehicle_category_id' => $this->sedan->id, 'start_at' => '2026-11-10 14:00', 'pickup_location' => 'DXB T3', 'dropoff_location' => 'Atlantis',
             'flight_number' => 'EK 202', 'guests' => 2, 'route_km' => 32, 'route_minutes' => 33, 'route_source' => 'google', 'valid_until' => '2026-11-08',
-            'stops' => [['address' => 'Mall of the Emirates']]]);
+            'stops' => [['address' => 'Mall of the Emirates']]]));
         $this->assertEqualsWithDelta(178 + 25 + 30 + 4, (float) $q->total, 0.01);
         $q->update(['status' => QuotationStatus::Sent, 'sent_at' => now()]);
         \App\Support\Sales\QuotationDecision::accept($q->fresh(), 'staff', 'Omar');
 
         // The rate changes afterwards: the accepted price stays.
-        TransferRate::first()->update(['per_km' => 9]);
+        // A used rate can't be edited (29 Oct): it is ended and a new one added.
+        try {
+            TransferRate::first()->update(['per_km' => 9]);
+            $this->fail('used rate edited');
+        } catch (ValidationException $e) {
+            $this->assertArrayHasKey('data.per_km', $e->errors());
+        }
+        TransferRate::first()->update(['ends_on' => '2026-11-02']);
+        TransferRate::create(['vehicle_category_id' => $this->sedan->id, 'per_km' => 9, 'starts_on' => '2026-11-03']);
         Livewire::test(\App\Filament\Resources\QuotationResource\Pages\EditQuotation::class, ['record' => $q->id])
             ->callAction('convert', ['status' => 'confirmed', 'advance' => 0])->assertHasNoActionErrors();
         $b = Booking::firstOrFail();

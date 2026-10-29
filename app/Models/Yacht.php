@@ -112,4 +112,9 @@ class Yacht extends Model implements HasMedia
     {
         return $this->morphMany(Lead::class, 'interested_in');
     }
+
+    public function supplier(): \Illuminate\Database\Eloquent\Relations\BelongsTo
+    {
+        return $this->belongsTo(\App\Models\Supplier::class)->withTrashed();
+    }
 }

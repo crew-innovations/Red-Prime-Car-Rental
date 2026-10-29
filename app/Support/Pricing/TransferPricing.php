@@ -34,7 +34,11 @@ class TransferPricing
         if (! $service || ! $category || ! $start) {
             return null;
         }
-        $rate = TransferRate::for($category->id, $service->id, $start);
+        // A confirmed booking / sent quotation keeps the rate it was priced with (29 Oct, 7).
+        $pinned = filled($in['rate_id'] ?? null) ? TransferRate::withTrashed()->find($in['rate_id']) : null;
+        $rate = $pinned && (int) $pinned->vehicle_category_id === (int) $category->id && (! $pinned->transfer_service_id || (int) $pinned->transfer_service_id === (int) $service->id)
+            ? $pinned
+            : TransferRate::for($category->id, $service->id, $start);
         if (! $rate) {
             return null; // see problem() for why
         }

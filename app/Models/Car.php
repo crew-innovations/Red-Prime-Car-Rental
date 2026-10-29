@@ -127,4 +127,9 @@ class Car extends Model implements HasMedia
     {
         return $this->belongsTo(VehicleCategory::class);
     }
+
+    public function supplier(): \Illuminate\Database\Eloquent\Relations\BelongsTo
+    {
+        return $this->belongsTo(\App\Models\Supplier::class)->withTrashed();
+    }
 }
