@@ -417,14 +417,14 @@ Migrations run from `2026_10_15_*` to `2026_10_17_000002`. All of them are addit
 
 ## 13. Deployment (Hostinger staging)
 
-- **Staging URL:** `https://darkviolet-llama-836605.hostingersite.com/crm`
-- **App path:** `~/domains/darkviolet-llama-836605.hostingersite.com/public_html` (the root `.htaccess` rewrites to `/public`)
+- **Live URL:** `https://crm.redprimerentals.com/crm` (the old staging address `darkviolet-llama-836605.hostingersite.com` is no longer used)
+- **App path:** `~/domains/crm.redprimerentals.com/public_html` (the root `.htaccess` rewrites to `/public`)
 
 **How an update goes live**
 1. **Upload the changed files.** Crew uploads them through the Hostinger File Browser and checks each file on the server by SHA-256. SSH is not used from the agent side.
 2. **Bilal runs the deploy script:**
    ```
-   cd ~/domains/darkviolet-llama-836605.hostingersite.com/public_html
+   cd ~/domains/crm.redprimerentals.com/public_html
    bash scripts/deploy-hostinger.sh          # add --demo for sample data
    ```
    The script:
