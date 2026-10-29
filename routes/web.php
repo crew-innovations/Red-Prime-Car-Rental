@@ -69,6 +69,10 @@ Route::get('/quote/{token}', [QuotationPublicController::class, 'show'])->middle
 Route::post('/quote/{token}/accept', [QuotationPublicController::class, 'accept'])->middleware('throttle:10,1')->name('quotations.public.accept');
 Route::post('/quote/{token}/decline', [QuotationPublicController::class, 'decline'])->middleware('throttle:10,1')->name('quotations.public.decline');
 
+// Shared lead forms (28 Oct-2, Phase 16).
+Route::get('/f/{token}', [\App\Http\Controllers\LeadFormController::class, 'show'])->middleware('throttle:60,1')->name('forms.show');
+Route::post('/f/{token}', [\App\Http\Controllers\LeadFormController::class, 'store'])->middleware('throttle:10,1')->name('forms.store');
+
 // Online payment links (28 Oct-2, Phase 13). The money is recorded only from the provider's verified answer.
 Route::get('/pay/{token}', [\App\Http\Controllers\PaymentPageController::class, 'show'])->middleware('throttle:60,1')->name('pay.show');
 Route::post('/pay/{token}/{provider}', [\App\Http\Controllers\PaymentPageController::class, 'start'])->middleware('throttle:10,1')->whereIn('provider', array_keys(\App\Support\Payments\Payments::GATEWAYS))->name('pay.start');

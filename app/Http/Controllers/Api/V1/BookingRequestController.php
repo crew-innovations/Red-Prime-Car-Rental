@@ -107,6 +107,7 @@ class BookingRequestController extends Controller
                 'phone' => trim($data['phone']),
                 'email' => $data['email'] ?? null,
                 'lead_source_id' => LeadSource::firstOrCreate(['slug' => 'website'], ['name' => 'Website', 'is_active' => true])->id,
+                'channel' => 'website',
                 'service_type' => $service,
                 'interested_in_type' => $item->getMorphClass(),
                 'interested_in_id' => $item->getKey(),
@@ -123,6 +124,8 @@ class BookingRequestController extends Controller
                 'external_id' => $externalId,
                 'priority' => $type === 'booking_request' ? 'hot' : 'warm',
             ]);
+
+            \App\Support\Leads\Assignment::auto($lead); // business settings: manual (default) does nothing
 
             return $this->respond($lead, $item, $type, $guests, $departure ?? $tripDate, false, 201, $estimate);
         });

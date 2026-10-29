@@ -53,6 +53,9 @@ class Setting extends Model
         // Sales workflow (28 Oct). Off keeps the way staff worked before.
         'booking_requires_accepted_quote' => false,
         'doc_block_confirm' => false,
+        'lead_assignment' => 'manual',       // manual / round_robin / by_service (28 Oct-2)
+        'lead_assignment_people' => [],
+        'lead_assignment_by_service' => [],  // [{service, user_id}]
         'payment_link_days' => null,         // empty = a payment link stays open until paid or cancelled (28 Oct-2)
         'audit_retention_days' => null,      // empty = keep the audit log forever (28 Oct-2)
         'expense_approval_required' => true, // expenses from staff without finance rights wait for approval

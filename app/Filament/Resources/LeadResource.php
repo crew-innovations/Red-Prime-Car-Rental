@@ -182,6 +182,14 @@ class LeadResource extends Resource
                                 Forms\Components\TextInput::make('utm_medium')->label('UTM medium'),
                                 Forms\Components\TextInput::make('utm_campaign')->label('Campaign'),
                                 Forms\Components\TextInput::make('external_id')->label('Platform lead ID'),
+                                Forms\Components\Placeholder::make('platform_info')->label('Ad / form')->columnSpanFull()
+                                    ->visible(fn (?Lead $record): bool => (bool) ($record?->platform))
+                                    ->content(fn (?Lead $record) => new \Illuminate\Support\HtmlString(collect((array) $record?->platform)
+                                        ->map(fn ($v, $k) => '<div><span style="opacity:.6">'.e(str_replace('_', ' ', ucfirst((string) $k))).':</span> '.e(is_bool($v) ? ($v ? 'yes' : 'no') : (string) $v).'</div>')->implode(''))),
+                                Forms\Components\Placeholder::make('answers_info')->label('Answers on the form')->columnSpanFull()
+                                    ->visible(fn (?Lead $record): bool => (bool) ($record?->answers))
+                                    ->content(fn (?Lead $record) => new \Illuminate\Support\HtmlString(collect((array) $record?->answers)
+                                        ->map(fn ($v, $k) => '<div><span style="opacity:.6">'.e((string) $k).':</span> '.e((string) $v).'</div>')->implode(''))),
                             ]),
                     ]),
 
@@ -348,6 +356,7 @@ class LeadResource extends Resource
                     ->label('Source')
                     ->badge()
                     ->color('gray')
+                    ->description(fn (Lead $record): ?string => data_get($record->platform, 'campaign_name') ?? data_get($record->platform, 'form_name'))
                     ->sortable(),
                 Tables\Columns\TextColumn::make('stage')
                     ->badge()
@@ -390,6 +399,7 @@ class LeadResource extends Resource
                 Tables\Filters\SelectFilter::make('pipeline')->options(Pipeline::class),
                 Tables\Filters\SelectFilter::make('status')->options(LeadStatus::class)->multiple(),
                 Tables\Filters\SelectFilter::make('lead_source_id')->label('Source')->relationship('leadSource', 'name')->multiple()->preload(),
+                Tables\Filters\SelectFilter::make('channel')->label('Came in by')->options(\App\Support\Leads\LeadIntake::CHANNELS)->multiple(),
                 Tables\Filters\SelectFilter::make('service_type')->label('Interest')->options(ServiceType::class),
                 Tables\Filters\SelectFilter::make('priority')->options(LeadPriority::class),
                 Tables\Filters\SelectFilter::make('assigned_to')->label('Salesperson')->relationship('assignee', 'name')->preload(),

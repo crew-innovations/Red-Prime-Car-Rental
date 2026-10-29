@@ -37,3 +37,15 @@ Route::post('webhooks/payments/{provider}', function (\Illuminate\Http\Request $
 
     return response()->json(['received' => $status === 200], $status);
 })->whereIn('provider', array_keys(\App\Support\Payments\Payments::GATEWAYS))->middleware('throttle:240,1')->name('payments.webhook');
+
+// Lead webhooks from ad platforms (28 Oct-2, Phase 15): signature checked per platform, each lead once.
+Route::get('webhooks/leads/{provider}', function (\Illuminate\Http\Request $request, string $provider) {
+    [$body, $status] = \App\Support\Leads\LeadWebhooks::challenge($provider, $request);
+
+    return response($body, $status)->header('Content-Type', 'text/plain');
+})->whereIn('provider', array_keys(\App\Support\Leads\LeadWebhooks::SOURCES))->middleware('throttle:60,1');
+Route::post('webhooks/leads/{provider}', function (\Illuminate\Http\Request $request, string $provider) {
+    [$body, $status] = \App\Support\Leads\LeadWebhooks::receive($provider, $request);
+
+    return response()->json($body, $status);
+})->whereIn('provider', array_keys(\App\Support\Leads\LeadWebhooks::SOURCES))->middleware('throttle:240,1')->name('leads.webhook');

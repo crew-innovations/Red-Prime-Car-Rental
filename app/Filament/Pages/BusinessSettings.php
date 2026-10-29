@@ -255,6 +255,23 @@ class BusinessSettings extends Page implements HasForms
                             ->inline(false)
                             ->visible(fn (Get $get): bool => (bool) $get('vat_enabled')),
                     ]),
+                Forms\Components\Section::make('New leads: who gets them')
+                    ->description('For leads from ads (Meta, TikTok, Snapchat), shared forms and the website. A lead that already has someone is never moved.')
+                    ->schema([
+                        Forms\Components\ToggleButtons::make('lead_assignment')->label('How')->inline()->live()
+                            ->options(\App\Support\Leads\Assignment::MODES)->required(),
+                        Forms\Components\Select::make('lead_assignment_people')->label('Round-robin group')->multiple()
+                            ->options(fn () => \App\Support\Leads\Assignment::eligible()->orderBy('name')->pluck('name', 'id')->all())
+                            ->helperText('Each new lead goes to the person in this group who got one longest ago.')
+                            ->visible(fn (Forms\Get $get): bool => in_array($get('lead_assignment'), ['round_robin', 'by_service'], true)),
+                        Forms\Components\Repeater::make('lead_assignment_by_service')->label('Person per service')
+                            ->schema([
+                                Forms\Components\Select::make('service')->options(\App\Enums\ServiceType::class)->required(),
+                                Forms\Components\Select::make('user_id')->label('Person')->options(fn () => \App\Support\Leads\Assignment::eligible()->orderBy('name')->pluck('name', 'id')->all())->required(),
+                            ])->columns(2)->defaultItems(0)->addActionLabel('Add a service')
+                            ->helperText('Services not listed use the round-robin group.')
+                            ->visible(fn (Forms\Get $get): bool => $get('lead_assignment') === 'by_service'),
+                    ]),
                 Forms\Components\Section::make('Quotations')
                     ->columns(2)
                     ->schema([
@@ -548,6 +565,7 @@ class BusinessSettings extends Page implements HasForms
         // 28 Oct: pricing and sales workflow
         'hourly_increment_minutes', 'price_max_discount_percent', 'price_approval_required', 'booking_requires_accepted_quote', 'doc_block_confirm',
         'expense_approval_required', 'audit_retention_days', 'payment_link_days',
+        'lead_assignment', 'lead_assignment_people',
     ];
 
     public function save(): void
@@ -652,6 +670,14 @@ class BusinessSettings extends Page implements HasForms
                 is_array($default) => array_values(array_unique(array_filter(array_map(fn ($v) => is_string($v) ? trim($v) : $v, (array) $out[$key])))),
                 default => $out[$key],
             };
+        }
+        if (array_key_exists('lead_assignment', $out)) {
+            $out['lead_assignment'] = array_key_exists((string) $out['lead_assignment'], \App\Support\Leads\Assignment::MODES) ? $out['lead_assignment'] : 'manual';
+            $out['lead_assignment_people'] = array_values(array_map('intval', array_filter((array) ($out['lead_assignment_people'] ?? []))));
+            $out['lead_assignment_by_service'] = collect((array) ($data['lead_assignment_by_service'] ?? []))
+                ->filter(fn ($r) => ! empty($r['service']) && ! empty($r['user_id']))
+                ->map(fn ($r) => ['service' => $r['service'] instanceof \BackedEnum ? $r['service']->value : (string) $r['service'], 'user_id' => (int) $r['user_id']])
+                ->unique('service')->values()->all();
         }
         if (array_key_exists('payment_link_days', $out)) {
             $out['payment_link_days'] = filled($out['payment_link_days']) && (int) $out['payment_link_days'] > 0 ? (int) $out['payment_link_days'] : null;

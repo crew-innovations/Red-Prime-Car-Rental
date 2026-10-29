@@ -37,6 +37,8 @@ class Lead extends Model
             'next_follow_up_at' => 'datetime',
             'assigned_at' => 'datetime',
             'accepted_at' => 'datetime',
+            'platform' => 'array',
+            'answers' => 'array',
         ];
     }
 
@@ -44,6 +46,9 @@ class Lead extends Model
     {
         // Pipeline and stage drive the overall status (Schedule A3).
         static::saving(function (Lead $lead) {
+            if (! $lead->exists && ! $lead->channel && auth()->check()) {
+                $lead->channel = 'manual';
+            }
             $lead->pipeline ??= Pipeline::forService($lead->service_type);
 
             if (! $lead->pipeline->hasStage($lead->stage)) {
