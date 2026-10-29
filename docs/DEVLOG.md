@@ -1,5 +1,46 @@
 # Development log — RED PRIME RENTALS CRM
 
+## 2026-10-29 · Complete upgrade brief (28 Oct-2)
+
+Bilal's answers:
+- Build the work that needs no outside account first.
+- Price approval: build the option, keep it off.
+- Gateways: Stripe, Paymob, Tabby / Tamara (PayPal adapter built, lower priority).
+- Google Maps and Meta keys come later: build with mocks.
+
+Contract mapping: change request (exports, audit log and calendar extend M2).
+
+Commits:
+- exports
+- audit log
+- calendar
+- limousine & transfers + Google Maps + integrations + optional price approval
+- job reports
+- online payments
+- lead inbox and shared forms
+- messages
+- reports and docs
+
+Full status: `docs/TEST-REPORT-2026-10-29.md`. Setup steps: `docs/INTEGRATIONS-SETUP.md`.
+
+### New migrations (all additive, all reversible)
+- `2026_10_29_000001` audit log fields
+- `000002` limousine & transfers
+- `000003` integrations
+- `000004` price approval
+- `000005` job reports
+- `000006` payment requests
+- `000007` lead channel / platform / answers
+- `000008` lead forms
+- `000009` chat
+
+### Rules kept
+- Money is recorded only from a verified provider answer, once, for the exact amount. A different amount or a second payment → "Needs checking"; nothing is recorded automatically.
+- Security deposits paid online stay "deposit" (not revenue). Their refunds are "deposit refund" (not a cost).
+- A job report never completes a job. A browser-sent distance is never used for a price.
+- Customers and drivers never see internal notes.
+- No outside messages are sent from the CRM.
+
 ## 2026-10-28 · Complete system correction (brief Priorities 1–10)
 
 Brief: "COMPLETE SYSTEM CORRECTION AND DEVELOPMENT PROMPT" (28 Oct). Bilal's answers:

@@ -34,8 +34,9 @@ class PagesSmokeTest extends TestCase
     {
         $this->actingAs($this->user('Super Admin'));
 
-        $urls = ['/crm', '/crm/pipeline', '/crm/accounts', '/crm/business-settings', '/crm/profit-reports', '/crm/profit-reports?by=month', '/crm/profit-reports?by=category', '/crm/rate-card', '/crm/price-check'];
-        foreach (['leads', 'quotations', 'bookings', 'customers', 'cars', 'yachts', 'trips', 'packages', 'drivers', 'transactions', 'users', 'categories', 'lead-sources', 'documents', 'history', 'damage-reports'] as $r) {
+        $urls = ['/crm', '/crm/pipeline', '/crm/accounts', '/crm/business-settings', '/crm/profit-reports', '/crm/profit-reports?by=month', '/crm/profit-reports?by=category', '/crm/profit-reports?by=service', '/crm/rate-card', '/crm/price-check',
+            '/crm/lead-reports', '/crm/lead-reports?by=agent', '/crm/lead-reports?by=campaign', '/crm/messages', '/crm/integrations', '/crm/calendar'];
+        foreach (['leads', 'quotations', 'bookings', 'customers', 'cars', 'yachts', 'trips', 'packages', 'drivers', 'transactions', 'users', 'categories', 'lead-sources', 'documents', 'history', 'damage-reports', 'payment-requests', 'lead-forms', 'transfer-services', 'vehicle-categories', 'transfer-rates', 'transfer-fixed-routes'] as $r) {
             $urls[] = "/crm/{$r}";
         }
         foreach (['leads', 'quotations', 'bookings', 'customers', 'cars', 'trips', 'packages', 'drivers', 'transactions', 'users'] as $r) {
@@ -82,7 +83,7 @@ class PagesSmokeTest extends TestCase
         $this->assertNotNull($job);
 
         $this->actingAs($driver);
-        foreach (['/crm/my-jobs', '/crm/my-jobs?tab=upcoming', '/crm/my-jobs?tab=done', '/crm/my-profile', \App\Filament\Pages\DriverJob::getUrl(['job' => $job->id])] as $url) {
+        foreach (['/crm/my-jobs', '/crm/my-jobs?tab=upcoming', '/crm/my-jobs?tab=done', '/crm/my-profile', '/crm/messages', \App\Filament\Pages\DriverJob::getUrl(['job' => $job->id])] as $url) {
             $this->get($url)->assertOk();
         }
     }
@@ -92,7 +93,7 @@ class PagesSmokeTest extends TestCase
         $customer = Booking::whereNotNull('customer_id')->where('status', '!=', 'inquiry')->first()->customer;
         $account = \App\Support\Accounts::customerAccount($customer, 'smoke@example.com');
         $this->actingAs($account);
-        foreach (['/account', '/account/bookings', '/account/quotations', '/account/documents', '/account/payments', '/account/profile'] as $url) {
+        foreach (['/account', '/account/bookings', '/account/quotations', '/account/documents', '/account/payments', '/account/profile', '/account/messages'] as $url) {
             $this->get($url)->assertOk();
         }
         foreach (\App\Support\CustomerArea::bookings()->get() as $b) {

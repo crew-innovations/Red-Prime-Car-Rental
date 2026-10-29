@@ -141,7 +141,7 @@ class ProfitReport
     /**
      * Rows for one view. Each row: key, label, url, earned, received, costs, contribution, bookings (ids), expenses (ids).
      *
-     * @param  string  $by  booking | car | yacht | agent | month | category
+     * @param  string  $by  booking | car | yacht | agent | service | month | category
      */
     public function rows(string $by): array
     {
@@ -159,6 +159,7 @@ class ProfitReport
             'car' => $earned->filter(fn (Booking $b) => $b->bookable_type === 'car')->groupBy('bookable_id'),
             'yacht' => $earned->filter(fn (Booking $b) => $b->bookable_type === 'yacht')->groupBy('bookable_id'),
             'agent' => $earned->groupBy(fn (Booking $b) => (int) $b->assigned_to),
+            'service' => $earned->groupBy(fn (Booking $b) => $b->revenueCategory()),
             default => $earned->keyBy('id')->map(fn ($b) => collect([$b])),
         };
 
@@ -181,6 +182,7 @@ class ProfitReport
                 'car' => [$first->bookable?->name ?? 'Car #'.$key, $first->bookable ? \App\Filament\Resources\CarResource::getUrl('edit', ['record' => $key]) : null],
                 'yacht' => [$first->bookable?->name ?? 'Yacht #'.$key, $first->bookable ? \App\Filament\Resources\YachtResource::getUrl('edit', ['record' => $key]) : null],
                 'agent' => [$first->assignee?->name ?? 'Not assigned', null],
+                'service' => [Transaction::INCOME_CATEGORIES[$key] ?? ucfirst(str_replace('_', ' ', (string) $key)), null],
                 default => [$first->reference.' · '.($first->bookable?->name ?? $first->service_type?->getLabel()), \App\Filament\Resources\BookingResource::getUrl('edit', ['record' => $first])],
             };
 

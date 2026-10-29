@@ -142,6 +142,31 @@ class LeadInboxTest extends TestCase
         $this->postJson('/api/webhooks/leads/snapchat', [])->assertNotFound(); // not set up
     }
 
+    public function test_lead_report_counts_and_conversion_by_channel_and_person(): void
+    {
+        $a = $this->user('Agent', ['name' => 'Agent A']);
+        $mgr = $this->user('Manager');
+        $this->actingAs($mgr);
+        foreach ([['meta', '0501', 'converted'], ['meta', '0502', 'lost'], ['meta', '0503', null], ['form', '0504', null]] as [$ch, $p, $end]) {
+            [$lead] = LeadIntake::receive(['name' => 'L'.$p, 'phone' => $p.'000000', 'channel' => $ch, 'platform' => ['campaign_name' => 'Nov']]);
+            $lead->update(['assigned_to' => $a->id]);
+            if ($end) {
+                $lead->update(['stage' => $end === 'converted' ? collect(array_keys($lead->pipeline->stages()))->first(fn ($k) => $lead->pipeline->isWon($k)) : \App\Enums\Pipeline::LOST, 'lost_reason' => $end === 'lost' ? 'Price' : null]);
+            }
+        }
+
+        $r = new \App\Support\Reports\LeadReport(now()->startOfMonth(), now()->endOfMonth());
+        $this->assertSame(['leads' => 4, 'won' => 1, 'lost' => 1, 'open' => 2, 'conversion' => 25.0, 'unassigned' => 0], $r->summary());
+        $meta = collect($r->rows('channel'))->firstWhere('label', 'Facebook / Instagram');
+        $this->assertSame([3, 1, 33.3], [$meta['leads'], $meta['won'], $meta['conversion']]);
+        $this->assertSame(4, collect($r->rows('agent'))->firstWhere('label', 'Agent A')['leads']);
+        $this->assertSame(4, collect($r->rows('campaign'))->firstWhere('label', 'Nov')['leads']);
+        $this->get('/crm/lead-reports?by=channel')->assertOk()->assertSee('Facebook / Instagram')->assertSee('33.3%');
+
+        $this->actingAs($this->user('Agent'));
+        $this->assertSame(0, (new \App\Support\Reports\LeadReport(now()->startOfMonth(), now()->endOfMonth()))->summary()['leads']); // own leads only
+    }
+
     public function test_shared_form_makes_leads_and_closes(): void
     {
         $owner = $this->user('Sales');

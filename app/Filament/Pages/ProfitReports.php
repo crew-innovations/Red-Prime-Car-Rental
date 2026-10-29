@@ -31,7 +31,7 @@ class ProfitReports extends Page
     #[Url]
     public string $by = 'booking';
 
-    public const VIEWS = ['booking' => 'Booking', 'car' => 'Car', 'yacht' => 'Yacht', 'agent' => 'Agent', 'month' => 'Month', 'category' => 'Category'];
+    public const VIEWS = ['booking' => 'Booking', 'car' => 'Car', 'yacht' => 'Yacht', 'agent' => 'Agent', 'service' => 'Service', 'month' => 'Month', 'category' => 'Category'];
 
     public static function canAccess(): bool
     {

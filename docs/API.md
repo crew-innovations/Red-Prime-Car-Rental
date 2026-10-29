@@ -170,7 +170,7 @@ Works out a price with the CRM's own price engine (standard rates, special rates
 
 | Field | Required | Rules |
 |---|---|---|
-| `product_type` | yes | `car`, `yacht`, `yacht_trip` or `package` |
+| `product_type` | yes | `car`, `yacht`, `yacht_trip`, `package` or `transfer` (see Limousine & transfers) |
 | `product_slug` | yes | Slug of a published item |
 | `start_at`, `end_at` | cars, yachts | `YYYY-MM-DD HH:MM`, from today, end after start |
 | `drive_mode` | no | Cars: `self_drive` or `with_driver` (default: what the car offers) |
@@ -206,6 +206,52 @@ Works out a price with the CRM's own price engine (standard rates, special rates
 - `vat` is `null` while VAT is off in the CRM. When on: `{ "rate": 5, "amount": …, "included": false }`.
 - `conditions` are customer notes such as a minimum rental length; staff setup hints are never shown.
 - The website must show this as an estimate. To go ahead, send `POST /booking-requests`.
+
+## Limousine & transfers (28 Oct-2)
+
+### GET /transfer-services
+Published services (airport pickup, point to point, hourly chauffeur…). Each: `slug`, `name`, `description`, `pricing` (`route` or `hourly`), `needs` (fields the website must ask: `pickup`, `dropoff`, `end_at`, `flight_number`), `return_journey` (a return can be asked).
+
+### GET /vehicle-categories
+Published categories (Sedan, SUV, Van…). Each: `slug`, `name`, `description`, `passengers`, `luggage`, `from_price` (`{amount, currency, label: "minimum fare"}` or `null`).
+
+### POST /price-estimate with `product_type: "transfer"`
+
+| Field | Required | Rules |
+|---|---|---|
+| `product_slug` | yes | Vehicle category slug |
+| `service` | yes | Transfer service slug |
+| `pickup` | yes | Address, 3–255 characters |
+| `dropoff` | route services | Address |
+| `stops` | no | Up to 5 addresses |
+| `start_at` | yes | `YYYY-MM-DD HH:MM`, from today |
+| `end_at` | hourly services | After `start_at` |
+| `return_at` | no | Return pickup, after `start_at` |
+| `passengers`, `luggage` | no | Checked against the category |
+
+- The road distance and time are worked out by the CRM (Google Maps Routes API). **A distance sent by the browser is never used.**
+- Until Google Maps is connected in Settings › Integrations, route services answer `available: null` with "price on request". Hourly hire is priced without Maps.
+- The answer has the same shape as other estimates, plus `route` (`km`, `minutes`, and `return_km` for a return), or `null` for hourly hire.
+
+### POST /booking-requests with `type: "transfer"`
+Same fields as the estimate, plus the usual contact fields. Creates a lead (channel `website`), never a booking.
+
+## Webhooks the CRM receives (28 Oct-2)
+
+All webhooks are checked before anything is saved (signature, token or a call back to the provider). Each event is handled once: a repeated event returns 200 and changes nothing. Every webhook, accepted or refused, is listed under Settings › Integrations › Recent activity.
+
+| Address | From | Check |
+|---|---|---|
+| `POST /api/webhooks/payments/stripe` | Stripe | `Stripe-Signature` (HMAC-SHA256 with the endpoint secret, 5-minute window) |
+| `POST /api/webhooks/payments/paymob` | Paymob | `hmac` query value (HMAC-SHA512 of the documented fields) |
+| `POST /api/webhooks/payments/tabby` | Tabby | Shared header value, then the payment is read back and captured with the secret key |
+| `POST /api/webhooks/payments/tamara` | Tamara | `tamaraToken` JWT (HS256, notification token), then the order is read back, authorised and captured |
+| `POST /api/webhooks/payments/paypal` | PayPal | PayPal's verify-webhook-signature API |
+| `GET/POST /api/webhooks/leads/meta` | Meta Lead Ads | GET: verify token. POST: `X-Hub-Signature-256` (App Secret), then the lead is read with the Page token |
+| `POST /api/webhooks/leads/tiktok` | TikTok | HMAC-SHA256 of the body in the chosen header (format to confirm with a real test lead) |
+| `POST /api/webhooks/leads/snapchat` | Snapchat | Same as TikTok |
+
+Answers: `200` handled (or already handled), `400` signature refused, `404` not set up or switched off, `503` the provider could not be asked (the provider retries).
 
 ## POST /booking-requests
 
