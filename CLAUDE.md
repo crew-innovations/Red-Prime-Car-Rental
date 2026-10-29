@@ -70,9 +70,9 @@ If Packagist is blocked in the agent environment, install packages from GitHub c
 - Unit-test pure logic (enums, calculations) with stub interfaces.
 - Real behaviour must be checked on staging after deploy.
 
-## Deploying to staging (Hostinger shared hosting)
+## Deploying to the live server (Hostinger shared hosting, crm.redprimerentals.com)
 
-- **App path:** `~/domains/darkviolet-llama-836605.hostingersite.com/public_html` (root `.htaccess` rewrites to `/public`).
+- **App path:** `~/domains/crm.redprimerentals.com/public_html` (root `.htaccess` rewrites to `/public`).
 - **Uploading files:** use the Hostinger File Browser API from the browser tab, and verify each upload by SHA-256 (first 16 hex characters).
   - Do not use SSH from the agent side. Bilal runs the commands himself.
 - **After uploading, Bilal runs:** `bash scripts/deploy-hostinger.sh` (add `--demo` for sample data).
