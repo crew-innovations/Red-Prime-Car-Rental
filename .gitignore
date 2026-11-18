@@ -21,3 +21,6 @@ yarn-error.log
 /.nova
 /.vscode
 /.zed
+
+# dompdf font cache (made on each server)
+/storage/fonts/*
