@@ -1,5 +1,33 @@
 # Development log — RED PRIME RENTALS CRM
 
+## 2026-11-18 · Rental contracts and the meeting of 18 Nov
+
+Meeting minutes of 18 Nov (Hani Ahmed, Hifza Anwaar) and Bilal: "update everything which mentioned and add contract features as well same as on fleet". Change request (contract A7 / A10 cover bookings, not contracts). Plan: `PLAN-2026-11-RENTAL-CONTRACTS.md`.
+
+Before this work the code was taken back from the live server (30 Oct–12 Nov work existed only there): commit `621f0bb`, package sha256 `640e528868d1b0a1`.
+
+Migration `2026_11_18_000001_rental_contracts` (additive only): new tables `rental_contracts`, `contract_drivers`, `contract_vehicle_swaps`, `contract_versions`; new nullable columns on `customers`, `customer_documents`, `bookings`, `damage_reports`, `invoices`.
+
+- **Item 1, contracts** (`App\Support\Contracts\Contracts`, `RentalContractResource`, `pdf/contract.blade.php`):
+  - made from a car booking; number `RC-YYYY-#####`; types individual / company / monthly;
+  - main driver from the customer, additional drivers with licence check and an optional charge (a line on the booking);
+  - signing in the office (pad), on the driver's phone at handover (same signature), or by a one-use link `/sign/{token}`;
+  - extend, replace car (km / fuel of both cars kept), damage OUT / IN, attachments, edit details;
+  - close after "Receive car": closing summary (km of all cars, extra km, charges, balance, deposit);
+  - every change saves a PDF version (English with Arabic labels; terms from Contract settings, frozen when signed);
+  - monthly contracts: one invoice per period (`ContractInvoices`, daily `crm:contract-tasks` 07:10), ending reminders, auto-renew;
+  - contracts follow the booking (open at handover, cancelled with it); the customer sees the PDF and signing link in their account.
+- **Item 2:** delivery / collection charges are off until switched on on the booking; the amount can be changed there (ability `set-delivery-charges`, Admin). Setting `delivery_fee_default` (off / price list). Quotations unchanged.
+- **Item 3:** self-drive / with driver was already on the form (first step).
+- **Item 4:** "Security deposit / No deposit" on car bookings; optional no-deposit fee (typed, or from Contract settings: off / fixed / per day / %).
+- **Item 5:** status changed by hand only with `change-booking-status` (Admin). Others start a booking as at most Waiting for payment; the buttons still move it. Admin "Confirm booking" button.
+- **Item 6:** customer pop-up in the booking (new or pencil for the chosen one): all details, ID / passport / licence numbers and dates, document uploads saved as customer documents.
+- **Item 7:** OCR ("Read the documents", "Read the receipt") through Settings › Integrations › Document reader (Anthropic or OpenAI, key needed; off until set up). Passport / Emirates ID MRZ check digits checked locally (`App\Support\Ocr\Mrz`).
+- **Item 8:** a car booking is confirmed only with the details from Contract settings and the required documents (Business settings › Documents, now also per resident / GCC / tourist). Admin can confirm anyway with a reason (logged). Paid-online bookings stay waiting and the team is told.
+- **Also:** blacklist on customers (ability `blacklist-customers`), "Hand over only with a signed contract" (off), Settings › Rental contracts page.
+- **Open decisions (C-1 to C-11 in the plan):** contract terms text, no-deposit fee, required documents, minimum age, OCR provider, monthly invoice timing.
+- **Tests:** `tests/Feature/RentalContractsTest.php` 20 tests pass (pricing switches, deposit, confirm rule, status rule, contract make / drivers / sign link / extend / swap / close, monthly invoices, reminders, PDF access, pop-up, MRZ, OCR with a faked service, screens and buttons for Admin and Agent). Full suite on SQLite: 292 tests, no test fails that passed before; 105 older tests were already failing on the live code before this work (old role names and older rules) and still need updating.
+
 ## 2026-10-29 (2) · Limousine pricing, suppliers, accounts integration
 
 Brief: "Limousine Module, Supplier & Vehicle Management, and Accounts Integration". Plan approved by Bilal.

@@ -44,6 +44,8 @@ trait HasPricing
     public static function pricingInputs(): array
     {
         return ['service_type', 'bookable_id', 'start_at', 'end_at', 'drive_mode', 'guests', 'package_departure_id', 'delivery_method', 'return_method', 'extras',
+            // 18 Nov (meeting items 2 and 4): delivery / collection switches and amounts, no-deposit fee
+            'delivery_fee_on', 'delivery_fee_amount', 'collection_fee_on', 'collection_fee_amount', 'deposit_mode', 'no_deposit_fee',
             // limousine & transfers (28 Oct-2)
             'transfer_service_id', 'vehicle_category_id', 'journey_type', 'route_km', 'return_route_km', 'route_minutes', 'stops', 'waiting_minutes', 'return_at', 'pickup_location', 'dropoff_location'];
     }
@@ -70,7 +72,29 @@ trait HasPricing
             'delivery_method' => $this->delivery_method,
             'return_method' => $this->return_method,
             'extra_keys' => $extraKeys ?? $this->chosenExtraKeys(),
-        ]);
+        ] + $this->handoverFeeInput());
+    }
+
+    /**
+     * 18 Nov: delivery / collection switches for the price engine (bookings only; quotations keep the
+     * price list). A booking saved before the switch existed keeps the charge it already had.
+     */
+    protected function handoverFeeInput(): array
+    {
+        if (! $this instanceof \App\Models\Booking) {
+            return [];
+        }
+        $had = fn (string $kind): bool => collect((array) ($this->getOriginal('extras') ?? []))->contains(fn ($l) => ($l['kind'] ?? null) === $kind);
+        $on = fn (string $kind) => $this->{$kind.'_fee_on'} !== null ? (bool) $this->{$kind.'_fee_on'} : ($this->exists && $had($kind) ? true : null);
+
+        return [
+            'delivery_fee_on' => $on('delivery'),
+            'delivery_fee_amount' => $this->delivery_fee_amount,
+            'collection_fee_on' => $on('collection'),
+            'collection_fee_amount' => $this->collection_fee_amount,
+            'deposit_mode' => $this->deposit_mode,
+            'no_deposit_fee' => $this->no_deposit_fee,
+        ];
     }
 
     /** Optional extras picked on this record (lines from the price list of kind "extra"). */

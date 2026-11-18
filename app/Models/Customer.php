@@ -25,7 +25,30 @@ class Customer extends Model
             'next_follow_up_at' => 'datetime',
             'marketing_consent_at' => 'datetime',
             'unsubscribed_at' => 'datetime',
+            // 18 Nov: contract details and blacklist
+            'id_expires_on' => 'date',
+            'passport_expires_on' => 'date',
+            'licence_issued_on' => 'date',
+            'licence_expires_on' => 'date',
+            'trade_licence_expires_on' => 'date',
+            'blacklisted_at' => 'datetime',
         ];
+    }
+
+    public function isBlacklisted(): bool
+    {
+        return $this->blacklisted_at !== null;
+    }
+
+    public function contracts(): HasMany
+    {
+        return $this->hasMany(RentalContract::class);
+    }
+
+    /** Age in whole years on a date (null without a date of birth). */
+    public function ageOn($date = null): ?int
+    {
+        return $this->date_of_birth ? (int) $this->date_of_birth->diffInYears($date ?? now()) : null;
     }
 
     public function leadSource(): BelongsTo

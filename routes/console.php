@@ -47,3 +47,6 @@ $job('crm:prune-driver-data')->dailyAt('03:45'); // 4 Nov (15): locations kept 3
 // 5 Nov (S5): UAE fuel prices change on the 1st. Accounts and Admin are reminded until they are set.
 Schedule::call(fn () => \App\Support\Fuel\Fuel::remindPrices())->name('fuel-price-reminder')->monthlyOn(1, '09:10');
 Schedule::call(fn () => \App\Support\Fuel\Fuel::remindPrices())->name('fuel-price-reminder-again')->monthlyOn(3, '09:10');
+
+// 18 Nov: rental contracts (monthly invoices, ending reminders, auto-renew).
+$job('crm:contract-tasks')->dailyAt('07:10')->withoutOverlapping();

@@ -47,6 +47,26 @@ class DocumentPdfController extends Controller
         return Pdf::response('pdf.confirmation', ['b' => $booking], 'Booking '.$booking->reference.'.pdf', $request->boolean('download'));
     }
 
+    /** 18 Nov: the rental contract, as its latest saved version (made again live if none is saved). */
+    public function contract(Request $request, \App\Models\RentalContract $contract)
+    {
+        abort_unless($contract->booking, 404);
+        $this->allowBooking($request, $contract->booking);
+        $v = $contract->latestVersion();
+        $disk = \Illuminate\Support\Facades\Storage::disk('private');
+        if ($v && $disk->exists($v->path)) {
+            $isPdf = str_ends_with($v->path, '.pdf');
+
+            return response($disk->get($v->path), 200, [
+                'Content-Type' => $isPdf ? 'application/pdf' : 'text/html; charset=UTF-8',
+                'Content-Disposition' => ($request->boolean('download') ? 'attachment' : 'inline').'; filename="Contract '.$contract->number.' v'.$v->version.($isPdf ? '.pdf' : '.html').'"',
+                'X-Robots-Tag' => 'noindex, nofollow', 'Cache-Control' => 'private, no-store',
+            ]);
+        }
+
+        return Pdf::response('pdf.contract', ['c' => $contract, 'b' => $contract->booking, 'version' => max(1, (int) $contract->version)], 'Contract '.$contract->number.'.pdf', $request->boolean('download'));
+    }
+
     public function statement(Request $request, Booking $booking)
     {
         $this->allowBooking($request, $booking);

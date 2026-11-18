@@ -22,11 +22,11 @@ use Illuminate\Support\HtmlString;
 class PriceFields
 {
     /** Delivery / return choice for cars (separate from self-drive or with driver). */
-    public static function handoverChoice(): array
+    public static function handoverChoice(bool $withFees = false): array
     {
         $isCar = fn (Get $get): bool => $get('service_type') === ServiceType::Car->value;
 
-        return [
+        return array_values(array_filter([
             Forms\Components\ToggleButtons::make('delivery_method')
                 ->label('Customer gets the car')
                 ->options(['office' => 'Collects from us', 'delivery' => 'We deliver'])
@@ -37,6 +37,7 @@ class PriceFields
                 ->afterStateUpdated(fn (Get $get, Set $set) => self::recalculate($get, $set))
                 ->visible($isCar)
                 ->columnSpanFull(),
+            ...($withFees ? self::feeSwitch('delivery', 'delivery_method') : []),
             Forms\Components\ToggleButtons::make('return_method')
                 ->label('Car comes back')
                 ->options(['office' => 'Customer returns it', 'collection' => 'We collect'])
@@ -47,7 +48,90 @@ class PriceFields
                 ->afterStateUpdated(fn (Get $get, Set $set) => self::recalculate($get, $set))
                 ->visible($isCar)
                 ->columnSpanFull(),
+            ...($withFees ? self::feeSwitch('collection', 'return_method') : []),
+        ]));
+    }
+
+    /**
+     * 18 Nov (meeting item 2): the delivery / collection charge is not added by itself. Whoever may
+     * set it (Admin by default) switches it on for this booking and can change the amount.
+     */
+    protected static function feeSwitch(string $kind, string $methodField): array
+    {
+        $shown = fn (Get $get): bool => $get('service_type') === ServiceType::Car->value && $get($methodField) === $kind;
+        $may = fn (): bool => Access::allows('set-delivery-charges');
+        $suggest = fn (Get $get): ?float => PriceEngine::suggestedHandoverFee($kind, BookingResource::findItem(ServiceType::Car->value, $get('bookable_id')));
+
+        return [
+            Forms\Components\Group::make()->columns(2)->columnSpanFull()->visible($shown)->schema([
+                Forms\Components\Toggle::make($kind.'_fee_on')
+                    ->label('Charge for '.$kind)
+                    ->inline(false)
+                    ->default(fn (): bool => \App\Models\Setting::read('delivery_fee_default', 'off') === 'price_list')
+                    ->disabled(fn (): bool => ! $may())
+                    ->helperText(fn (): ?string => $may() ? null : 'Admin switches this charge on and sets the amount.')
+                    ->live()
+                    ->afterStateUpdated(function (Get $get, Set $set, $state) use ($kind, $suggest) {
+                        if ($state && blank($get($kind.'_fee_amount'))) {
+                            $set($kind.'_fee_amount', $suggest($get));
+                        }
+                        self::recalculate($get, $set);
+                    }),
+                Forms\Components\TextInput::make($kind.'_fee_amount')
+                    ->label(ucfirst($kind).' charge')
+                    ->numeric()->minValue(0)->prefix('AED')
+                    ->disabled(fn (): bool => ! $may())
+                    ->placeholder(fn (Get $get): string => ($a = $suggest($get)) !== null ? 'Price list: '.number_format($a, 2) : 'Type the amount')
+                    ->helperText(fn (Get $get): ?string => ($a = $suggest($get)) !== null ? 'Price list AED '.number_format($a, 2).'. Change it for this booking if needed.' : null)
+                    ->visible(fn (Get $get): bool => (bool) $get($kind.'_fee_on'))
+                    ->live(onBlur: true)
+                    ->afterStateUpdated(fn (Get $get, Set $set) => self::recalculate($get, $set)),
+            ]),
         ];
+    }
+
+    /** 18 Nov (meeting item 4): security deposit or no deposit (with an optional no-deposit fee). */
+    public static function depositChoice(): array
+    {
+        $isCar = fn (Get $get): bool => $get('service_type') === ServiceType::Car->value;
+        $allowed = fn (): bool => (bool) \App\Models\Setting::read('no_deposit_allowed', true);
+
+        return [
+            Forms\Components\ToggleButtons::make('deposit_mode')
+                ->label('Deposit')
+                ->options(['security' => 'Security deposit', 'none' => 'No deposit'])
+                ->icons(['security' => 'heroicon-m-shield-check', 'none' => 'heroicon-m-no-symbol'])
+                ->default('security')
+                ->grouped()
+                ->live()
+                ->disableOptionWhen(fn (string $value): bool => $value === 'none' && ! $allowed())
+                ->afterStateUpdated(function (Get $get, Set $set, $state) {
+                    if ($state === 'none') {
+                        $set('security_deposit', 0);
+                    } elseif (! (float) $get('security_deposit') && ($item = BookingResource::findItem($get('service_type'), $get('bookable_id'))) && ($item->deposit ?? null)) {
+                        $set('security_deposit', (float) $item->deposit);
+                    }
+                    self::recalculate($get, $set);
+                })
+                ->visible($isCar)
+                ->columnSpanFull(),
+            Forms\Components\TextInput::make('no_deposit_fee')
+                ->label('No-deposit fee')
+                ->numeric()->minValue(0)->prefix('AED')
+                ->placeholder(fn (Get $get): string => ($f = self::settingNoDepositFee($get)) > 0 ? 'From settings: '.number_format($f, 2) : 'No fee')
+                ->helperText('Charged instead of holding a deposit. Empty = the amount from Contract settings (none until it is set).')
+                ->disabled(fn (): bool => ! Access::allows('adjust-prices'))
+                ->visible(fn (Get $get): bool => $isCar($get) && $get('deposit_mode') === 'none')
+                ->live(onBlur: true)
+                ->afterStateUpdated(fn (Get $get, Set $set) => self::recalculate($get, $set)),
+        ];
+    }
+
+    protected static function settingNoDepositFee(Get $get): float
+    {
+        $r = PriceEngine::calculate(array_merge(self::input($get), ['no_deposit_fee' => null, 'deposit_mode' => 'none']));
+
+        return $r ? PriceEngine::noDepositFee([], ['days' => $r['days'] ?? 1, 'base' => (float) ($r['base_amount'] ?? 0)]) : 0.0;
     }
 
     /** @param  string  $kind  quotation | booking */
@@ -256,7 +340,18 @@ class PriceFields
             'route_minutes' => $get('route_minutes'), 'route_source' => $get('route_source'), 'stops' => array_values((array) ($get('stops') ?? [])),
             'waiting_minutes' => $get('waiting_minutes'), 'return_at' => $get('return_at'),
             'pickup_location' => $get('pickup_location'), 'dropoff_location' => $get('dropoff_location'),
-        ];
+        ] + (self::hasFeeSwitches($get) ? [
+            // 18 Nov (meeting items 2 and 4): only the booking form has these fields
+            'delivery_fee_on' => $get('delivery_fee_on'), 'delivery_fee_amount' => $get('delivery_fee_amount'),
+            'collection_fee_on' => $get('collection_fee_on'), 'collection_fee_amount' => $get('collection_fee_amount'),
+            'deposit_mode' => $get('deposit_mode'), 'no_deposit_fee' => $get('no_deposit_fee'),
+        ] : []);
+    }
+
+    /** The booking form has the delivery / collection switches; the quotation form does not. */
+    protected static function hasFeeSwitches(Get $get): bool
+    {
+        return $get('deposit_mode') !== null || $get('delivery_fee_on') !== null || $get('collection_fee_on') !== null;
     }
 
     /**

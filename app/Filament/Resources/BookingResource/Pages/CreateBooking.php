@@ -24,7 +24,7 @@ class CreateBooking extends CreateRecord
     {
         return \App\Filament\Support\Wizardize::steps(BookingResource::class, $this, [
             ['Customer & car', 'heroicon-o-user', ['Customer & service'], 'Who, and what they want'],
-            ['Dates', 'heroicon-o-calendar', ['Journey', 'Dates & place'], 'When and where'],
+            ['Dates', 'heroicon-o-calendar', ['Journey', 'Dates & place', 'Rental agreement'], 'When and where'],
             ['Price', 'heroicon-o-banknotes', ['Price', 'Payment'], 'Worked out for you'],
             ['Check & save', 'heroicon-o-check-circle', ['Status', 'Team & notes'], 'Anything else'],
         ]);
@@ -123,6 +123,12 @@ class CreateBooking extends CreateRecord
 
     protected function mutateFormDataBeforeCreate(array $data): array
     {
+        // 18 Nov (meeting item 5): without "change status", a new booking starts as at most Waiting for payment.
+        $allowed = array_map(fn ($s) => $s->value, BookingResource::statusChoices(null));
+        if (! in_array($data['status'] ?? null, $allowed, true)) {
+            $data['status'] = \App\Enums\BookingStatus::PendingPayment->value;
+        }
+
         if (blank($data['customer_id'] ?? null) && ($lead = Lead::find($data['lead_id'] ?? null))) {
             $data['customer_id'] = $lead->convertToCustomer()->id;
         }

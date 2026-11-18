@@ -26,6 +26,7 @@ class SettingsHub extends Page
     {
         return [
             ['Everyday settings', 'Company, VAT, advance, discount limit, fees and lead times: the ones you change.', [BasicSettings::class]],
+            ['Rental contracts', 'Contract terms, signing, what must be complete before a booking is confirmed, delivery and no-deposit choices, monthly invoices.', [ContractSettings::class]],
             ['Automatic messages', 'What the CRM sends by itself: reminders when a customer does not answer, and the first reply to a chat on Instagram, Facebook or WhatsApp.', [FollowUpSettings::class, ChatReplySettings::class]],
             ['Prices', 'Daily, weekly and monthly prices, special rates, extras and limousine rates.', [RateCard::class, R\PriceRuleResource::class, R\PriceExtraResource::class, PriceCheck::class, R\TransferServiceResource::class, R\VehicleCategoryResource::class, R\TransferRateResource::class, R\TransferFixedRouteResource::class]],
             ['Team', 'Who can sign in and what each role can do.', [R\UserResource::class]],

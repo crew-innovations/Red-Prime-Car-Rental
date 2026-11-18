@@ -104,6 +104,13 @@
             <div class="rp-acc-label">Your documents</div>
             <div class="rp-acc-links">
                 <a class="rp-acc-link" href="{{ route('pdf.confirmation', $b) }}" target="_blank" rel="noopener">Booking confirmation (PDF)</a>
+                {{-- 18 Nov: the rental contract, and its signing link while it waits for the signature --}}
+                @if (($rc = $b->contract) && $rc->status !== 'cancelled')
+                    <a class="rp-acc-link" href="{{ route('pdf.contract', $rc) }}" target="_blank" rel="noopener">Rental agreement {{ $rc->number }} (PDF)</a>
+                    @if (! $rc->signed_at && $rc->sign_token && $rc->sign_token_expires_at?->isFuture())
+                        <a class="rp-acc-link" href="{{ route('contracts.sign', $rc->sign_token) }}">Sign your rental agreement</a>
+                    @endif
+                @endif
                 @foreach (\App\Models\Invoice::where('booking_id', $b->id)->where('status', 'issued')->orderBy('id')->get() as $inv)
                     <a class="rp-acc-link" href="{{ route('pdf.invoice', $inv) }}" target="_blank" rel="noopener">{{ $inv->title() }} {{ $inv->number }} (PDF)</a>
                 @endforeach

@@ -48,7 +48,9 @@ class PrivateFiles
         }
 
         if ($user->isCustomerAccount()) {
-            return CustomerDocument::where('customer_id', $user->customer_id)->where('path', $path)->exists();
+            return CustomerDocument::where('customer_id', $user->customer_id)->where('path', $path)->exists()
+                // 18 Nov: their own rental contract PDFs
+                || \App\Models\ContractVersion::where('path', $path)->whereHas('contract', fn ($q) => $q->where('customer_id', $user->customer_id))->exists();
         }
 
         return false;
@@ -70,6 +72,10 @@ class PrivateFiles
         if (DriverDocument::where('path', $path)->exists() || str_starts_with($path, 'fuel/')) {
             return false;
         }
+        // 18 Nov: rental contract PDFs of their own bookings
+        if ($version = \App\Models\ContractVersion::with('contract')->where('path', $path)->first()) {
+            return $own('booking', Booking::withTrashed())->whereKey($version->contract?->booking_id)->exists();
+        }
         $media = self::media($path);
 
         return match (true) {
@@ -78,6 +84,8 @@ class PrivateFiles
             $media->model_type === (new DamageReport)->getMorphClass() => ($r = DamageReport::find($media->model_id)) && $r->booking_id
                 && $own('booking', Booking::withTrashed())->whereKey($r->booking_id)->exists(),
             in_array($media->model_type, ['car', 'yacht', 'trip'], true) => true,
+            $media->model_type === 'rental_contract' => ($c = \App\Models\RentalContract::withTrashed()->find($media->model_id))
+                && $own('booking', Booking::withTrashed())->whereKey($c->booking_id)->exists(), // 18 Nov
             default => false,
         };
     }

@@ -50,7 +50,8 @@ class DriverWork
     {
         abort_unless($job->type === 'delivery' && $job->status === 'waiting', 404);
         $booking = $job->booking;
-        if ($blockers = BookingActions::handoverBlockers($booking)) {
+        $signed = $booking->getMedia('signatures')->contains(fn ($m) => ($m->getCustomProperty('stage') === 'handover') && (int) $m->getCustomProperty('job') === $job->id);
+        if ($blockers = BookingActions::handoverBlockers($booking, $signed)) {
             throw ValidationException::withMessages(['data' => implode(' ', $blockers)]);
         }
         $check = (array) $job->inspection;
@@ -195,7 +196,8 @@ class DriverWork
         $booking = $job->booking;
         $checked = self::checkInspection($data, 'handover', $booking->bookable instanceof Car ? (int) $booking->bookable->mileage : 0);
 
-        if ($blockers = BookingActions::handoverBlockers($booking)) {
+        // 18 Nov: the customer's signature taken now also signs the rental contract.
+        if ($blockers = BookingActions::handoverBlockers($booking, ! empty($checked['signature']))) {
             throw ValidationException::withMessages(['data' => 'The office needs to sort this first: '.implode(' ', $blockers)]);
         }
 
@@ -436,6 +438,10 @@ class DriverWork
             ->usingName(($stage === 'handover' ? 'Handover' : 'Return').' signature'.($checked['signer'] ? ': '.$checked['signer'] : ''))
             ->withCustomProperties(['stage' => $stage, 'job' => $job->id, 'signer' => $checked['signer'], 'at' => now()->toDateTimeString()])
             ->toMediaCollection('signatures');
+        // 18 Nov: at handover the same signature signs the rental contract, if it is not signed yet.
+        if ($stage === 'handover' && ($contract = \App\Models\RentalContract::where('booking_id', $booking->id)->first()) && ! $contract->signed_at && $contract->isEditable()) {
+            rescue(fn () => \App\Support\Contracts\Contracts::sign($contract, $checked['signature'], $checked['signer'] ?: $booking->customer?->name, 'driver'));
+        }
     }
 
     protected static function stored(array $checked): array

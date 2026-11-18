@@ -59,6 +59,7 @@ class Menu
                 [R\LeadResource::class, 'My leads', ['waiting-leads', P\PipelineBoard::class, R\QuotationResource::class, R\LeadFormResource::class]],
                 [R\CustomerResource::class, 'My customers', [R\DocumentResource::class]],
                 [R\BookingResource::class, 'My bookings', [R\DamageReportResource::class]],
+                [R\RentalContractResource::class, 'My contracts', []], // 18 Nov
                 [P\Calendar::class, null, []],
                 [P\Messages::class, null, []],
             ],
@@ -76,6 +77,7 @@ class Menu
                 [P\Dashboard::class, 'Home', []],
                 [R\LeadResource::class, 'Leads', [P\PipelineBoard::class, R\QuotationResource::class, R\CustomerResource::class, R\DocumentResource::class, R\LeadFormResource::class, P\Messages::class, P\LeadReports::class]],
                 [R\BookingResource::class, 'Bookings', [P\DispatchBoard::class, R\DriverResource::class, R\DamageReportResource::class]],
+                [R\RentalContractResource::class, 'Contracts', []], // 18 Nov: rental contracts
                 // 6 Nov: Limousine is a core service, so it keeps its own place (it was hidden under Bookings / Settings).
                 ['transfers', 'Limousine', [P\DispatchBoard::class, P\LiveDrivers::class, R\TransferServiceResource::class, R\VehicleCategoryResource::class, R\TransferRateResource::class, R\TransferFixedRouteResource::class, 'limo-leads']],
                 [P\Calendar::class, null, []],

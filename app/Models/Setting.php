@@ -124,6 +124,25 @@ class Setting extends Model
         // Sales workflow (28 Oct). Off keeps the way staff worked before.
         'booking_requires_accepted_quote' => false,
         'doc_block_confirm' => false,
+        // 18 Nov (meeting minutes): rental contracts and the booking form. Money amounts stay empty
+        // until RED PRIME decides them (decisions C-1 to C-11); nothing is guessed.
+        'delivery_fee_default' => 'off',     // item 2: off = the agent / admin switches the charge on per booking; price_list = as before
+        'no_deposit_allowed' => true,        // item 4: "No deposit" can be picked on a booking
+        'no_deposit_fee_mode' => 'off',      // off / fixed / per_day / percent (of the rental). C-3 open
+        'no_deposit_fee_amount' => null,
+        'confirm_requires_details' => true,  // item 8: a car booking is confirmed only with the customer details and documents complete
+        'confirm_required_fields' => ['name', 'phone', 'nationality', 'residency', 'id_or_passport', 'licence_number', 'licence_expires_on'],
+        'contract_number_prefix' => 'RC',    // C-8: RC-2026-00001
+        'contract_terms_en' => null,         // C-1: RED PRIME's own terms (English)
+        'contract_terms_ar' => null,         // C-1: Arabic
+        'contract_required_for_handover' => false, // hand over only with a signed contract (off until terms are in)
+        'contract_sign_link_hours' => 48,
+        'driver_min_age' => null,            // C-4: empty = not checked
+        'licence_min_years' => null,         // C-4: empty = not checked
+        'additional_driver_charge' => null,  // per driver per contract; empty = typed per contract
+        'contract_invoice_mode' => 'advance', // C-10: monthly contracts invoiced at the start (advance) or end (arrears) of each period
+        'contract_invoice_due_days' => 7,
+        'contract_renewal_days' => 7,        // remind this many days before a contract ends
         'transfer_km_rounding' => '0.1',     // Bilal, 29 Oct: road distance billed to 0.1 km
         'lead_assignment' => 'broadcast',    // 5 Nov: broadcast (every agent, first to accept) / manual / round_robin / by_service
         'leads_repeat_to_owner' => true,     // 5 Nov: a lead from a customer who has an agent goes straight to that agent

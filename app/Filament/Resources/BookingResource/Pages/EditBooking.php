@@ -40,6 +40,16 @@ class EditBooking extends EditRecord
         ])->filter()->implode(' · ');
     }
 
+    /** 18 Nov (meeting item 5): the status is changed by hand only by Admin (the form field is locked for others too). */
+    protected function mutateFormDataBeforeSave(array $data): array
+    {
+        if (! \App\Support\Access::allows('change-booking-status')) {
+            unset($data['status'], $data['cancel_reason']);
+        }
+
+        return $data;
+    }
+
     protected function afterSave(): void
     {
         BookingResource::logOverride($this->getRecord(), $this->data);
@@ -103,6 +113,8 @@ class EditBooking extends EditRecord
                 ]),
             \App\Filament\Resources\QuotationResource::approvePriceAction(Actions\Action::class)->after($after),
             \App\Filament\Resources\QuotationResource::rejectPriceAction(Actions\Action::class)->after($after),
+            BookingActions::confirm(Actions\Action::class)->after($after), // 18 Nov (meeting items 5, 8)
+            ...\App\Filament\Resources\RentalContractResource\ContractActions::forBooking(fn () => $this->getRecord()->fresh(), $after), // 18 Nov: rental contract
             BookingActions::approveHandover(Actions\Action::class)->after($after),
             BookingActions::deliver(Actions\Action::class)->after($after),
             BookingActions::receive(Actions\Action::class)->after($after),
@@ -128,7 +140,7 @@ class EditBooking extends EditRecord
                     ->icon('heroicon-o-document-plus')
                     ->authorize('record-payments')
                     ->visible(fn (): bool => in_array($this->getRecord()->status, \App\Enums\BookingStatus::billable(), true)
-                        && ! \App\Models\Invoice::where('booking_id', $this->getRecord()->id)->where('type', 'invoice')->where('kind', 'booking')->where('status', 'issued')->exists())
+                        && ! \App\Models\Invoice::where('booking_id', $this->getRecord()->id)->where('type', 'invoice')->whereIn('kind', ['booking', 'period'])->where('status', 'issued')->exists())
                     ->requiresConfirmation()
                     ->modalDescription(fn (): string => 'Issues an invoice for AED '.number_format($this->getRecord()->amountDue(), 2).' with the next number. It cannot be edited afterwards (void it or add a credit note).'
                         .(\App\Support\Tax::enabled() ? ' VAT is on: it is a tax invoice with your TRN.' : ' VAT is off: it is not a tax invoice.'))

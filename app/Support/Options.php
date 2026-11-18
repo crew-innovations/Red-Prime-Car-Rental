@@ -30,6 +30,9 @@ class Options
         'doc_reject_reasons' => ['Document rejection reasons', 'Offered when a customer document is rejected.', [
             'Photo not clear', 'Document expired', 'Wrong document', 'Name does not match', 'Back side missing',
         ]],
+        'booking_sources' => ['Booking sources', 'Where a rental came from, shown on the contract (18 Nov).', [
+            'Walk-in', 'Phone', 'WhatsApp', 'Website', 'Instagram', 'Google', 'Referral', 'Hotel / concierge', 'Marketplace',
+        ]],
         'pickup_locations' => ['Pick-up / delivery places', 'Suggested on bookings and quotations.', [
             'Office', 'Dubai International Airport (DXB)', 'Al Maktoum Airport (DWC)', 'Dubai Marina', 'Downtown Dubai', 'Palm Jumeirah',
         ]],

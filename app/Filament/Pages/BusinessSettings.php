@@ -52,6 +52,10 @@ class BusinessSettings extends Page implements HasForms
         'package' => 'Trip / package',
         'transfer' => 'Limousine & transfer',
         'corporate' => 'Extra for company / agency customers',
+        // 18 Nov (meeting item 8): car rentals also need these, by who the customer is.
+        'resident' => 'Extra for UAE residents (car rentals)',
+        'gcc' => 'Extra for GCC nationals (car rentals)',
+        'tourist' => 'Extra for tourists / visitors (car rentals)',
     ];
 
     public static function canAccess(): bool
@@ -470,7 +474,7 @@ class BusinessSettings extends Page implements HasForms
 
     protected function listsTab(): Forms\Components\Tabs\Tab
     {
-        $keys = ['lost_reasons', 'cancel_reasons', 'pickup_locations', 'car_types', 'car_brands', 'car_locations', 'package_types', 'marinas'];
+        $keys = ['lost_reasons', 'cancel_reasons', 'pickup_locations', 'booking_sources', 'car_types', 'car_brands', 'car_locations', 'package_types', 'marinas'];
 
         return Forms\Components\Tabs\Tab::make('Lists')
             ->icon('heroicon-o-list-bullet')

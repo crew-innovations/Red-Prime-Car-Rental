@@ -72,6 +72,12 @@ Route::get('/quote/{token}', [QuotationPublicController::class, 'show'])->middle
 Route::post('/quote/{token}/accept', [QuotationPublicController::class, 'accept'])->middleware('throttle:10,1')->name('quotations.public.accept');
 Route::post('/quote/{token}/decline', [QuotationPublicController::class, 'decline'])->middleware('throttle:10,1')->name('quotations.public.decline');
 
+// 18 Nov: the customer reads and signs the rental contract from a link (no login, single use, expires).
+Route::get('/sign/{token}', [\App\Http\Controllers\ContractSignController::class, 'show'])->middleware('throttle:30,1')->where('token', '[A-Za-z0-9]{40,64}')->name('contracts.sign');
+Route::post('/sign/{token}', [\App\Http\Controllers\ContractSignController::class, 'store'])->middleware('throttle:10,1')->where('token', '[A-Za-z0-9]{40,64}')->name('contracts.sign.store');
+// Rental contract PDF (latest version) for staff and the customer's own account.
+Route::get('/documents/contract/{contract}', [\App\Http\Controllers\DocumentPdfController::class, 'contract'])->middleware('throttle:60,1')->whereNumber('contract')->name('pdf.contract');
+
 // Shared lead forms (28 Oct-2, Phase 16).
 // 5 Nov (S3, B.7): accept a lead from the email or phone notification. GET only shows it; POST accepts.
 Route::get('/lead-claim/{token}', [\App\Http\Controllers\LeadClaimController::class, 'show'])->middleware('throttle:lead-claim')->where('token', '[A-Za-z0-9]{20,100}')->name('lead-claim.show');

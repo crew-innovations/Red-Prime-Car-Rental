@@ -46,7 +46,37 @@ class EditCustomer extends EditRecord
         /** @var Customer $customer */
         $customer = $this->getRecord();
 
+        $reload = fn () => $this->redirect(\App\Filament\Resources\CustomerResource::getUrl('edit', ['record' => $this->getRecord()]));
+
         return [
+            // 18 Nov (meeting items 6, 7): every detail and document in one pop-up, with "Read the documents".
+            Actions\Action::make('details')
+                ->label('ID, licence & documents')
+                ->icon('heroicon-o-identification')
+                ->color('gray')
+                ->authorize('manage-leads')
+                ->modalWidth('5xl')
+                ->modalHeading('Customer details and documents')
+                ->fillForm(fn (): array => \App\Filament\Concerns\CustomerDetails::fill($this->getRecord()->fresh()))
+                ->form(fn (): array => \App\Filament\Concerns\CustomerDetails::schema($this->getRecord()))
+                ->action(function (array $data) {
+                    \App\Filament\Concerns\CustomerDetails::update($this->getRecord(), $data);
+                    \Filament\Notifications\Notification::make()->success()->title('Saved')->send();
+                })->after($reload),
+            Actions\Action::make('blacklist')
+                ->label(fn (): string => $this->getRecord()->isBlacklisted() ? 'Remove from blacklist' : 'Blacklist')
+                ->icon('heroicon-o-no-symbol')
+                ->color(fn (): string => $this->getRecord()->isBlacklisted() ? 'gray' : 'danger')
+                ->authorize('blacklist-customers')
+                ->form(fn (): array => [\Filament\Forms\Components\TextInput::make('reason')->label($this->getRecord()->isBlacklisted() ? 'Why remove?' : 'Why?')->required()->maxLength(255)])
+                ->action(function (array $data) {
+                    $c = $this->getRecord();
+                    $on = ! $c->isBlacklisted();
+                    $c->forceFill($on ? ['blacklisted_at' => now(), 'blacklist_reason' => $data['reason'], 'blacklisted_by' => auth()->id()]
+                        : ['blacklisted_at' => null, 'blacklist_reason' => null, 'blacklisted_by' => null])->save();
+                    \App\Models\AuditLog::note($c, 'blacklist', ($on ? 'Blacklisted: ' : 'Removed from blacklist: ').$data['reason']);
+                    \Filament\Notifications\Notification::make()->success()->title($on ? 'Customer blacklisted' : 'Removed from blacklist')->send();
+                })->after($reload),
             \App\Filament\Support\EmailActions::send(Actions\Action::class),
             \App\Filament\Support\ReassignAction::make(Actions\Action::class), // 5 Nov (S3): Admin only
             Actions\Action::make('whatsapp')

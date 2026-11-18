@@ -81,6 +81,7 @@ class BookingResource extends Resource
                         self::serviceSection(),
                         \App\Filament\Concerns\TransferFields::section(),
                         self::datesSection(),
+                        self::agreementSection(),
                         self::priceSection(),
                         self::photosSection(),
                     ]),
@@ -129,6 +130,41 @@ class BookingResource extends Resource
         }
     }
 
+    /** Statuses that can be picked by hand (18 Nov: fewer for people who may not change the status). */
+    public static function statusChoices(?Booking $record): array
+    {
+        if (in_array($record?->status, [BookingStatus::InProgress, BookingStatus::Completed], true)) {
+            return [$record->status];
+        }
+        if (! Access::allows('change-booking-status')) {
+            return $record ? [$record->status] : [BookingStatus::Inquiry, BookingStatus::Quotation, BookingStatus::PendingPayment];
+        }
+
+        return BookingStatus::manual();
+    }
+
+    /** 18 Nov: blacklist warning and what is still missing to confirm, under the customer field. */
+    public static function customerHint($customerId, ?string $service, ?string $mode): ?HtmlString
+    {
+        $c = $customerId ? \App\Models\Customer::find($customerId) : null;
+        if (! $c) {
+            return null;
+        }
+        $parts = [];
+        if ($c->isBlacklisted()) {
+            $parts[] = '<span style="color:rgb(var(--danger-600));font-weight:700">Blacklisted'.($c->blacklist_reason ? ': '.e($c->blacklist_reason) : '').'</span>';
+        }
+        if ($service === ServiceType::Car->value && \App\Support\Contracts\ConfirmCheck::enabled()) {
+            $probe = new Booking(['service_type' => ServiceType::Car, 'drive_mode' => $mode ?: DriveMode::SelfDrive->value, 'customer_id' => $c->id, 'start_at' => now(), 'end_at' => now()]);
+            $missing = collect(\App\Support\Contracts\ConfirmCheck::missing($probe))->reject(fn ($m) => str_starts_with($m, 'The customer is blacklisted'));
+            $parts[] = $missing->isEmpty()
+                ? '<span style="color:rgb(var(--success-600))">Details and documents complete.</span>'
+                : '<span style="color:rgb(var(--warning-600))">To confirm, still needed: '.e($missing->implode(', ')).'. Use the pencil to add them.</span>';
+        }
+
+        return $parts ? new HtmlString(implode(' · ', $parts)) : null;
+    }
+
     /** Required documents for this booking (rules from Business settings). */
     protected static function documentsSection(): Forms\Components\Section
     {
@@ -172,11 +208,22 @@ class BookingResource extends Resource
                     ->preload()
                     ->required(fn (Get $get): bool => blank($get('lead_id')))
                     ->placeholder(fn (Get $get): string => filled($get('lead_id')) ? 'Created from the lead when saved' : 'Select an option')
-                    ->createOptionForm([
-                        Forms\Components\TextInput::make('name')->required()->maxLength(255),
-                        Forms\Components\TextInput::make('phone')->tel()->required()->maxLength(30),
-                        Forms\Components\TextInput::make('email')->email()->maxLength(255),
-                    ])
+                    // 18 Nov (meeting item 6): all customer details and documents in one pop-up, new or existing.
+                    ->createOptionForm(fn (): array => \App\Filament\Concerns\CustomerDetails::schema())
+                    ->createOptionUsing(fn (array $data): int => \App\Filament\Concerns\CustomerDetails::create($data)->getKey())
+                    ->createOptionModalHeading('New customer: details and documents')
+                    ->createOptionAction(fn (Forms\Components\Actions\Action $action) => $action->modalWidth('5xl')->tooltip('New customer'))
+                    ->editOptionForm(fn (Get $get): array => \App\Filament\Concerns\CustomerDetails::schema(\App\Models\Customer::find($get('customer_id'))))
+                    ->fillEditOptionActionFormUsing(fn (Get $get): array => ($c = \App\Models\Customer::find($get('customer_id'))) ? \App\Filament\Concerns\CustomerDetails::fill($c) : [])
+                    ->updateOptionUsing(function (array $data, Get $get) {
+                        if ($c = \App\Models\Customer::find($get('customer_id'))) {
+                            \App\Filament\Concerns\CustomerDetails::update($c, $data);
+                        }
+                    })
+                    ->editOptionModalHeading('Customer details and documents')
+                    ->editOptionAction(fn (Forms\Components\Actions\Action $action) => $action->modalWidth('5xl')->tooltip('Customer details and documents'))
+                    ->helperText(fn (Get $get): ?HtmlString => self::customerHint($get('customer_id'), $get('service_type'), $get('drive_mode')))
+                    ->live()
                     ->columnSpanFull(),
                 Forms\Components\Hidden::make('lead_id'),
 
@@ -482,7 +529,7 @@ class BookingResource extends Resource
                     ->datalist(fn (): array => \App\Support\Options::list('pickup_locations'))
                     ->maxLength(255)
                     ->visible($isCar),
-                ...\App\Filament\Concerns\PriceFields::handoverChoice(),
+                ...\App\Filament\Concerns\PriceFields::handoverChoice(withFees: true), // 18 Nov: charges switched on per booking
                 Forms\Components\TextInput::make('guests')
                     ->label(fn (Get $get): string => $isTransfer($get) ? 'Passengers' : 'Guests')
                     ->numeric()
@@ -509,6 +556,29 @@ class BookingResource extends Resource
                         }
                     }])
                     ->visible(fn (Get $get): bool => ! $isCar($get)),
+            ]);
+    }
+
+    /** 18 Nov: the rental agreement details that go on the contract (cars). */
+    protected static function agreementSection(): Forms\Components\Section
+    {
+        $car = fn (Get $get): ?Car => self::findItem(ServiceType::Car->value, $get('bookable_id'));
+
+        return Forms\Components\Section::make('Rental agreement')
+            ->icon('heroicon-o-document-text')
+            ->description('Goes on the rental contract.')
+            ->columns(4)
+            ->collapsible()
+            ->visible(fn (Get $get): bool => $get('service_type') === ServiceType::Car->value)
+            ->schema([
+                Forms\Components\Select::make('rental_term')->label('Rental type')
+                    ->options(['short' => 'Short term', 'long' => 'Long term (monthly)', 'lease' => 'Lease'])->default('short')->native(false)->selectablePlaceholder(false),
+                Forms\Components\TextInput::make('km_limit_per_day')->label('Km included per day')->numeric()->minValue(0)->suffix('km')
+                    ->placeholder(fn (Get $get): string => ($c = $car($get)) && $c->daily_km_limit ? 'Car: '.$c->daily_km_limit : 'No limit'),
+                Forms\Components\TextInput::make('extra_km_rate')->label('Extra km')->numeric()->minValue(0)->prefix('AED')->suffix('/km')
+                    ->placeholder(fn (Get $get): string => ($c = $car($get)) && $c->extra_km_charge ? 'Car: '.$c->extra_km_charge : '—'),
+                Forms\Components\TextInput::make('sales_source')->label('Source')->maxLength(60)
+                    ->datalist(fn (): array => \App\Support\Options::list('booking_sources')),
             ]);
     }
 
@@ -545,12 +615,14 @@ class BookingResource extends Resource
             ->columns(3)
             ->schema([
                 ...\App\Filament\Concerns\PriceFields::schema('booking'),
+                ...\App\Filament\Concerns\PriceFields::depositChoice(), // 18 Nov (meeting item 4)
                 Forms\Components\TextInput::make('security_deposit')
                     ->label('Security deposit')
                     ->helperText('Refundable, collected at handover. Not revenue.')
                     ->numeric()
                     ->minValue(0)
                     ->prefix('AED')
+                    ->visible(fn (Get $get): bool => $get('deposit_mode') !== 'none')
                     ->default(0),
                 ...\App\Filament\Concerns\PriceFields::advance('booking'),
                 Forms\Components\Placeholder::make('advance_progress')
@@ -617,15 +689,21 @@ class BookingResource extends Resource
             ->schema([
                 Forms\Components\ToggleButtons::make('status')
                     ->hiddenLabel()
-                    ->options(fn (?Booking $record): array => collect(in_array($record?->status, [BookingStatus::InProgress, BookingStatus::Completed], true)
-                        ? [$record->status]
-                        : BookingStatus::manual())->mapWithKeys(fn (BookingStatus $s) => [$s->value => $s->getLabel()])->all())
+                    ->options(fn (?Booking $record): array => collect(self::statusChoices($record))->mapWithKeys(fn (BookingStatus $s) => [$s->value => $s->getLabel()])->all())
                     ->colors(collect(BookingStatus::cases())->mapWithKeys(fn (BookingStatus $s) => [$s->value => $s->getColor()])->all())
                     ->icons(collect(BookingStatus::cases())->mapWithKeys(fn (BookingStatus $s) => [$s->value => $s->getIcon()])->all())
-                    ->default(BookingStatus::Confirmed->value)
+                    // 18 Nov (meeting item 5): only Admin changes the status by hand; others start a booking as Waiting for payment.
+                    ->default(fn (): string => Access::allows('change-booking-status') ? BookingStatus::Confirmed->value : BookingStatus::PendingPayment->value)
+                    ->disabled(fn (?Booking $record): bool => $record !== null && ! Access::allows('change-booking-status'))
                     ->required()
                     ->live()
                     ->columns(2),
+                Forms\Components\Placeholder::make('status_lock')
+                    ->hiddenLabel()
+                    ->visible(fn (): bool => ! Access::allows('change-booking-status'))
+                    ->content(fn (?Booking $record): string => $record
+                        ? 'Only Admin changes the status by hand. It moves by itself with the buttons at the top: Record payment, Hand over, Receive, Ask Admin to cancel.'
+                        : 'Admin confirms the booking, or it is confirmed by itself when the advance is paid and the details and documents are complete.'),
                 Forms\Components\Placeholder::make('website_hold')
                     ->hiddenLabel()
                     ->visible(fn (?Booking $record): bool => $record?->source === 'website' && $record->hold_until !== null)

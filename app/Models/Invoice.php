@@ -44,12 +44,20 @@ class Invoice extends Model
             'tax_amount' => 'decimal:2',
             'total' => 'decimal:2',
             'voided_at' => 'datetime',
+            'period_start' => 'date', // 18 Nov: monthly contract invoices
+            'period_end' => 'date',
+            'due_on' => 'date',
         ];
     }
 
     public function booking(): BelongsTo
     {
         return $this->belongsTo(Booking::class)->withTrashed();
+    }
+
+    public function rentalContract(): BelongsTo
+    {
+        return $this->belongsTo(RentalContract::class)->withTrashed();
     }
 
     public function customer(): BelongsTo

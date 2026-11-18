@@ -24,6 +24,10 @@ trait CrmFixtures
     {
         $this->seed(RoleSeeder::class);
         Role::firstOrCreate(['name' => 'Driver', 'guard_name' => 'web']);
+        // Older tests still use the role names from before 5 Nov; they count as the new roles (Access::LEGACY).
+        foreach (array_keys(\App\Support\Access::LEGACY) as $legacy) {
+            Role::firstOrCreate(['name' => $legacy, 'guard_name' => 'web']);
+        }
     }
 
     protected function user(string $role = 'Super Admin', array $attrs = []): User

@@ -471,6 +471,7 @@ class BookingActions
                 Forms\Components\FileUpload::make('receipt')->label('Receipt photo / PDF')
                     ->disk('private')->directory('tmp')->visibility('private')
                     ->acceptedFileTypes(['image/jpeg', 'image/png', 'image/webp', 'application/pdf'])->maxSize(10240),
+                \App\Filament\Concerns\ReceiptReader::button('receipt'), // 18 Nov (meeting item 7)
             ])
             ->action(function (Booking $record, array $data) {
                 $t = \App\Models\Transaction::create([
@@ -665,6 +666,53 @@ class BookingActions
             });
     }
 
+    /**
+     * 18 Nov (meeting items 5 and 8): Admin confirms the booking. It is refused while the customer's
+     * details or documents are incomplete, unless Admin confirms anyway with a reason (recorded).
+     */
+    public static function confirm(string $class)
+    {
+        return $class::make('confirmBooking')
+            ->label('Confirm booking')
+            ->icon('heroicon-o-check-circle')
+            ->color('success')
+            ->authorize('change-booking-status')
+            ->visible(fn (Booking $record): bool => in_array($record->status, [BookingStatus::Inquiry, BookingStatus::Quotation, BookingStatus::PendingPayment], true) && ! $record->trashed())
+            ->modalHeading(fn (Booking $record): string => 'Confirm '.$record->reference)
+            ->modalDescription(function (Booking $record): string {
+                $missing = \App\Support\Contracts\ConfirmCheck::enabled() ? \App\Support\Contracts\ConfirmCheck::missing($record) : [];
+
+                return $missing ? 'Still missing: '.implode(', ', $missing).'. Add them (customer pencil on the booking) or confirm anyway with a reason.' : 'The car is held for these dates and the customer is told.';
+            })
+            ->form(fn (Booking $record): array => \App\Support\Contracts\ConfirmCheck::enabled() && \App\Support\Contracts\ConfirmCheck::missing($record) ? [
+                Forms\Components\Toggle::make('anyway')->label('Confirm anyway (recorded in the history)')->live(),
+                Forms\Components\TextInput::make('reason')->label('Why?')->maxLength(255)->required(fn (Get $get): bool => (bool) $get('anyway'))->visible(fn (Get $get): bool => (bool) $get('anyway')),
+            ] : [])
+            ->action(function (Booking $record, array $data): void {
+                $missing = \App\Support\Contracts\ConfirmCheck::enabled() ? \App\Support\Contracts\ConfirmCheck::missing($record) : [];
+                if ($missing && empty($data['anyway'])) {
+                    Notification::make()->danger()->title('Not confirmed')->body('Still missing: '.implode(', ', $missing).'.')->send();
+
+                    return;
+                }
+                Booking::$confirmOverride = (bool) $missing;
+                try {
+                    $record->status = BookingStatus::Confirmed;
+                    $record->save();
+                } catch (\Illuminate\Validation\ValidationException $e) {
+                    Notification::make()->danger()->title('Not confirmed')->body(collect($e->errors())->flatten()->first())->send();
+
+                    return;
+                } finally {
+                    Booking::$confirmOverride = false;
+                }
+                if ($missing) {
+                    AuditLog::note($record, 'override', 'Confirmed with missing details ('.implode(', ', $missing).'): '.($data['reason'] ?? ''));
+                }
+                Notification::make()->success()->title('Booking confirmed')->send();
+            });
+    }
+
     /** 5 Nov (S3): an agent asks Admin to cancel a booking that already has money received. */
     public static function requestCancel(string $class)
     {
@@ -729,7 +777,7 @@ class BookingActions
     }
 
     /** Reasons a booking can't be handed over right now (empty = fine). */
-    public static function handoverBlockers(Booking $record): array
+    public static function handoverBlockers(Booking $record, bool $signedOnPhone = false): array
     {
         $blockers = [];
         if ($record->bookable_type && $record->bookable_id && ($msg = Availability::restriction($record->bookable_type, (int) $record->bookable_id))) {
@@ -743,6 +791,11 @@ class BookingActions
         }
         foreach ($record->missingDocuments() as $label) {
             $blockers[] = 'Missing approved document: '.$label.'.';
+        }
+        // 18 Nov: with "hand over only with a signed contract" on (Contract settings).
+        if ($record->isCar() && ! $signedOnPhone && \App\Models\Setting::read('contract_required_for_handover')
+            && ! ($contract = \App\Models\RentalContract::where('booking_id', $record->id)->first())?->signed_at) {
+            $blockers[] = $contract ? 'The rental contract '.$contract->number.' is not signed yet.' : 'There is no rental contract yet (Make rental contract).';
         }
 
         return $blockers;

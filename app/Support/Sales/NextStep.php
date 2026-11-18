@@ -25,7 +25,8 @@ class NextStep
 
     /** Which step each next-step action moves on. */
     public const STEP_OF = ['claimLead' => 'lead', 'acceptLead' => 'lead', 'quote' => 'quote', 'limoPrice' => 'quote', 'confirmRide' => 'quote', 'send' => 'quote', 'accept' => 'quote', 'approvePrice' => 'quote',
-        'convert' => 'booked', 'payment' => 'paid', 'approveHandover' => 'delivered', 'deliver' => 'delivered', 'receive' => 'returned', 'settleDeposit' => 'closed'];
+        'convert' => 'booked', 'payment' => 'paid', 'approveHandover' => 'delivered', 'deliver' => 'delivered', 'receive' => 'returned', 'settleDeposit' => 'closed',
+        'makeContract' => 'delivered', 'signContract' => 'delivered', 'closeContract' => 'closed'];
 
     /** @return array{steps: list<array{key: string, label: string, done: bool, current: bool}>, next: ?string, stopped: ?string} */
     public static function for(Model $record): array
@@ -91,6 +92,20 @@ class NextStep
         return null;
     }
 
+    /** 18 Nov: a car rental gets its rental contract (and signature) before the car goes out. */
+    protected static function contractStep(Booking $b): ?string
+    {
+        if (! $b->isCar() || ! \App\Support\Access::allows('manage-contracts')) {
+            return null;
+        }
+        $c = $b->contract;
+        if (! $c) {
+            return 'makeContract';
+        }
+
+        return ! $c->signed_at && \App\Models\Setting::read('contract_required_for_handover') ? 'signContract' : null;
+    }
+
     public static function depositHeld(Booking $b): bool
     {
         return Settlement::dueQuery()->whereKey($b->id)->exists()
@@ -140,7 +155,7 @@ class NextStep
         return match ($record->status) {
             BookingStatus::Inquiry, BookingStatus::Quotation, BookingStatus::PendingPayment => 'payment',
             BookingStatus::Confirmed => $record->delivered_at ? null
-                : ($record->jobs()->where('type', 'delivery')->where('status', 'waiting')->exists() ? 'approveHandover' : 'deliver'),
+                : (self::contractStep($record) ?? ($record->jobs()->where('type', 'delivery')->where('status', 'waiting')->exists() ? 'approveHandover' : 'deliver')),
             BookingStatus::InProgress => 'receive',
             BookingStatus::Completed => (float) $record->balance > 0.004 ? 'payment' : (Settlement::dueQuery()->whereKey($record->id)->exists() ? 'settleDeposit' : null),
             default => null,

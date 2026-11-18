@@ -241,7 +241,8 @@ class CustomerResource extends Resource
                     ->icon(fn (Customer $record): ?string => $record->is_vip ? 'heroicon-s-star' : null)
                     ->iconColor('warning')
                     ->iconPosition('after')
-                    ->description(fn (Customer $record): ?string => $record->company_name ?: $record->email),
+                    ->description(fn (Customer $record): ?string => $record->blacklisted_at ? 'Blacklisted'.($record->blacklist_reason ? ': '.$record->blacklist_reason : '') : ($record->company_name ?: $record->email))
+                    ->color(fn (Customer $record): ?string => $record->blacklisted_at ? 'danger' : null), // 18 Nov
                 Tables\Columns\TextColumn::make('phone')
                     ->copyable()
                     ->placeholder('-'),
@@ -286,6 +287,7 @@ class CustomerResource extends Resource
             ->striped()
             ->filters([
                 Tables\Filters\TernaryFilter::make('is_vip')->label('VIP'),
+                Tables\Filters\TernaryFilter::make('blacklisted_at')->label('Blacklisted')->nullable(), // 18 Nov
                 Tables\Filters\SelectFilter::make('type')->options(CustomerType::class),
                 Tables\Filters\SelectFilter::make('nationality')->options(array_combine(self::NATIONALITIES, self::NATIONALITIES))->searchable(),
                 Tables\Filters\SelectFilter::make('lead_source_id')->label('Source')->relationship('leadSource', 'name')->preload(),

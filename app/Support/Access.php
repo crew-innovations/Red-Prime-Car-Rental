@@ -72,6 +72,15 @@ class Access
         'manage-fines' => ['Admin', 'Accounts'],
         // Team, roles, business settings
         'manage-team' => ['Admin'],
+        // 18 Nov (meeting minutes): only these roles change a booking's status by hand. Everyone else
+        // moves it with the buttons (payment, hand over, receive, ask to cancel).
+        'change-booking-status' => ['Admin'],
+        // 18 Nov (item 2): switch delivery / collection charges on or off on a booking and change the amount
+        'set-delivery-charges' => ['Admin'],
+        // 18 Nov: rental contracts (agents: their own bookings' contracts)
+        'manage-contracts' => ['Admin', 'Agent'],
+        // 18 Nov: put a customer on the blacklist or take them off
+        'blacklist-customers' => ['Admin'],
     ];
 
     /** The four staff roles (5 Nov). Customer is the /account login, not a staff role. */
@@ -164,6 +173,10 @@ class Access
         'track-drivers' => 'Live drivers map (only while a job is active, when switched on)',
         'manage-fines' => 'Traffic fines, Salik / Darb / parking, toll accounts, statement imports',
         'manage-team' => 'Team, roles and business settings',
+        'change-booking-status' => 'Change a booking\'s status by hand (others use the buttons)',
+        'set-delivery-charges' => 'Switch delivery / collection charges on or off on a booking and change the amount',
+        'manage-contracts' => 'Make, sign, change and close rental contracts',
+        'blacklist-customers' => 'Put customers on the blacklist or take them off',
     ];
 
     /** Office roles that can be given abilities (Super Admin always has everything; Driver works from the phone screens). */

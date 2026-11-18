@@ -52,6 +52,9 @@ class Booking extends Model implements HasMedia
     /** Avoids loops while bookings and their transactions update each other. */
     protected static bool $syncing = false;
 
+    /** 18 Nov: Admin confirmed although details or documents are missing (the "Confirm" button records why). */
+    public static bool $confirmOverride = false;
+
     protected function casts(): array
     {
         return [
@@ -109,6 +112,14 @@ class Booking extends Model implements HasMedia
             'advance_percent' => 'decimal:2',
             'advance_required' => 'decimal:2',
             'advance_reached_at' => 'datetime',
+            // 18 Nov (meeting items 2, 4) and the rental agreement
+            'delivery_fee_on' => 'boolean',
+            'delivery_fee_amount' => 'decimal:2',
+            'collection_fee_on' => 'boolean',
+            'collection_fee_amount' => 'decimal:2',
+            'no_deposit_fee' => 'decimal:2',
+            'km_limit_per_day' => 'integer',
+            'extra_km_rate' => 'decimal:2',
         ];
     }
 
@@ -141,6 +152,22 @@ class Booking extends Model implements HasMedia
             if ($booking->service_type !== ServiceType::Car) {
                 $booking->delivery_method = null;
                 $booking->return_method = null;
+                $booking->deposit_mode = null; // 18 Nov: the deposit choice is for car rentals
+                $booking->no_deposit_fee = null;
+            }
+            // 18 Nov (meeting item 4): "No deposit" means no security deposit is held.
+            if ($booking->deposit_mode === 'none') {
+                $booking->security_deposit = 0;
+            } else {
+                $booking->no_deposit_fee = null;
+            }
+            if ($booking->delivery_method !== 'delivery') {
+                $booking->delivery_fee_on = null;
+                $booking->delivery_fee_amount = null;
+            }
+            if ($booking->return_method !== 'collection') {
+                $booking->collection_fee_on = null;
+                $booking->collection_fee_amount = null;
             }
             \App\Support\Transfers\TransferJourney::prepare($booking);
             // With driver: the same person drives from start to end. Collected by the customer: no collection driver.
@@ -193,6 +220,12 @@ class Booking extends Model implements HasMedia
                 throw ValidationException::withMessages(['data.status' => 'Bookings are made from an accepted quotation. Send a quotation first, or save this as an Inquiry.']);
             }
 
+            // 18 Nov (meeting item 8): confirmed only with the customer's details and documents complete.
+            if (\App\Support\Contracts\ConfirmCheck::enabled() && ! static::$confirmOverride && \App\Support\Contracts\ConfirmCheck::isConfirming($booking)
+                && ($missing = \App\Support\Contracts\ConfirmCheck::missing($booking))) {
+                throw ValidationException::withMessages(['data.status' => 'Before it can be confirmed, complete: '.implode(', ', $missing).'. Save it as Waiting for payment until then.']);
+            }
+
             $booking->guardAvailability();
 
             // Supplier cost snapshot (29 Oct); stops confirmation while a supplier vehicle has no cost.
@@ -224,6 +257,15 @@ class Booking extends Model implements HasMedia
             // Supplier bill (Bilal, 29 Oct): posted once when the job is completed, with the completion.
             if ($booking->wasChanged('status') && $booking->status === BookingStatus::Completed && $booking->supplier_id) {
                 \App\Support\Suppliers\SupplierLedger::postForBooking($booking);
+            }
+
+            // 18 Nov: the rental contract follows the booking (open when the car goes out, cancelled with it).
+            if ($booking->wasChanged('status')) {
+                if ($booking->status === BookingStatus::InProgress) {
+                    rescue(fn () => \App\Support\Contracts\Contracts::onHandover($booking));
+                } elseif (in_array($booking->status, [BookingStatus::Cancelled, BookingStatus::NoShow], true)) {
+                    rescue(fn () => \App\Support\Contracts\Contracts::onCancelled($booking));
+                }
             }
 
             // Job completion report (28 Oct-2, Phase 6): made when the job is completed, after the save is final.
@@ -483,6 +525,23 @@ class Booking extends Model implements HasMedia
         return $this->hasMany(DamageReport::class);
     }
 
+    /** 18 Nov: the rental contract made from this booking. */
+    public function contract(): \Illuminate\Database\Eloquent\Relations\HasOne
+    {
+        return $this->hasOne(RentalContract::class);
+    }
+
+    /** Km included per day and the extra km rate: this booking's, else the car's. */
+    public function kmLimitPerDay(): ?int
+    {
+        return $this->km_limit_per_day ?: (($this->bookable instanceof Car && $this->bookable->daily_km_limit) ? (int) $this->bookable->daily_km_limit : null);
+    }
+
+    public function extraKmRate(): ?float
+    {
+        return $this->extra_km_rate !== null ? (float) $this->extra_km_rate : (($this->bookable instanceof Car && $this->bookable->extra_km_charge) ? (float) $this->bookable->extra_km_charge : null);
+    }
+
     public function assignee(): BelongsTo
     {
         return $this->belongsTo(User::class, 'assigned_to');
@@ -529,6 +588,10 @@ class Booking extends Model implements HasMedia
         }
         if ($customer && $customer->type !== \App\Enums\CustomerType::Individual) {
             $kinds[] = 'corporate';
+        }
+        // 18 Nov: documents per resident / GCC / tourist for car rentals (Business settings › Documents).
+        if ($service === ServiceType::Car && $customer && in_array($customer->residency, ['resident', 'gcc', 'tourist'], true)) {
+            $kinds[] = $customer->residency;
         }
 
         return $kinds;

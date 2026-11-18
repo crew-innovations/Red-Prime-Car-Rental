@@ -133,6 +133,7 @@ class TransactionResource extends Resource
                         ->multiple()->maxFiles(5)->maxSize(10240)
                         ->acceptedFileTypes(['image/jpeg', 'image/png', 'image/webp', 'application/pdf'])
                         ->columnSpanFull(),
+                    \App\Filament\Concerns\ReceiptReader::button('receipts')->visible(fn (Get $get): bool => ! $isIncome($get))->columnSpanFull(), // 18 Nov
                     Forms\Components\Select::make('customer_id')
                         ->label('Customer')
                         ->relationship('customer', 'name')

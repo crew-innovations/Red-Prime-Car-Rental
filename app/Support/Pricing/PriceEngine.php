@@ -104,7 +104,7 @@ class PriceEngine
             'lines' => $lines->values()->all(),
             'extras_amount' => $extras,
             'standard_amount' => round($base['amount'] + $extras, 2),
-            'deposit' => self::deposit($item),
+            'deposit' => ($in['deposit_mode'] ?? null) === 'none' ? 0.0 : self::deposit($item),
             'notes' => $notes,
             'warnings' => $warnings,
             'calculated_at' => now()->toDateTimeString(),
@@ -314,24 +314,36 @@ class PriceEngine
             $lines->push(self::line('extra:'.$fee->id, $fee->name, 'fee', $fee->unit, self::extraAmount((float) $fee->amount, $fee->unit, $ctx), (float) $fee->amount, $ctx));
         }
 
-        if (($in['delivery_method'] ?? null) === 'delivery') {
-            if ($item instanceof Car && ! $item->delivery_available) {
+        // 18 Nov (meeting item 2): delivery and collection charges are switched on per booking and the
+        // amount can be changed there. A typed amount is the agreed charge (not a discount). With the
+        // switch left empty, Business settings decides (off by default; "price list" = as before 18 Nov).
+        foreach (['delivery' => 'delivery_method', 'collection' => 'return_method'] as $kind => $methodKey) {
+            if (($in[$methodKey] ?? null) !== $kind) {
+                continue;
+            }
+            // Quotations (no switch yet) keep the price-list charge as before.
+            $on = array_key_exists($kind.'_fee_on', $in) ? $in[$kind.'_fee_on'] : true;
+            $on = $on === null || $on === '' ? \App\Models\Setting::read('delivery_fee_default', 'off') === 'price_list' : filter_var($on, FILTER_VALIDATE_BOOL);
+            if ($kind === 'delivery' && $item instanceof Car && ! $item->delivery_available) {
                 $warnings[] = 'Delivery is switched off for this car.';
             }
-            if ($item instanceof Car && $item->delivery_fee !== null && (float) $item->delivery_fee > 0) {
-                $lines->push(self::line('delivery', 'Delivery', 'delivery', 'per_booking', (float) $item->delivery_fee, (float) $item->delivery_fee, $ctx));
-            } elseif ($fee = $catalogue->firstWhere('kind', 'delivery')) {
-                $lines->push(self::line('extra:'.$fee->id, $fee->name, 'delivery', $fee->unit, self::extraAmount((float) $fee->amount, $fee->unit, $ctx), (float) $fee->amount, $ctx));
+            if (! $on) {
+                continue;
+            }
+            $typed = self::num($in[$kind.'_fee_amount'] ?? null);
+            $listed = self::listedHandoverFee($kind, $item, $catalogue, $ctx);
+            if ($typed !== null) {
+                $lines->push(self::line($kind, ucfirst($kind), $kind, 'per_booking', $typed, $typed, $ctx));
+            } elseif ($listed) {
+                $lines->push($listed);
             } else {
-                $warnings[] = 'No delivery fee on the price list (set one on the car or under Pricing › Extras & fees). Delivery is free unless you add a line.';
+                $warnings[] = 'No '.$kind.' fee on the price list. Type the '.$kind.' charge on the booking.';
             }
         }
-        if (($in['return_method'] ?? null) === 'collection') {
-            if ($fee = $catalogue->firstWhere('kind', 'collection')) {
-                $lines->push(self::line('extra:'.$fee->id, $fee->name, 'collection', $fee->unit, self::extraAmount((float) $fee->amount, $fee->unit, $ctx), (float) $fee->amount, $ctx));
-            } else {
-                $warnings[] = 'No collection fee on the price list (Pricing › Extras & fees). Collection is free unless you add a line.';
-            }
+
+        // 18 Nov (meeting item 4): "No deposit" can carry a fee instead of the security deposit.
+        if (($in['deposit_mode'] ?? null) === 'none' && ($fee = self::noDepositFee($in, $ctx)) > 0) {
+            $lines->push(self::line('no_deposit_fee', 'No-deposit fee', 'fee', 'per_booking', $fee, $fee, $ctx));
         }
 
         $options = self::optionalExtras($service, $item);
@@ -344,6 +356,51 @@ class PriceEngine
         }
 
         return $lines;
+    }
+
+    /** The delivery / collection fee from the price list (car, then Extras & fees), or null. */
+    protected static function listedHandoverFee(string $kind, Model $item, Collection $catalogue, array $ctx): ?array
+    {
+        if ($kind === 'delivery' && $item instanceof Car && $item->delivery_fee !== null && (float) $item->delivery_fee > 0) {
+            return self::line('delivery', 'Delivery', 'delivery', 'per_booking', (float) $item->delivery_fee, (float) $item->delivery_fee, $ctx);
+        }
+        if ($fee = $catalogue->firstWhere('kind', $kind)) {
+            return self::line('extra:'.$fee->id, $fee->name, $kind, $fee->unit, self::extraAmount((float) $fee->amount, $fee->unit, $ctx), (float) $fee->amount, $ctx);
+        }
+
+        return null;
+    }
+
+    /** The price-list amount for a delivery / collection charge, to fill in when it is switched on. */
+    public static function suggestedHandoverFee(string $kind, ?Model $item, ?string $service = 'car'): ?float
+    {
+        if (! $item) {
+            return null;
+        }
+        $catalogue = PriceExtra::query()->active()->orderBy('sort_order')->orderBy('name')->get()->filter(fn (PriceExtra $e) => $e->appliesTo($service ?? 'car'));
+        $line = self::listedHandoverFee($kind, $item, $catalogue, ['days' => 1, 'hours' => 0, 'guests' => 1, 'base' => 0]);
+
+        return $line ? (float) $line['amount'] : null;
+    }
+
+    /** No-deposit fee: typed on the booking, else Business settings (off / fixed / per day / % of the rental). */
+    public static function noDepositFee(array $in, array $ctx): float
+    {
+        $typed = self::num($in['no_deposit_fee'] ?? null);
+        if ($typed !== null) {
+            return round(max(0, $typed), 2);
+        }
+        $amount = (float) \App\Models\Setting::read('no_deposit_fee_amount');
+        if ($amount <= 0) {
+            return 0.0;
+        }
+
+        return match (\App\Models\Setting::read('no_deposit_fee_mode', 'off')) {
+            'fixed' => round($amount, 2),
+            'per_day' => round($amount * max(1, (int) ($ctx['days'] ?? 1)), 2),
+            'percent' => round((float) ($ctx['base'] ?? 0) * $amount / 100, 2),
+            default => 0.0,
+        };
     }
 
     protected static function line(string $key, string $label, string $kind, string $unit, float $amount, float $price, array $ctx): array
