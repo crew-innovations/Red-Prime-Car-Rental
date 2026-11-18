@@ -27,6 +27,7 @@ class TripDate extends Model
 
         return (int) \App\Support\Availability::latest($query)
             ->whereIn('status', \App\Enums\BookingStatus::billable())
+            ->notExpired()
             ->when($ignoreBookingId, fn ($q) => $q->whereKeyNot($ignoreBookingId))
             ->sum('guests');
     }

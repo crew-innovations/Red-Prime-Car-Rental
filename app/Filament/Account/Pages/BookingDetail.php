@@ -50,19 +50,24 @@ class BookingDetail extends Page
         $b = $this->record->fresh();
         if (! CustomerArea::allows('customer_sees_payments') || in_array($b->status, [\App\Enums\BookingStatus::Cancelled, \App\Enums\BookingStatus::NoShow], true)
             || ! \App\Support\Payments\Payments::connected()) {
-            return ['open' => collect(), 'balance' => 0];
+            return ['open' => collect(), 'balance' => 0, 'advance' => 0];
         }
         $open = \App\Models\PaymentRequest::query()->where('booking_id', $b->id)->whereIn('status', ['open', 'processing', 'failed'])
             ->where(fn ($q) => $q->whereNull('expires_at')->orWhere('expires_at', '>', now()))->orderBy('id')->get();
 
-        return ['open' => $open, 'balance' => \App\Support\Payments\Payments::limit($b, 'balance')];
+        // 4 Nov (11): "Pay advance" while the advance is not reached, and "Pay balance".
+        $advance = (float) $b->advance_required > 0 && ! $b->advance_reached_at ? (float) (\App\Support\Payments\Payments::defaultAmount($b, 'advance') ?? 0) : 0.0;
+
+        return ['open' => $open, 'balance' => \App\Support\Payments\Payments::limit($b, 'balance'), 'advance' => $advance];
     }
 
-    public function payOnline()
+    public function payOnline(string $what = 'balance')
     {
         abort_unless(CustomerArea::bookings()->whereKey($this->record->id)->exists(), 404);
         try {
-            $link = \App\Support\Payments\Payments::balanceLink($this->record->fresh());
+            $link = $what === 'advance'
+                ? \App\Support\Payments\Payments::advanceLink($this->record->fresh())
+                : \App\Support\Payments\Payments::balanceLink($this->record->fresh());
         } catch (\Illuminate\Validation\ValidationException $e) {
             \Filament\Notifications\Notification::make()->title(collect($e->errors())->flatten()->first())->warning()->send();
 

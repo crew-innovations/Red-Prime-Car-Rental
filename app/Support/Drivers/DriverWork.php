@@ -73,7 +73,7 @@ class DriverWork
             ]);
         });
 
-        Notify::driver($job->driver, 'OK to hand over: '.$booking->reference, 'The office approved your check. You can give the keys now.', DriverJobs::url($job), 'success');
+        Notify::driver($job->driver, 'OK to hand over: '.$booking->reference, 'The office approved your check. You can give the keys now.', DriverJobs::url($job), 'success', event: 'job_changed');
     }
 
     public static function rejectHandover(BookingJob $job, User $staff, string $reason): void
@@ -84,7 +84,7 @@ class DriverWork
             'status_at' => now(),
             'inspection' => array_merge((array) $job->inspection, ['rejected' => $reason, 'rejected_by' => $staff->name]),
         ]);
-        Notify::driver($job->driver, 'Handover not approved yet: '.$job->booking?->reference, $reason.' Please do the check again or call the office.', DriverJobs::url($job), 'danger');
+        Notify::driver($job->driver, 'Handover not approved yet: '.$job->booking?->reference, $reason.' Please do the check again or call the office.', DriverJobs::url($job), 'danger', event: 'job_changed');
     }
 
     /** Captain starts the charter (guests on board): the booking becomes In progress. */
@@ -132,16 +132,23 @@ class DriverWork
                 'delivered_at' => now(),
                 'delivery_notes' => trim(($job->type === 'transfer' ? 'Customer picked up by ' : 'Charter started by ').$captain->name.($guests !== null ? ' · '.$guests.' guests on board' : '').(filled($data['notes'] ?? null) ? "\n".$data['notes'] : '')),
             ]);
-            $job->refresh()->update([
+            $job->refresh();
+            // 6 Nov (limousine L3): minutes waited past the free time; the office decides on a charge.
+            $waited = $job->type === 'transfer' ? \App\Support\Transfers\Tracking::extraWaiting($fresh, $job, now()) : 0;
+            $job->update([
                 'status' => 'arrived',
                 'status_at' => now(),
                 'acknowledged_at' => $job->acknowledged_at ?? now(),
-                'inspection' => array_filter(['started_at' => now()->toDateTimeString(), 'guests' => $guests, 'start_notes' => $data['notes'] ?? null], fn ($v) => $v !== null && $v !== ''),
+                'inspection' => array_filter(array_merge((array) $job->inspection, ['started_at' => now()->toDateTimeString(), 'guests' => $guests, 'start_notes' => $data['notes'] ?? null, 'extra_waiting_minutes' => $waited ?: null]), fn ($v) => $v !== null && $v !== ''),
             ]);
         });
+        if (($w = (int) ($job->fresh()->inspection['extra_waiting_minutes'] ?? 0)) > 0) {
+            Notify::staff('operate-fleet', 'Waiting time: '.$booking->reference, 'The driver waited '.$w.' minutes past the free waiting time. Add a waiting charge if it applies.',
+                BookingResource::getUrl('edit', ['record' => $booking]), $booking->assignee, 'warning', event: 'handed_over', dedupe: 'limo_wait:'.$job->id);
+        }
 
         Notify::staff('operate-fleet', ($job->type === 'transfer' ? 'Transfer started: ' : 'Charter started: ').$booking->reference, ($booking->bookable?->name ?? ($job->type === 'transfer' ? 'Transfer' : 'Yacht')).' · '.($job->type === 'transfer' ? 'driver ' : 'captain ').$captain->name,
-            BookingResource::getUrl('edit', ['record' => $booking]), $booking->assignee, 'success');
+            BookingResource::getUrl('edit', ['record' => $booking]), $booking->assignee, 'success', event: 'handed_over');
     }
 
     public static function finishCharter(BookingJob $job, User $captain, array $data): void
@@ -171,7 +178,7 @@ class DriverWork
         });
 
         Notify::staff('operate-fleet', ($job->type === 'transfer' ? 'Transfer finished: ' : 'Charter finished: ').$booking->reference, ($job->type === 'transfer' ? 'Driver ' : 'Captain ').$captain->name.'. Please close it (extra charges, payment, deposit).'.($report ? ' Damage was reported.' : ''),
-            BookingResource::getUrl('edit', ['record' => $booking]), $booking->assignee, $report ? 'danger' : 'warning');
+            BookingResource::getUrl('edit', ['record' => $booking]), $booking->assignee, $report ? 'danger' : 'warning', event: 'returned');
         if ($report) {
             self::tellDamage($report);
         }
@@ -198,6 +205,7 @@ class DriverWork
                 foreach ($checked['photos'] as $path) {
                     $booking->addMediaFromDisk($path, 'private')->toMediaCollection('delivery');
                 }
+                self::saveSignature($booking, $job, $checked, 'handover');
                 $job->refresh()->update([
                     'inspection' => self::stored($checked) + ['notes_text' => self::notesText($checked)],
                     'status' => 'waiting',
@@ -205,7 +213,7 @@ class DriverWork
                 ]);
             });
             Notify::staff('operate-fleet', 'Approve handover: '.$booking->reference, $driver->name.' sent the handover check for '.($booking->bookable?->name ?? 'the car').'. The car is not released until you approve.',
-                BookingResource::getUrl('edit', ['record' => $booking]), $booking->assignee, 'warning');
+                BookingResource::getUrl('edit', ['record' => $booking]), $booking->assignee, 'warning', event: 'handed_over');
 
             return;
         }
@@ -225,6 +233,7 @@ class DriverWork
                 'photos' => $checked['photos'],
             ]);
 
+            self::saveSignature($fresh, $job, $checked, 'handover');
             $job->refresh()->update([
                 'inspection' => self::stored($checked),
                 'status' => 'done',
@@ -237,7 +246,7 @@ class DriverWork
         $booking->refresh();
         Notify::staff('operate-fleet', 'Handed over by '.$driver->name.': '.$booking->reference,
             ($booking->bookable?->name ?? 'Car').' · '.$booking->customer?->name,
-            BookingResource::getUrl('edit', ['record' => $booking]), $booking->assignee, 'success');
+            BookingResource::getUrl('edit', ['record' => $booking]), $booking->assignee, 'success', event: 'handed_over');
     }
 
     /** Check the car on collection. The office then completes the return (charges, payment, deposit). */
@@ -264,6 +273,7 @@ class DriverWork
             foreach ($checked['photos'] as $path) {
                 $booking->addMediaFromDisk($path, 'private')->toMediaCollection('return');
             }
+            self::saveSignature($booking, $job, $checked, 'return');
 
             if (filled($checked['damage'])) {
                 $report = DamageReport::create([
@@ -283,25 +293,38 @@ class DriverWork
                 'done_at' => now(),
                 'done_by' => $driver->id,
             ]);
+            // 5 Nov (S5): the car's fuel level follows what the driver saw.
+            if ($booking->bookable instanceof \App\Models\Car) {
+                \App\Support\Fuel\Fuel::setCarLevel($booking->bookable, $checked['fuel']);
+            }
         });
 
         Notify::staff('operate-fleet', 'Car collected by '.$driver->name.': '.$booking->reference,
             'Please complete the return (charges, payment, deposit).'.($report ? ' Damage was reported.' : ''),
-            BookingResource::getUrl('edit', ['record' => $booking]), $booking->assignee, $report ? 'danger' : 'warning');
+            BookingResource::getUrl('edit', ['record' => $booking]), $booking->assignee, $report ? 'danger' : 'warning', event: 'returned');
         if ($report) {
             self::tellDamage($report);
         }
     }
 
-    public static function reportDamage(BookingJob $job, User $driver, string $description, array $photos): DamageReport
+    /**
+     * @param  array{kind?: string, police_report_no?: ?string, location?: ?string, lat?: mixed, lng?: mixed, client_action_id?: ?string}  $extra  4 Nov (15): accidents
+     */
+    public static function reportDamage(BookingJob $job, User $driver, string $description, array $photos, array $extra = []): DamageReport
     {
         self::ownJob($job, $driver);
         abort_unless(Setting::read('driver_can_report_damage', true), 403);
         if (trim($description) === '') {
-            throw ValidationException::withMessages(['data.description' => 'Describe what you found.']);
+            throw ValidationException::withMessages(['data.description' => __('driver.describe')]);
         }
+        $clientId = filled($extra['client_action_id'] ?? null) ? mb_substr((string) $extra['client_action_id'], 0, 64) : null;
+        if ($clientId && ($same = DamageReport::where('client_action_id', $clientId)->first())) {
+            return $same; // sent twice on a weak signal
+        }
+        $kind = ($extra['kind'] ?? 'damage') === 'accident' ? 'accident' : 'damage';
+        $coord = fn ($v, $max) => is_numeric($v) && abs((float) $v) <= $max ? round((float) $v, 7) : null;
 
-        $report = DB::transaction(function () use ($job, $driver, $description, $photos) {
+        $report = DB::transaction(function () use ($job, $driver, $description, $photos, $extra, $kind, $clientId, $coord) {
             $report = DamageReport::create([
                 'booking_id' => $job->booking_id,
                 'booking_job_id' => $job->id,
@@ -309,6 +332,12 @@ class DriverWork
                 'stage' => $job->type,
                 'description' => mb_substr(trim($description), 0, 2000),
                 'status' => 'open',
+                'kind' => $kind,
+                'police_report_no' => $kind === 'accident' && filled($extra['police_report_no'] ?? null) ? mb_substr(trim((string) $extra['police_report_no']), 0, 60) : null,
+                'location' => filled($extra['location'] ?? null) ? mb_substr(trim((string) $extra['location']), 0, 255) : null,
+                'lat' => $coord($extra['lat'] ?? null, 90),
+                'lng' => $coord($extra['lng'] ?? null, 180),
+                'client_action_id' => $clientId,
             ]);
             foreach (\App\Support\PrivateFiles::freshUploads(array_filter($photos), 'tmp') as $path) {
                 $report->addMediaFromDisk($path, 'private')->toMediaCollection('photos');
@@ -324,9 +353,9 @@ class DriverWork
 
     protected static function tellDamage(DamageReport $report): void
     {
-        Notify::staff('review-damage', 'Damage reported on '.$report->booking?->reference,
+        Notify::staff('review-damage', ($report->kind === 'accident' ? 'ACCIDENT reported on ' : 'Damage reported on ').$report->booking?->reference,
             \Illuminate\Support\Str::limit($report->description, 140),
-            \App\Filament\Resources\DamageReportResource::getUrl('index'), $report->booking?->assignee, 'danger');
+            \App\Filament\Resources\DamageReportResource::getUrl('index'), $report->booking?->assignee, 'danger', event: 'damage');
     }
 
     /** Required fields and photos from Business settings; returns the clean values. */
@@ -334,7 +363,7 @@ class DriverWork
     {
         $errors = [];
         $km = isset($data['km']) && $data['km'] !== '' ? (int) $data['km'] : null;
-        $fuel = $data['fuel'] ?? null;
+        $fuel = \App\Support\Fuel\Fuel::eighth($data['fuel'] ?? null); // 5 Nov (S5): eighths (old quarter values still read)
         $photos = \App\Support\PrivateFiles::freshUploads(array_values(array_filter((array) ($data['photos'] ?? []))), 'tmp');
         $list = (array) Setting::read($stage.'_checklist', []);
         $ticked = array_values(array_intersect((array) ($data['checklist'] ?? []), $list));
@@ -345,10 +374,7 @@ class DriverWork
         if ($km !== null && ($km < 0 || ($minKm && $km < $minKm))) {
             $errors['data.km'] = 'The odometer cannot be lower than '.number_format($minKm).' km.';
         }
-        if (Setting::read($stage.'_require_fuel', true) && blank($fuel)) {
-            $errors['data.fuel'] = 'Pick the fuel level.';
-        }
-        if ($fuel !== null && $fuel !== '' && ! isset(Booking::FUEL_LEVELS[$fuel])) {
+        if (Setting::read($stage.'_require_fuel', true) && $fuel === null) {
             $errors['data.fuel'] = 'Pick the fuel level.';
         }
         $min = max(0, (int) Setting::read($stage.'_min_photos', 0));
@@ -362,6 +388,11 @@ class DriverWork
         if ($stage === 'return' && ! isset(Booking::CONDITIONS[$condition])) {
             $errors['data.condition'] = 'Pick the condition.';
         }
+        // 4 Nov (15): the customer signs on the phone (Business settings: off / optional / required).
+        $signature = self::signaturePng($data['signature'] ?? null);
+        if (Setting::read('handover_signature', 'optional') === 'required' && ! $signature) {
+            $errors['data.signature'] = __('driver.signature_needed');
+        }
 
         if ($errors) {
             throw ValidationException::withMessages($errors);
@@ -369,14 +400,42 @@ class DriverWork
 
         return [
             'km' => $km,
-            'fuel' => filled($fuel) ? $fuel : null,
+            'fuel' => $fuel,
             'photos' => $photos,
             'checklist' => $ticked,
             'checklist_total' => count($list),
             'condition' => $stage === 'return' ? $condition : null,
             'damage' => trim((string) ($data['damage'] ?? '')),
             'notes' => trim((string) ($data['notes'] ?? '')),
+            'signature' => Setting::read('handover_signature', 'optional') === 'off' ? null : $signature,
+            'signer' => filled($data['signer'] ?? null) ? mb_substr(trim((string) $data['signer']), 0, 120) : null,
         ];
+    }
+
+    /** A PNG from the signature pad (data URL), or null. Checked to be a real, small PNG. */
+    public static function signaturePng(mixed $value): ?string
+    {
+        if (! is_string($value) || ! str_starts_with($value, 'data:image/png;base64,') || strlen($value) > 700000) {
+            return null;
+        }
+        $png = base64_decode(substr($value, 22), true);
+        if ($png === false || ! str_starts_with($png, "\x89PNG\r\n\x1a\n") || strlen($png) < 200) {
+            return null;
+        }
+
+        return $png;
+    }
+
+    protected static function saveSignature(Booking $booking, BookingJob $job, array $checked, string $stage): void
+    {
+        if (empty($checked['signature'])) {
+            return;
+        }
+        $booking->addMediaFromString($checked['signature'])
+            ->usingFileName('signature-'.$stage.'-'.$job->id.'-'.now()->format('YmdHis').'.png')
+            ->usingName(($stage === 'handover' ? 'Handover' : 'Return').' signature'.($checked['signer'] ? ': '.$checked['signer'] : ''))
+            ->withCustomProperties(['stage' => $stage, 'job' => $job->id, 'signer' => $checked['signer'], 'at' => now()->toDateTimeString()])
+            ->toMediaCollection('signatures');
     }
 
     protected static function stored(array $checked): array
@@ -390,6 +449,8 @@ class DriverWork
             'photos' => count($checked['photos']),
             'damage' => $checked['damage'] ?: null,
             'notes' => $checked['notes'] ?: null,
+            'signed' => ! empty($checked['signature']),
+            'signer' => $checked['signer'] ?? null,
         ];
     }
 

@@ -22,6 +22,7 @@ class EditDriver extends EditRecord
         return [
             AccountActions::sendLink(fn () => $this->getRecord(), 'Send login link', fn (): bool => $this->getRecord()->is_active && $this->getRecord()->login_enabled),
             AccountActions::toggleLogin(fn () => $this->getRecord()),
+            \App\Filament\Support\EmailActions::send(\Filament\Actions\Action::class),
         ];
     }
 }

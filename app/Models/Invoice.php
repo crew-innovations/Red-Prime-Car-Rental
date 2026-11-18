@@ -135,8 +135,66 @@ class Invoice extends Model
                 $lines[] = ['label' => \App\Support\Options::chargeLabel($key).' (on return)', 'qty' => 1, 'unit_price' => (float) $amount, 'amount' => (float) $amount, 'charge' => true];
             }
         }
+        // 4 Nov (C.1): fines, tolls and fees not on an invoice yet.
+        foreach ($b->chargeLines()->whereNull('voided_at')->whereNull('invoice_id')->orderBy('id')->get() as $l) {
+            $lines[] = self::chargeLine($l);
+        }
 
         return $lines;
+    }
+
+    protected static function chargeLine(BookingCharge $l): array
+    {
+        return ['label' => $l->label, 'detail' => $l->group().($l->isPassThrough() ? ' · paid to the authority on your behalf' : ''), 'qty' => (float) $l->quantity,
+            'unit_price' => (float) $l->unit_amount, 'amount' => (float) $l->amount, 'charge' => true, 'charge_id' => $l->id];
+    }
+
+    /** Marks the charge lines printed on this invoice, so they are never invoiced twice. */
+    protected static function claimLines(self $invoice): void
+    {
+        $ids = collect($invoice->lines)->pluck('charge_id')->filter()->all();
+        if ($ids) {
+            BookingCharge::query()->whereIn('id', $ids)->whereNull('invoice_id')->update(['invoice_id' => $invoice->id]);
+        }
+    }
+
+    /**
+     * 4 Nov (2.5, 3): an invoice for charges added after the booking's invoice (fines, tolls).
+     * One per call, for every active line not invoiced yet.
+     */
+    public static function issueCharges(Booking $b, ?string $notes = null): self
+    {
+        $lines = $b->chargeLines()->whereNull('voided_at')->whereNull('invoice_id')->orderBy('id')->get();
+        if ($lines->isEmpty()) {
+            throw ValidationException::withMessages(['invoice' => 'There are no new charges to invoice.']);
+        }
+
+        return DB::transaction(function () use ($b, $lines, $notes) {
+            $rows = $lines->map(fn ($l) => self::chargeLine($l))->values()->all();
+            $total = round($lines->sum(fn ($l) => (float) $l->amount), 2);
+            $invoice = static::create([
+                'type' => 'invoice',
+                'kind' => 'charges',
+                'number' => self::nextNumber('invoice'),
+                'booking_id' => $b->id,
+                'customer_id' => $b->customer_id,
+                'issued_on' => today(),
+                'supply_date' => today()->toDateString(),
+                'is_tax_invoice' => false, // fines and tolls are passed on without VAT
+                'seller' => self::sellerDetails(),
+                'buyer' => self::buyerDetails($b->customer),
+                'lines' => $rows,
+                'subtotal' => $total,
+                'discount' => 0,
+                'tax_amount' => 0,
+                'total' => $total,
+                'notes' => $notes ?? 'Charges added after your rental '.$b->reference.'.',
+                'created_by' => auth()->id(),
+            ]);
+            self::claimLines($invoice);
+
+            return $invoice;
+        });
     }
 
     /** Issue an invoice for what the booking costs now. One open invoice per booking. */
@@ -145,7 +203,7 @@ class Invoice extends Model
         if (! in_array($b->status, \App\Enums\BookingStatus::billable(), true)) {
             throw ValidationException::withMessages(['invoice' => 'Invoices are issued for confirmed bookings only.']);
         }
-        if (static::query()->where('booking_id', $b->id)->where('type', 'invoice')->where('status', 'issued')->exists()) {
+        if (static::query()->where('booking_id', $b->id)->where('type', 'invoice')->where('kind', 'booking')->where('status', 'issued')->exists()) {
             throw ValidationException::withMessages(['invoice' => 'This booking already has an invoice. Void it first, or issue a credit note.']);
         }
 
@@ -154,7 +212,7 @@ class Invoice extends Model
             $charges = collect($lines)->where('charge', true)->sum('amount');
             $subtotal = round(collect($lines)->sum('amount'), 2);
             // VAT as on the booking (the rental part); return charges are shown without extra VAT.
-            return static::create([
+            $invoice = static::create([
                 'type' => 'invoice',
                 'number' => self::nextNumber('invoice'),
                 'booking_id' => $b->id,
@@ -174,6 +232,9 @@ class Invoice extends Model
                 'notes' => $notes,
                 'created_by' => auth()->id(),
             ]);
+            self::claimLines($invoice);
+
+            return $invoice;
         });
     }
 
@@ -217,6 +278,7 @@ class Invoice extends Model
             return;
         }
         $this->update(['status' => 'void', 'void_reason' => $reason, 'voided_at' => now()]);
+        BookingCharge::query()->where('invoice_id', $this->id)->update(['invoice_id' => null]); // can be invoiced again
     }
 
     /** INV-00001, CN-00001 … in order, without gaps from other document types. */

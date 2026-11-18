@@ -45,10 +45,12 @@ class Chat
         return match (self::role($user)) {
             'customer' => $q->where('kind', 'customer')->where('customer_id', $user->customer_id),
             'driver' => $q->where('kind', 'driver')->where('driver_id', $user->id),
+            // 12 Nov: a social conversation is seen by the agent who has its lead (and by Admin).
             'staff' => Access::agentScoped()
-                ? $q->where(fn ($w) => $w->whereIn('booking_id', BookingResource::getEloquentQuery()->select('bookings.id'))
-                    ->orWhere(fn ($g) => $g->whereNull('booking_id')->whereIn('customer_id', Access::scopeOwn(\App\Models\Customer::query(), 'customer')->select('customers.id'))))
-                : $q,
+                ? $q->where(fn ($w) => $w->where(fn ($c) => $c->where('kind', '<>', 'social')->where(fn ($x) => $x->whereIn('booking_id', BookingResource::getEloquentQuery()->select('bookings.id'))
+                    ->orWhere(fn ($g) => $g->whereNull('booking_id')->whereIn('customer_id', Access::scopeOwn(\App\Models\Customer::query(), 'customer')->select('customers.id')))))
+                    ->orWhere(fn ($so) => $so->where('kind', 'social')->whereIn('lead_id', \App\Models\Lead::query()->where('assigned_to', $user->id)->select('id'))))
+                : $q->when($user->isDriverOnly(), fn ($d) => $d->where('kind', '<>', 'social')),
             default => $q->whereRaw('1 = 0'),
         };
     }
@@ -96,15 +98,29 @@ class Chat
         }
         $internal = $internal && $role === 'staff'; // only the team writes internal notes
 
-        $message = DB::transaction(function () use ($thread, $body, $internal, $user, $role) {
-            $m = $thread->messages()->create(['user_id' => $user->id, 'author' => $role, 'body' => $body, 'internal' => $internal]);
+        // 12 Nov: in a conversation from Instagram / Messenger / WhatsApp the reply goes out on that
+        // channel first; if Meta refuses it, nothing is saved and the agent is told why.
+        $externalId = null;
+        if ($thread->isSocial() && ! $internal) {
+            abort_unless($role === 'staff', 403);
+            $externalId = Social::send($thread, $body);
+            // It is already with the customer: an id we somehow hold already must never stop it being saved.
+            if ($externalId && ChatMessage::query()->where('external_id', $externalId)->exists()) {
+                $externalId = null;
+            }
+        }
+
+        $message = DB::transaction(function () use ($thread, $body, $internal, $user, $role, $externalId) {
+            $m = $thread->messages()->create(['user_id' => $user->id, 'author' => $role, 'body' => $body, 'internal' => $internal, 'external_id' => $externalId]);
             $thread->forceFill(['last_message_at' => now()])->save();
             self::markRead($thread, $user, $m->id);
 
             return $m;
         });
 
-        rescue(fn () => self::notify($thread, $message, $user));
+        if (! $thread->isSocial()) { // the customer of a social conversation is reached on their channel, not in the CRM
+            rescue(fn () => self::notify($thread, $message, $user));
+        }
 
         return $message;
     }
@@ -149,9 +165,9 @@ class Chat
             $title = 'Message from '.($m->author === 'driver' ? 'driver ' : '').$from->name.($thread->booking ? ' · '.$thread->booking->reference : '');
             $owner = $thread->booking?->assignee;
             if ($owner && $owner->is_active) {
-                Notify::person($owner, $title, $preview, $url);
+                Notify::person($owner, $title, $preview, $url, event: 'message');
             } else {
-                Notify::staff($m->author === 'driver' ? 'manage-drivers' : 'manage-bookings', $title, $preview, $url, null, 'info');
+                Notify::staff($m->author === 'driver' ? 'manage-drivers' : 'manage-bookings', $title, $preview, $url, null, 'info', event: 'message');
             }
 
             return;

@@ -22,6 +22,7 @@ class LeadIntake
     public const CHANNELS = [
         'website' => 'Website', 'meta' => 'Facebook / Instagram', 'tiktok' => 'TikTok', 'snapchat' => 'Snapchat',
         'form' => 'Shared form', 'manual' => 'Added by staff',
+        'instagram' => 'Instagram message', 'messenger' => 'Facebook message', 'whatsapp' => 'WhatsApp message', // 12 Nov
     ];
 
     /**
@@ -50,7 +51,7 @@ class LeadIntake
                         .(data_get($in, 'platform.form_name') ? ' ('.data_get($in, 'platform.form_name').')' : '').":\n"
                         .collect($answers)->map(fn ($v, $k) => $k.': '.$v)->implode("\n").(filled($in['message'] ?? null) ? "\n".$in['message'] : ''), 0, 5000)]);
                 if ($open->assignee) {
-                    Notify::person($open->assignee, 'Same person asked again: '.$open->name, 'Via '.(self::CHANNELS[$channel] ?? $channel), \App\Filament\Resources\LeadResource::getUrl('edit', ['record' => $open]));
+                    Notify::person($open->assignee, 'Same person asked again: '.$open->name, 'Via '.(self::CHANNELS[$channel] ?? $channel), \App\Filament\Resources\LeadResource::getUrl('edit', ['record' => $open]), event: 'lead_returned');
                 }
 
                 return [$open, 'merged'];
@@ -76,10 +77,12 @@ class LeadIntake
                 'answers' => $answers ?: null,
             ]);
 
+            \App\Support\Portal::onLead($lead); // 4 Nov (13): only when "account when a lead comes in" is on
+
             $who = Assignment::auto($lead, isset($in['assign_to']) ? (int) $in['assign_to'] : null);
-            if (! $who) {
+            if (! $who && Assignment::mode() !== 'broadcast') { // broadcast tells Admin itself
                 DB::afterCommit(fn () => rescue(fn () => Notify::staff('assign-leads', 'New lead: '.$lead->name, 'From '.(self::CHANNELS[$channel] ?? $channel).'. Nobody has it yet.',
-                    \App\Filament\Resources\LeadResource::getUrl('edit', ['record' => $lead]), null, 'info')));
+                    \App\Filament\Resources\LeadResource::getUrl('edit', ['record' => $lead]), null, 'info', event: 'lead_new')));
             }
 
             return [$lead, 'created'];

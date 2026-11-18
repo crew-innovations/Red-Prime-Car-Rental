@@ -19,7 +19,7 @@ use Illuminate\Validation\Rules\Password;
  */
 class MyProfile extends Page implements HasForms
 {
-    use InteractsWithForms;
+    use \App\Filament\Concerns\DriverLocale, InteractsWithForms;
 
     protected static string $view = 'filament.pages.my-profile';
 
@@ -40,6 +40,26 @@ class MyProfile extends Page implements HasForms
     public static function canAccess(): bool
     {
         return (bool) auth()->user()?->hasRole('Driver');
+    }
+
+    public static function getNavigationLabel(): string
+    {
+        \App\Support\Drivers\DriverLang::apply(auth()->user());
+
+        return __('driver.my_profile');
+    }
+
+    public function getTitle(): string
+    {
+        return __('driver.my_profile');
+    }
+
+    /** 4 Nov (15): the driver screens in English, Urdu or Arabic. */
+    public function setLanguage(string $lang): void
+    {
+        abort_unless(array_key_exists($lang, \App\Support\Drivers\DriverLang::available()), 422);
+        auth()->user()->forceFill(['locale' => $lang])->save();
+        $this->redirect(static::getUrl());
     }
 
     protected function getForms(): array
@@ -72,21 +92,21 @@ class MyProfile extends Page implements HasForms
         $fields = self::editableFields();
 
         return $form->statePath('details')->schema(array_values(array_filter([
-            in_array('phone', $fields, true) ? Forms\Components\TextInput::make('phone')->label('Phone number')->tel()->required()->maxLength(30) : null,
-            in_array('address', $fields, true) ? Forms\Components\Textarea::make('address')->label('Residential address')->rows(2)->maxLength(500) : null,
-            in_array('emergency_name', $fields, true) ? Forms\Components\TextInput::make('emergency_name')->label('Emergency contact name')->maxLength(120) : null,
-            in_array('emergency_phone', $fields, true) ? Forms\Components\TextInput::make('emergency_phone')->label('Emergency contact phone')->tel()->maxLength(30) : null,
-            in_array('photo', $fields, true) ? Forms\Components\FileUpload::make('photo')->label('New profile photo')->image()->avatar()->disk('private')->directory('tmp')->visibility('private')->maxSize(5120) : null,
+            in_array('phone', $fields, true) ? Forms\Components\TextInput::make('phone')->label(__('driver.phone'))->tel()->required()->maxLength(30) : null,
+            in_array('address', $fields, true) ? Forms\Components\Textarea::make('address')->label(__('driver.address'))->rows(2)->maxLength(500) : null,
+            in_array('emergency_name', $fields, true) ? Forms\Components\TextInput::make('emergency_name')->label(__('driver.emergency_name'))->maxLength(120) : null,
+            in_array('emergency_phone', $fields, true) ? Forms\Components\TextInput::make('emergency_phone')->label(__('driver.emergency_phone'))->tel()->maxLength(30) : null,
+            in_array('photo', $fields, true) ? Forms\Components\FileUpload::make('photo')->label(__('driver.new_photo'))->image()->avatar()->disk('private')->directory('tmp')->visibility('private')->maxSize(5120) : null,
         ])));
     }
 
     public function passwordForm(Form $form): Form
     {
         return $form->statePath('passwordData')->schema([
-            Forms\Components\TextInput::make('current_password')->label('Current password')->password()->required()->currentPassword(),
-            Forms\Components\TextInput::make('password')->label('New password')->password()->revealable()->required()
+            Forms\Components\TextInput::make('current_password')->label(__('driver.current_password'))->password()->required()->currentPassword(),
+            Forms\Components\TextInput::make('password')->label(__('driver.new_password'))->password()->revealable()->required()
                 ->rule(Password::min(8)->letters()->numbers())->confirmed(),
-            Forms\Components\TextInput::make('password_confirmation')->label('New password again')->password()->required(),
+            Forms\Components\TextInput::make('password_confirmation')->label(__('driver.new_password_again'))->password()->required(),
         ]);
     }
 
@@ -111,7 +131,7 @@ class MyProfile extends Page implements HasForms
             }
         }
 
-        Notification::make()->title('Your details are saved')->success()->send();
+        Notification::make()->title(__('driver.details_saved'))->success()->send();
         $this->mount();
     }
 
@@ -126,7 +146,7 @@ class MyProfile extends Page implements HasForms
         }
         \App\Models\AuditLog::note($user, 'password', 'Password changed by the driver');
 
-        Notification::make()->title('Password changed')->success()->send();
+        Notification::make()->title(__('driver.password_changed'))->success()->send();
         $this->passwordForm->fill();
     }
 

@@ -67,11 +67,12 @@
     </table>
 
     <table class="totals">
-        @if ((float) $b->discount > 0)<tr><td style="width:60%"></td><td class="muted">Discount</td><td class="r">− {{ $aed($b->discount) }}</td></tr>@endif
+        @if ((float) $b->discount > 0)<tr><td style="width:60%"></td><td class="muted">Discount{{ ($dp = \App\Support\Pricing\PriceLines::for($b)['overall_percent']) ? ' ('.\App\Support\Pricing\Discounts::percentText($dp).')' : '' }}</td><td class="r">− {{ $aed($b->discount) }}</td></tr>@endif
         @if ((float) $b->tax_amount > 0)<tr><td style="width:60%"></td><td class="muted">VAT {{ rtrim(rtrim(number_format((float) $b->tax_rate, 2), '0'), '.') }}%{{ $b->tax_inclusive ? ' (included)' : '' }}</td><td class="r">{{ $aed($b->tax_amount) }}</td></tr>@endif
         <tr class="grand"><td style="width:60%"></td><td>Total</td><td class="r">{{ $aed($b->amountDue()) }}</td></tr>
+        @if ((float) $b->advance_required > 0 && ! $b->advance_reached_at)<tr><td></td><td class="muted">Advance to confirm{{ $b->advance_percent !== null ? ' ('.\App\Support\Pricing\Discounts::percentText((float) $b->advance_percent).')' : '' }}</td><td class="r">{{ $aed($b->advance_required) }}</td></tr>@endif
         <tr><td></td><td class="muted">Paid so far</td><td class="r">{{ $aed($b->paid_amount) }}</td></tr>
-        <tr><td></td><td><strong>Still to pay</strong></td><td class="r"><strong>{{ $aed($b->balance) }}</strong></td></tr>
+        <tr><td></td><td><strong>Still to pay</strong>@if ((float) $b->balance > 0 && ($bd = \App\Support\Pricing\Advance::balanceDue($b)))<span class="muted"> · due {{ $bd->format('d M Y') }}</span>@endif</td><td class="r"><strong>{{ $aed($b->balance) }}</strong></td></tr>
         @if ((float) $b->security_deposit > 0)<tr><td></td><td class="muted">Security deposit (refundable, collected at the start)</td><td class="r">{{ $aed($b->security_deposit) }}</td></tr>@endif
     </table>
 

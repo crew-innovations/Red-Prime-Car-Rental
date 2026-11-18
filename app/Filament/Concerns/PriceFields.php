@@ -80,18 +80,61 @@ class PriceFields
             Forms\Components\TextInput::make('base_amount')
                 ->label(fn (Get $get): string => $get('service_type') === ServiceType::Car->value ? 'Rental price' : 'Price')
                 ->numeric()->minValue(0)->prefix('AED')->default(0)->required()
-                ->readOnly(fn (Get $get): bool => ! $canAdjust() && $get('standard_amount') !== null && $get('standard_amount') !== '')
+                ->readOnly(fn (Get $get): bool => (! $canAdjust() && $get('standard_amount') !== null && $get('standard_amount') !== '') || filled($get('base_discount_percent')))
                 ->live(onBlur: true)
+                ->afterStateUpdated(fn (Set $set) => $set('base_discount_percent', null))
                 ->helperText(fn (Get $get): ?HtmlString => self::baseHint($get))
                 ->suffixAction(Forms\Components\Actions\Action::make('recalculate')
                     ->icon('heroicon-m-arrow-path')
                     ->tooltip('Back to the price list')
-                    ->action(fn (Get $get, Set $set) => self::recalculate($get, $set, reset: true))),
-            Forms\Components\TextInput::make('discount')
-                ->numeric()->minValue(0)->prefix('AED')->default(0)
+                    ->action(function (Get $get, Set $set) {
+                        $set('base_discount_percent', null);
+                        self::recalculate($get, $set, reset: true);
+                    })),
+            // 4 Nov (10): % off the rental line; follows the price list when the dates change.
+            Forms\Components\TextInput::make('base_discount_percent')
+                ->label('Discount on the price')
+                ->numeric()->minValue(0)->maxValue(100)->suffix('%')
                 ->disabled(fn (): bool => ! $canAdjust())
                 ->dehydrated()
-                ->live(onBlur: true),
+                ->visible(fn (Get $get): bool => filled($get('list_base')))
+                ->live(onBlur: true)
+                ->afterStateUpdated(function (Get $get, Set $set, $state) {
+                    if (filled($get('list_base'))) {
+                        $set('base_amount', \App\Support\Pricing\Discounts::apply((float) $get('list_base'), filled($state) ? (float) $state : null));
+                    }
+                    self::overallDiscount($get, $set);
+                }),
+            Forms\Components\Group::make()
+                ->columns(3)
+                ->columnSpanFull()
+                ->schema([
+                    Forms\Components\ToggleButtons::make('discount_mode')
+                        ->label('Discount on the total')
+                        ->options(['amount' => 'AED', 'percent' => '%'])
+                        ->default('amount')
+                        ->grouped()
+                        ->disabled(fn (): bool => ! $canAdjust())
+                        ->dehydrated()
+                        ->live()
+                        ->afterStateUpdated(fn (Get $get, Set $set) => self::overallDiscount($get, $set)),
+                    Forms\Components\TextInput::make('discount_percent')
+                        ->label('% off the total')
+                        ->numeric()->minValue(0)->maxValue(100)->suffix('%')
+                        ->disabled(fn (): bool => ! $canAdjust())
+                        ->dehydrated()
+                        ->visible(fn (Get $get): bool => $get('discount_mode') === 'percent')
+                        ->live(onBlur: true)
+                        ->afterStateUpdated(fn (Get $get, Set $set) => self::overallDiscount($get, $set)),
+                    Forms\Components\TextInput::make('discount')
+                        ->label('Amount off the total')
+                        ->numeric()->minValue(0)->prefix('AED')->default(0)
+                        ->disabled(fn (): bool => ! $canAdjust())
+                        ->readOnly(fn (Get $get): bool => $get('discount_mode') === 'percent')
+                        ->helperText(fn (Get $get): ?string => self::discountPercentText($get))
+                        ->dehydrated()
+                        ->live(onBlur: true),
+                ]),
 
             Forms\Components\Repeater::make('extras')
                 ->label('Delivery, fees and extras')
@@ -112,8 +155,16 @@ class PriceFields
                         ->columnSpan(2),
                     Forms\Components\TextInput::make('amount')
                         ->numeric()->minValue(0)->prefix('AED')->required()
-                        ->readOnly(fn (Get $get): bool => (bool) $get('waived') || (filled($get('key')) && ! $canAdjust()))
-                        ->live(onBlur: true),
+                        ->readOnly(fn (Get $get): bool => (bool) $get('waived') || (filled($get('key')) && ! $canAdjust()) || filled($get('discount_percent')))
+                        ->live(onBlur: true)
+                        ->afterStateUpdated(fn (Set $set) => $set('discount_percent', null)),
+                    // 4 Nov (10): % off a price-list line.
+                    Forms\Components\TextInput::make('discount_percent')
+                        ->label('Discount')
+                        ->numeric()->minValue(0)->maxValue(100)->suffix('%')
+                        ->visible(fn (Get $get): bool => filled($get('key')) && filled($get('standard')) && $canAdjust() && ! $get('waived'))
+                        ->live(onBlur: true)
+                        ->afterStateUpdated(fn (Get $get, Set $set, $state) => $set('amount', \App\Support\Pricing\Discounts::apply((float) $get('standard'), filled($state) ? (float) $state : null))),
                     Forms\Components\Toggle::make('waived')
                         ->label('Waive')
                         ->inline(false)
@@ -121,7 +172,7 @@ class PriceFields
                         ->live()
                         ->afterStateUpdated(fn (Get $get, Set $set, $state) => $set('amount', $state ? 0 : (float) $get('standard'))),
                 ])
-                ->columns(4)
+                ->columns(5)
                 ->defaultItems(0)
                 ->addActionLabel('Add a custom line')
                 // Price-list lines are removed by unticking the extra or waived; only custom lines are deleted.
@@ -145,6 +196,41 @@ class PriceFields
                 ->label('Total')
                 ->columnSpanFull()
                 ->content(fn (Get $get): HtmlString => self::summary($get)),
+        ];
+    }
+
+    /** Advance to confirm (4 Nov, 11): % of the total, default per service from Business settings. */
+    public static function advance(string $kind): array
+    {
+        $min = fn (): ?float => \App\Support\Pricing\Advance::minPercent();
+        $below = fn (Get $get): bool => filled($get('advance_percent')) && $min() !== null && (float) $get('advance_percent') < $min() - 0.001;
+
+        return [
+            Forms\Components\TextInput::make('advance_percent')
+                ->label('Advance to confirm')
+                ->numeric()->minValue(0)->maxValue(100)->suffix('%')
+                ->placeholder(fn (Get $get): string => ($d = \App\Support\Pricing\Advance::defaultPercent($get('service_type'))) !== null ? 'Default '.\App\Support\Pricing\Discounts::percentText($d) : 'None')
+                ->helperText(function (Get $get) use ($kind): ?string {
+                    $p = filled($get('advance_percent')) ? (float) $get('advance_percent') : null;
+                    if ($p === null) {
+                        return $kind === 'quotation' ? 'Empty: the default for the service is used on a new quotation, or type an amount below.' : 'Empty: the default for the service is used.';
+                    }
+                    $rate = filled($get('tax_rate')) ? (float) $get('tax_rate') : null;
+                    [, $total] = Tax::apply(self::net($get), $rate, (bool) $get('tax_inclusive'));
+
+                    return '= AED '.number_format(\App\Support\Pricing\Advance::amount($total, $p), 2).' of AED '.number_format($total, 2).'. The security deposit is separate.';
+                })
+                ->live(onBlur: true),
+            Forms\Components\TextInput::make('advance_required')
+                ->label('Advance amount')
+                ->numeric()->minValue(0)->prefix('AED')
+                ->helperText('Used only when no % is set.')
+                ->visible(fn (Get $get): bool => $kind === 'quotation' && blank($get('advance_percent'))),
+            Forms\Components\TextInput::make('advance_reason')
+                ->label(fn (): string => 'Why below '.\App\Support\Pricing\Discounts::percentText($min()).'?')
+                ->maxLength(255)
+                ->required($below)
+                ->visible($below),
         ];
     }
 
@@ -188,6 +274,7 @@ class PriceFields
 
         $listBase = $get('list_base');
         $current = $get('base_amount');
+        $basePercent = filled($get('base_discount_percent')) ? (float) $get('base_discount_percent') : null;
         $keep = ! $reset && $listBase !== null && $listBase !== '' && $current !== null && $current !== ''
             && abs((float) $current - (float) $listBase) > 0.005;
         $set('rate_type', $result['rate_type']);
@@ -196,6 +283,9 @@ class PriceFields
         $set('list_base', $result['base_amount']);
         if (! $keep) {
             $set('base_amount', $result['base_amount']);
+        }
+        if ($basePercent && ! $reset) {
+            $set('base_amount', \App\Support\Pricing\Discounts::apply((float) $result['base_amount'], $basePercent));
         }
 
         $old = collect((array) ($get('extras') ?? []));
@@ -207,8 +297,10 @@ class PriceFields
             }
             $waived = (bool) ($was['waived'] ?? false);
             $changed = ! $waived && isset($was['standard']) && abs((float) ($was['amount'] ?? 0) - (float) $was['standard']) > 0.005;
+            $percent = ! $waived && filled($was['discount_percent'] ?? null) ? (float) $was['discount_percent'] : null;
 
-            return array_merge($line, ['waived' => $waived, 'amount' => $waived ? 0 : ($changed ? (float) $was['amount'] : $line['standard'])]);
+            return array_merge($line, ['waived' => $waived, 'discount_percent' => $percent,
+                'amount' => $waived ? 0 : ($percent ? \App\Support\Pricing\Discounts::apply((float) $line['standard'], $percent) : ($changed ? (float) $was['amount'] : $line['standard']))]);
         });
         $manual = $old->filter(fn ($l) => blank($l['key'] ?? null))->values();
         $all = $lines->concat($manual)->values();
@@ -217,6 +309,28 @@ class PriceFields
         if ($result['deposit'] > 0 && ! (float) $get('security_deposit')) {
             $set('security_deposit', $result['deposit']);
         }
+        self::overallDiscount($get, $set);
+    }
+
+    /** Discount on the total as a % (4 Nov): the AED amount follows rental + extras. */
+    public static function overallDiscount(Get $get, Set $set): void
+    {
+        if ($get('discount_mode') !== 'percent') {
+            return;
+        }
+        $extras = collect((array) ($get('extras') ?? []))->sum(fn ($l) => (float) ($l['amount'] ?? 0));
+        $gross = (float) $get('base_amount') + $extras;
+        $set('discount', round($gross * min(100, max(0, (float) $get('discount_percent'))) / 100, 2));
+    }
+
+    /** The overall discount as a %, shown even when an amount was typed. */
+    protected static function discountPercentText(Get $get): ?string
+    {
+        $extras = collect((array) ($get('extras') ?? []))->sum(fn ($l) => (float) ($l['amount'] ?? 0));
+        $gross = (float) $get('base_amount') + $extras;
+        $d = (float) $get('discount');
+
+        return $d > 0 && $gross > 0 ? '= '.\App\Support\Pricing\Discounts::percentText(round($d / $gross * 100, 2)).' of AED '.number_format($gross, 2) : null;
     }
 
     public static function adjusted(Get $get): bool
@@ -262,7 +376,8 @@ class PriceFields
         $rate = filled($get('tax_rate')) ? (float) $get('tax_rate') : null;
         $net = self::net($get);
         [$tax, $total] = Tax::apply($net, $rate, (bool) $get('tax_inclusive'));
-        $html = '<span style="font-size:1.4rem;font-weight:700">AED '.number_format($total, 2).'</span>';
+        $html = self::discountTable($get);
+        $html .= '<span style="font-size:1.4rem;font-weight:700">AED '.number_format($total, 2).'</span>';
         if ($rate) {
             $html .= '<div style="font-size:.85rem;opacity:.75">VAT '.rtrim(rtrim(number_format($rate, 2), '0'), '.').'%'.($get('tax_inclusive') ? ' included' : '').': AED '.number_format($tax, 2).'</div>';
         }
@@ -270,10 +385,56 @@ class PriceFields
         if ($standard !== null && $standard !== '' && abs($net - (float) $standard) > 0.005) {
             [, $listTotal] = Tax::apply((float) $standard, $rate, (bool) $get('tax_inclusive'));
             $diff = $total - $listTotal;
+            $off = \App\Support\Pricing\Discounts::percentOff((float) $standard, $net);
             $html .= '<div style="font-size:.85rem;margin-top:4px">Price list: <s>AED '.number_format($listTotal, 2).'</s> · '
-                .'<span style="color:rgb(var(--'.($diff < 0 ? 'danger' : 'success').'-600));font-weight:600">'.($diff < 0 ? '−' : '+').'AED '.number_format(abs($diff), 2).'</span></div>';
+                .'<span style="color:rgb(var(--'.($diff < 0 ? 'danger' : 'success').'-600));font-weight:600">'.($diff < 0 ? '−' : '+').'AED '.number_format(abs($diff), 2)
+                .($off > 0 ? ' ('.\App\Support\Pricing\Discounts::percentText($off).' off)' : '').'</span></div>';
+            if ($off > 0 && auth()->user()) {
+                [$max, $waits] = \App\Support\Pricing\Discounts::limitFor(auth()->user());
+                if ($max !== null && $off > $max + 0.001) {
+                    $html .= '<div style="font-size:.85rem;margin-top:4px;color:rgb(var(--warning-600));font-weight:600">'
+                        .($waits ? 'Above your limit of '.\App\Support\Pricing\Discounts::percentText($max).': a manager must approve it before it can be sent or confirmed.'
+                            : 'Above your limit of '.\App\Support\Pricing\Discounts::percentText($max).'.').'</div>';
+                }
+            }
         }
 
         return new HtmlString($html);
+    }
+
+    /** List price → discount % → discount amount → net, per line (4 Nov, 10). Only when something is discounted. */
+    protected static function discountTable(Get $get): string
+    {
+        $rows = [];
+        $listBase = $get('list_base');
+        if (filled($listBase) && (float) $listBase > 0) {
+            $rows[] = [$get('service_type') === ServiceType::Car->value ? 'Rental' : 'Price', (float) $listBase, (float) $get('base_amount')];
+        }
+        foreach ((array) ($get('extras') ?? []) as $l) {
+            if (filled($l['standard'] ?? null)) {
+                $rows[] = [(string) ($l['label'] ?? 'Extra'), (float) $l['standard'], (float) ($l['amount'] ?? 0)];
+            }
+        }
+        $lineOff = collect($rows)->contains(fn ($r) => $r[1] - $r[2] > 0.005);
+        $overall = (float) $get('discount');
+        if (! $lineOff && $overall <= 0) {
+            return '';
+        }
+
+        $td = 'style="padding:2px 8px;text-align:right;white-space:nowrap"';
+        $html = '<table style="font-size:.8rem;margin-bottom:8px;border-collapse:collapse"><tr style="opacity:.65"><td style="padding:2px 8px 2px 0"></td><td '.$td.'>List</td><td '.$td.'>Discount</td><td '.$td.'>AED off</td><td '.$td.'>Net</td></tr>';
+        foreach ($rows as [$label, $list, $amount]) {
+            $off = round($list - $amount, 2);
+            $html .= '<tr><td style="padding:2px 8px 2px 0">'.e(\Illuminate\Support\Str::limit($label, 40)).'</td><td '.$td.'>'.number_format($list, 2).'</td>'
+                .'<td '.$td.'>'.($off > 0.005 ? \App\Support\Pricing\Discounts::percentText(\App\Support\Pricing\Discounts::percentOff($list, $amount)) : '–').'</td>'
+                .'<td '.$td.'>'.($off > 0.005 ? number_format($off, 2) : '–').'</td><td '.$td.'>'.number_format($amount, 2).'</td></tr>';
+        }
+        if ($overall > 0) {
+            $gross = (float) $get('base_amount') + collect((array) ($get('extras') ?? []))->sum(fn ($l) => (float) ($l['amount'] ?? 0));
+            $html .= '<tr><td style="padding:2px 8px 2px 0">Discount on the total</td><td '.$td.'>'.number_format($gross, 2).'</td>'
+                .'<td '.$td.'>'.($gross > 0 ? \App\Support\Pricing\Discounts::percentText(round($overall / $gross * 100, 2)) : '–').'</td><td '.$td.'>'.number_format($overall, 2).'</td><td '.$td.'>'.number_format($gross - $overall, 2).'</td></tr>';
+        }
+
+        return $html.'</table>';
     }
 }

@@ -46,12 +46,13 @@ class BookingActions
             ->fillForm(fn (Booking $record): array => [
                 'delivered_at' => now(),
                 'delivery_km' => $record->bookable instanceof Car ? $record->bookable->mileage : null,
-                'delivery_fuel' => 'full',
+                'delivery_fuel' => (string) (($record->bookable instanceof Car ? $record->bookable->fuel_level_8 : null) ?? 8), // 5 Nov (S5): the car's last known level
                 'driver_id' => $record->driver_id,
                 'deposit_received' => max(0, (float) $record->security_deposit - $record->depositHeld()) ?: null,
                 'deposit_method' => PaymentMethod::Card->value,
-                'payment_amount' => (float) $record->balance ?: null,
+                'payment_amount' => null, // 6 Nov (S4, H-43 default): a payment is only recorded when staff type it
                 'payment_method' => PaymentMethod::Card->value,
+                'take_payment' => max(0, (float) $record->security_deposit - $record->depositHeld()) > 0,
             ])
             ->form(fn (Booking $record): array => [
                 Forms\Components\Placeholder::make('blockers')
@@ -71,10 +72,15 @@ class BookingActions
                         ->numeric()->minValue(0)->suffix('km')
                         ->required()
                         ->visible($record->isCar()),
-                    Forms\Components\Select::make('delivery_fuel')
+                    Forms\Components\ToggleButtons::make('delivery_fuel')
                         ->label('Fuel level')
-                        ->options(Booking::FUEL_LEVELS)
-                        ->native(false)
+                        ->options(\App\Support\Fuel\Fuel::gaugeOptions('Empty', 'Full'))
+                        ->inline()
+                        ->extraAttributes(['class' => 'rp-fuel-gauge'])
+                        ->helperText(fn (): ?string => $record->bookable instanceof Car && $record->bookable->fuel_level_8 !== null
+                            ? 'Last known: '.\App\Support\Fuel\Fuel::label($record->bookable->fuel_level_8).($record->bookable->fuel_level_at ? ' ('.$record->bookable->fuel_level_at->diffForHumans().')' : '')
+                            : null)
+                        ->columnSpanFull()
                         ->visible($record->isCar()),
                     Forms\Components\Select::make('driver_id')
                         ->label('Driver')
@@ -83,7 +89,14 @@ class BookingActions
                         ->visible($record->drive_mode === DriveMode::WithDriver)
                         ->columnSpanFull(),
                 ]),
+                // 6 Nov (S4 / C.2): money only when "Take a payment now" is on (on by default when a deposit is due).
+                Forms\Components\Toggle::make('take_payment')
+                    ->label('Take a payment or deposit now')
+                    ->helperText('Balance due '.self::aed($record->balance).' · deposit booked '.self::aed($record->security_deposit))
+                    ->dehydrated(false)
+                    ->live(),
                 Forms\Components\Fieldset::make('Money received now')
+                    ->visible(fn (Forms\Get $get): bool => (bool) $get('take_payment'))
                     ->columns(2)
                     ->schema([
                         Forms\Components\TextInput::make('deposit_received')
@@ -107,7 +120,7 @@ class BookingActions
                     ->image()->multiple()->maxFiles(12)->maxSize(8192)
                     ->panelLayout('grid'),
                 Forms\Components\Textarea::make('delivery_notes')
-                    ->label('Handover notes')
+                    ->label('Handover notes (optional)')
                     ->placeholder('Existing scratches, items handed over, etc.')
                     ->rows(2),
             ])
@@ -154,14 +167,22 @@ class BookingActions
                 return [
                     'returned_at' => isset($check['at']) ? \Illuminate\Support\Carbon::parse($check['at']) : now(),
                     'return_km' => $check['km'] ?? null,
-                    'return_fuel' => $check['fuel'] ?? $record->delivery_fuel ?? 'full',
+                    'return_fuel' => (string) ($fuelBack = \App\Support\Fuel\Fuel::eighth($check['fuel'] ?? null) ?? \App\Support\Fuel\Fuel::bookingLevel($record, 'delivery') ?? 8),
                     'return_condition' => $condition,
                     'return_notes' => isset($check['notes']) ? 'Driver: '.$check['notes'] : null,
                     'after_return' => match ($condition) { 'damaged' => 'maintenance', 'minor' => 'inspection', default => 'ready' },
                     'charges' => array_filter([
                         'late' => \App\Support\Rules::lateCharge($record, isset($check['at']) ? \Illuminate\Support\Carbon::parse($check['at']) : now()),
                         'damage' => \App\Models\DamageReport::approvedUnapplied($record->id) ?: null, // approved by a reviewer
+                        'fuel' => $record->isCar() ? \App\Support\Fuel\Fuel::proposeCharge($record, $fuelBack)['amount'] : null, // 5 Nov (S5)
                     ]),
+                    // 6 Nov (S4 / C.2): only the charges the CRM filled in are shown; the rest are one tap away.
+                    'shown_charges' => array_keys(array_filter([
+                        'late' => \App\Support\Rules::lateCharge($record, isset($check['at']) ? \Illuminate\Support\Carbon::parse($check['at']) : now()),
+                        'damage' => \App\Models\DamageReport::approvedUnapplied($record->id) ?: null,
+                        'fuel' => $record->isCar() ? \App\Support\Fuel\Fuel::proposeCharge($record, $fuelBack)['amount'] : null,
+                        'extra_km' => isset($check['km']) ? (BookingFlow::extraKmCharge($record, (int) $check['km']) ?: null) : null,
+                    ])) ?: ['fuel'],
                     'deduct_from_deposit' => false,
                     'refund_deposit' => false,
                     'payment_method' => PaymentMethod::Card->value,
@@ -188,11 +209,17 @@ class BookingActions
                             ? number_format((int) $get('return_km') - $record->delivery_km).' km driven'.($record->bookable instanceof Car && $record->bookable->daily_km_limit ? ' · limit '.number_format($record->bookable->daily_km_limit).' km/day' : '')
                             : 'Handed over at '.number_format((int) $record->delivery_km).' km')
                         ->visible($record->isCar()),
-                    Forms\Components\Select::make('return_fuel')
+                    Forms\Components\ToggleButtons::make('return_fuel')
                         ->label('Fuel level')
-                        ->options(Booking::FUEL_LEVELS)
-                        ->native(false)
-                        ->helperText('Handed over: '.(Booking::FUEL_LEVELS[$record->delivery_fuel] ?? '-'))
+                        ->options(\App\Support\Fuel\Fuel::gaugeOptions('Empty', 'Full'))
+                        ->inline()
+                        ->extraAttributes(['class' => 'rp-fuel-gauge'])
+                        ->live()
+                        // 5 Nov (S5): the fuel charge follows the level picked.
+                        ->afterStateUpdated(fn (Set $set, $state) => $set('charges.fuel', \App\Support\Fuel\Fuel::proposeCharge($record, \App\Support\Fuel\Fuel::eighth($state))['amount']))
+                        ->helperText(fn (Get $get): HtmlString => new HtmlString('Handed over: <b>'.e(\App\Support\Fuel\Fuel::label(\App\Support\Fuel\Fuel::bookingLevel($record, 'delivery'))).'</b>'
+                            .(($why = \App\Support\Fuel\Fuel::proposeCharge($record, \App\Support\Fuel\Fuel::eighth($get('return_fuel')))['why']) ? ' · '.e($why) : '')))
+                        ->columnSpanFull()
                         ->visible($record->isCar()),
                     Forms\Components\ToggleButtons::make('return_condition')
                         ->label('Condition')
@@ -213,7 +240,11 @@ class BookingActions
                     ->schema([Forms\Components\Placeholder::make('charges_note')
                         ->hiddenLabel()
                         ->columnSpanFull()
-                        ->content('Extra km and late return are filled in as estimates from your rules. Check or change them: they are only charged when you complete the return.'),
+                        ->content('Filled in from your rules. Check or change them: they are only charged when you complete the return.'),
+                        Forms\Components\Hidden::make('shown_charges')->dehydrated(false),
+                        Forms\Components\Toggle::make('more_charges')
+                            ->label('Add another charge (extra km, cleaning, Salik, other)')
+                            ->dehydrated(false)->live()->columnSpanFull(),
                         ...collect(\App\Support\Options::charges())->map(fn ($meta, $key) => Forms\Components\TextInput::make("charges.{$key}")
                         ->label($meta[0])
                         ->numeric()->minValue(0)->prefix('AED')
@@ -221,8 +252,18 @@ class BookingActions
                         // Damage is only charged once a reviewer approved it (Damage reports).
                         ->readOnly($key === 'damage' && ! Access::allows('review-damage'))
                         ->helperText($key === 'damage' ? (($open = $record->damageReports()->where('status', 'open')->count()) ? $open.' report(s) still to review.' : (Access::allows('review-damage') ? null : 'Approved charges only.')) : null)
-                        ->visible($record->isCar() || ! $meta[2])
-                    )->values()->all()]),
+                        ->visible(fn (Get $get): bool => ($record->isCar() || ! $meta[2])
+                            && ($get('more_charges') || in_array($key, (array) $get('shown_charges'), true) || filled($get("charges.{$key}"))))
+                    )->values()->all(),
+                        // 5 Nov (S5): charging less fuel than worked out needs a reason (shown on the booking).
+                        Forms\Components\TextInput::make('fuel_charge_note')
+                            ->label('Why is the fuel charge lower?')
+                            ->placeholder('e.g. customer refuelled, gauge reading error, goodwill')
+                            ->maxLength(255)
+                            ->columnSpanFull()
+                            ->required(fn (Get $get): bool => self::fuelBelowProposal($record, $get))
+                            ->visible(fn (Get $get): bool => self::fuelBelowProposal($record, $get)),
+                    ]),
 
                 Forms\Components\Section::make('Payment check')
                     ->icon('heroicon-o-banknotes')
@@ -254,18 +295,25 @@ class BookingActions
 
                                 return new HtmlString($html.'</table><div style="margin-top:.4rem">'.$status.'</div>');
                             }),
+                        Forms\Components\Toggle::make('take_payment')
+                            ->label('The customer is paying now')
+                            ->dehydrated(false)->live()->columnSpanFull(),
                         Forms\Components\TextInput::make('payment_amount')
                             ->label('Payment received now')
+                            ->visible(fn (Get $get): bool => (bool) $get('take_payment'))
                             ->numeric()->minValue(0)->prefix('AED'),
                         Forms\Components\Select::make('payment_method')
                             ->label('Paid by')
+                            ->visible(fn (Get $get): bool => (bool) $get('take_payment'))
                             ->options(PaymentMethod::class)->native(false),
                         Forms\Components\Toggle::make('deduct_from_deposit')
                             ->label('Take what is still owed from the deposit')
                             ->visible($record->depositHeld() > 0 && Access::allows('manage-finance')),
                         Forms\Components\Toggle::make('refund_deposit')
                             ->label('Refund the rest of the deposit now')
-                            ->helperText('Leave off to hold it for Salik / fines and refund later.')
+                            ->helperText(fn (): string => ($days = \App\Support\Deposits\Settlement::holdDays())
+                                ? 'Business settings hold deposits '.$days.' days after the return for fines and tolls. Leave off and settle it from the booking later.'
+                                : 'Leave off to hold it for Salik / fines and settle it later (Settle deposit on the booking).')
                             ->live()
                             ->visible($record->depositHeld() > 0 && Access::allows('manage-finance')),
                         Forms\Components\Placeholder::make('deposit_note')
@@ -349,7 +397,7 @@ class BookingActions
                     'Driver' => $job?->driver?->name,
                     'Checked at' => isset($c['at']) ? \Illuminate\Support\Carbon::parse($c['at'])->format('d M H:i') : null,
                     'Odometer' => isset($c['km']) ? number_format((int) $c['km']).' km' : null,
-                    'Fuel' => isset($c['fuel']) ? (Booking::FUEL_LEVELS[$c['fuel']] ?? $c['fuel']) : null,
+                    'Fuel' => isset($c['fuel']) ? \App\Support\Fuel\Fuel::label($c['fuel']) : null,
                     'Photos' => (int) ($c['photos'] ?? 0),
                     'Notes' => $c['notes_text'] ?? null,
                 ], fn ($v) => $v !== null && $v !== '');
@@ -387,6 +435,17 @@ class BookingActions
                 }
                 Notification::make()->title('Handover approved. The driver was told.')->success()->send();
             });
+    }
+
+    /** 5 Nov (S5): the fuel charge typed is lower than what the CRM worked out. */
+    protected static function fuelBelowProposal(Booking $record, Get $get): bool
+    {
+        if (! $record->isCar()) {
+            return false;
+        }
+        $proposed = \App\Support\Fuel\Fuel::proposeCharge($record, \App\Support\Fuel\Fuel::eighth($get('return_fuel')))['amount'];
+
+        return $proposed !== null && (float) $get('charges.fuel') + 0.005 < $proposed;
     }
 
     /** A cost for this booking (fuel, parking, delivery…), for the booking's profit (28 Oct, 8.2). */
@@ -494,6 +553,74 @@ class BookingActions
             });
     }
 
+    /**
+     * 4 Nov (4.2): settle the deposit against what is still owed (return charges, fines, tolls,
+     * approved damage); refund the rest; ask for anything above the deposit. Finance only.
+     */
+    public static function settleDeposit(string $class)
+    {
+        return $class::make('settleDeposit')
+            ->label('Settle deposit')
+            ->authorize('manage-finance')
+            ->icon('heroicon-o-scale')
+            ->color('primary')
+            ->modalWidth('xl')
+            ->visible(fn (Booking $record): bool => \App\Support\Deposits\Settlement::canSettle($record))
+            ->modalHeading(fn (Booking $record): string => 'Settle the deposit · '.$record->reference)
+            ->modalSubmitActionLabel('Settle now')
+            ->form(function (Booking $record): array {
+                $p = \App\Support\Deposits\Settlement::preview($record);
+                $rows = collect($p['lines'])->map(fn ($l) => '<tr><td>'.e($l['label']).'</td><td style="text-align:right;white-space:nowrap">'.e(self::aed($l['amount'])).'</td></tr>')->implode('');
+                $sum = '<tr><td><b>Still owed</b></td><td style="text-align:right"><b>'.e(self::aed($p['owed'])).'</b></td></tr>'
+                    .'<tr><td>Deposit held</td><td style="text-align:right">'.e(self::aed($p['held'])).'</td></tr>'
+                    .'<tr><td>Deposit used for what is owed</td><td style="text-align:right">'.e(self::aed($p['apply'])).'</td></tr>'
+                    .'<tr><td><b>Refund to the customer</b></td><td style="text-align:right"><b>'.e(self::aed($p['refund'])).'</b></td></tr>'
+                    .($p['to_collect'] > 0 ? '<tr><td><b>Still to collect after the deposit</b></td><td style="text-align:right"><b>'.e(self::aed($p['to_collect'])).'</b></td></tr>' : '');
+
+                return array_values(array_filter([
+                    $p['early'] ? Forms\Components\Placeholder::make('early')->hiddenLabel()
+                        ->content(new HtmlString('<span style="color:rgb(var(--warning-600))">The hold period ends on '.e($record->deposit_refundable_on->format('d M Y')).'. Fines and tolls can still arrive. Settle early only if you are sure.</span>')) : null,
+                    Forms\Components\Placeholder::make('statement')->hiddenLabel()
+                        ->content(new HtmlString('<table class="rp-simple-table"><tbody>'.$rows.'</tbody><tfoot>'.$sum.'</tfoot></table>')),
+                    $p['refund'] > 0 ? Forms\Components\Select::make('refund_method')->label('Refund by')->options(PaymentMethod::class)->native(false)->required() : null,
+                    $record->preauths()->where('status', 'held')->exists() ? Forms\Components\TextInput::make('preauth_release_ref')->label('Card hold released (reference)')->maxLength(80) : null,
+                    $p['to_collect'] > 0 ? Forms\Components\Toggle::make('link')->label('Make a payment link for the rest')->default(true)
+                        ->helperText('Needs a payment gateway in Settings › Integrations.') : null,
+                    Forms\Components\Textarea::make('note')->label('Note (optional)')->rows(2)->maxLength(500),
+                ]));
+            })
+            ->action(function (Booking $record, array $data): void {
+                try {
+                    $s = \App\Support\Deposits\Settlement::settle($record, [
+                        'refund_method' => ($m = $data['refund_method'] ?? null) instanceof \BackedEnum ? $m->value : $m,
+                        'link' => (bool) ($data['link'] ?? false), 'note' => $data['note'] ?? null, 'preauth_release_ref' => $data['preauth_release_ref'] ?? null,
+                    ]);
+                } catch (\Illuminate\Validation\ValidationException $e) {
+                    Notification::make()->title('Not settled')->body(collect($e->errors())->flatten()->implode(' '))->danger()->send();
+
+                    return;
+                }
+                Notification::make()->title('Deposit settled')
+                    ->body('Used '.self::aed($s->applied).' · refunded '.self::aed($s->refunded).($s->to_collect > 0 ? ' · still to collect '.self::aed($s->to_collect) : ''))->success()->send();
+            });
+    }
+
+    /** Statuses that can still be cancelled. */
+    public const CANCELLABLE = [BookingStatus::Inquiry, BookingStatus::Quotation, BookingStatus::PendingPayment, BookingStatus::Confirmed];
+
+    /**
+     * 5 Nov (S3, B.5 / H-36): Admin cancels any booking. An agent cancels an unpaid booking
+     * themselves (Admin is always told); a booking with money received waits for Admin.
+     */
+    public static function canCancelNow(Booking $b): bool
+    {
+        if (Access::isAdmin()) {
+            return true;
+        }
+
+        return (float) $b->paid_amount <= 0 && (bool) \App\Models\Setting::read('agents_can_cancel_unpaid', true);
+    }
+
     public static function cancel(string $class)
     {
         return $class::make('cancelBooking') // not 'cancel': that name is taken by the form's Cancel button
@@ -502,17 +629,18 @@ class BookingActions
             ->icon('heroicon-o-x-circle')
             ->color('danger')
             ->modalWidth('lg')
-            ->visible(fn (Booking $record): bool => in_array($record->status, [BookingStatus::Inquiry, BookingStatus::Quotation, BookingStatus::PendingPayment, BookingStatus::Confirmed], true))
+            ->visible(fn (Booking $record): bool => in_array($record->status, self::CANCELLABLE, true) && ! $record->trashed() && self::canCancelNow($record))
             ->form([
                 Forms\Components\ToggleButtons::make('status')
                     ->hiddenLabel()
                     ->options([BookingStatus::Cancelled->value => 'Cancelled', BookingStatus::NoShow->value => 'No-show'])
                     ->colors([BookingStatus::Cancelled->value => 'danger', BookingStatus::NoShow->value => 'danger'])
-                    ->default(BookingStatus::Cancelled->value)
+                    ->default(fn (Booking $record) => $record->cancel_requested_at ? BookingStatus::Cancelled->value : BookingStatus::Cancelled->value)
                     ->inline()
                     ->required(),
                 Forms\Components\TextInput::make('cancel_reason')
                     ->label('Reason')
+                    ->default(fn (Booking $record) => $record->cancel_request_reason)
                     ->datalist(\App\Support\Options::list('cancel_reasons'))
                     ->required(),
             ])
@@ -520,9 +648,61 @@ class BookingActions
                 ? self::aed($record->paid_amount).' was already received. Record any refund in Accounts.'
                 : 'The car / yacht will be free for these dates again.')
             ->action(function (Booking $record, array $data): void {
-                $record->update(['status' => $data['status'], 'cancel_reason' => $data['cancel_reason']]);
+                abort_unless(self::canCancelNow($record), 403);
+                $requestedBy = $record->cancel_requested_by ? \App\Models\User::find($record->cancel_requested_by) : null;
+                $record->update(['status' => $data['status'], 'cancel_reason' => $data['cancel_reason'],
+                    'cancel_requested_at' => null, 'cancel_requested_by' => null, 'cancel_request_reason' => null]);
+
+                $url = \App\Filament\Resources\BookingResource::getUrl('edit', ['record' => $record]);
+                if (! Access::isAdmin()) {
+                    \App\Support\Drivers\Notify::staff('assign-leads', 'Booking '.$record->reference.' cancelled by '.auth()->user()->name,
+                        'No money received. Reason: '.$data['cancel_reason'], $url, null, 'warning', 'cancel_requested', 'cancelled:'.$record->id);
+                } elseif ($requestedBy) {
+                    \App\Support\Drivers\Notify::person($requestedBy, 'Cancellation approved: '.$record->reference, $data['cancel_reason'], $url, 'success', 'cancel_requested', 'cancel-decided:'.$record->id.':'.now()->timestamp);
+                }
 
                 Notification::make()->title('Booking '.strtolower(BookingStatus::from($data['status'])->getLabel()))->success()->send();
+            });
+    }
+
+    /** 5 Nov (S3): an agent asks Admin to cancel a booking that already has money received. */
+    public static function requestCancel(string $class)
+    {
+        return $class::make('requestCancel')
+            ->label('Ask Admin to cancel')
+            ->authorize('manage-bookings')
+            ->icon('heroicon-o-x-circle')
+            ->color('danger')
+            ->visible(fn (Booking $record): bool => in_array($record->status, self::CANCELLABLE, true) && ! $record->trashed()
+                && ! self::canCancelNow($record) && ! $record->cancel_requested_at)
+            ->modalDescription(fn (Booking $record): string => self::aed($record->paid_amount).' was already received, so an Admin decides. You will be told the answer.')
+            ->form([Forms\Components\TextInput::make('reason')->label('Why cancel?')->datalist(\App\Support\Options::list('cancel_reasons'))->required()->maxLength(500)])
+            ->action(function (Booking $record, array $data): void {
+                $record->forceFill(['cancel_requested_at' => now(), 'cancel_requested_by' => auth()->id(), 'cancel_request_reason' => $data['reason']])->save();
+                rescue(fn () => \App\Models\AuditLog::note($record, 'cancel_request', 'Cancellation asked: '.$data['reason']), report: false);
+                \App\Support\Drivers\Notify::staff('assign-leads', 'Cancellation to approve: '.$record->reference,
+                    auth()->user()->name.': '.$data['reason'].' · '.self::aed($record->paid_amount).' received', \App\Filament\Resources\BookingResource::getUrl('edit', ['record' => $record]),
+                    null, 'danger', 'cancel_requested', 'cancel-request:'.$record->id.':'.now()->timestamp,
+                    [['approveCancel', 'Approve', 'rp-approve-cancel', ['booking' => $record->id], 'danger']]);
+                Notification::make()->title('Sent to Admin')->body('You will be told when they decide.')->success()->send();
+            });
+    }
+
+    /** 5 Nov (S3): Admin turns a cancellation request down. */
+    public static function declineCancel(string $class)
+    {
+        return $class::make('declineCancel')
+            ->label('Keep the booking (turn cancellation down)')
+            ->icon('heroicon-o-arrow-uturn-left')
+            ->color('gray')
+            ->visible(fn (Booking $record): bool => (bool) $record->cancel_requested_at && Access::isAdmin())
+            ->form([Forms\Components\TextInput::make('reason')->label('Why?')->required()->maxLength(300)])
+            ->action(function (Booking $record, array $data): void {
+                $by = $record->cancel_requested_by ? \App\Models\User::find($record->cancel_requested_by) : null;
+                $record->forceFill(['cancel_requested_at' => null, 'cancel_requested_by' => null, 'cancel_request_reason' => null])->save();
+                rescue(fn () => \App\Models\AuditLog::note($record, 'cancel_request', 'Cancellation turned down: '.$data['reason']), report: false);
+                \App\Support\Drivers\Notify::person($by, 'Cancellation turned down: '.$record->reference, $data['reason'], \App\Filament\Resources\BookingResource::getUrl('edit', ['record' => $record]), 'warning', 'cancel_requested', 'cancel-decided:'.$record->id.':'.now()->timestamp);
+                Notification::make()->title('The booking stays')->success()->send();
             });
     }
 
@@ -581,11 +761,13 @@ class BookingActions
             ->sortBy(fn (User $u) => in_array($u->id, $usual, true) ? 0 : 1, SORT_REGULAR)
             ->mapWithKeys(function (User $u) use ($usual, $start, $end, $driveMode, $ignoreBookingId) {
                 $clash = $start ? Availability::personConflict($u->id, $start, $end ?: $start, $ignoreBookingId, $driveMode ?: DriveMode::SelfDrive->value) : null;
+                $off = $start && ! $clash ? Availability::offTime($u->id, $start, $end ?: $start, $driveMode ?: DriveMode::SelfDrive->value) : null;
 
                 return [$u->id => $u->name
                     .(in_array($u->id, $usual, true) ? ' ★ usual driver' : '')
                     .($u->phone ? ' · '.$u->phone : '')
-                    .($clash ? self::BUSY.$clash->reference.' '.$clash->start_at->format('d M H:i') : '')];
+                    .($clash ? self::BUSY.$clash->reference.' '.$clash->start_at->format('d M H:i') : '')
+                    .($off ? ' · not available ('.($off->reason ?: 'off').')' : '')];
             })
             ->all();
     }
@@ -597,8 +779,9 @@ class BookingActions
             ->filter(fn (User $u) => $u->driverProfile && ($u->driverProfile->does($role) || ($role === 'crew' && $u->driverProfile->does('captain'))))
             ->mapWithKeys(function (User $u) use ($start, $end, $ignoreBookingId) {
                 $clash = $start ? Availability::personConflict($u->id, $start, $end ?: $start, $ignoreBookingId, DriveMode::WithDriver) : null;
+                $off = $start && ! $clash ? Availability::offTime($u->id, $start, $end ?: $start, DriveMode::WithDriver) : null;
 
-                return [$u->id => $u->name.($u->phone ? ' · '.$u->phone : '').($clash ? self::BUSY.$clash->reference.' '.$clash->start_at->format('d M H:i') : '')];
+                return [$u->id => $u->name.($u->phone ? ' · '.$u->phone : '').($clash ? self::BUSY.$clash->reference.' '.$clash->start_at->format('d M H:i') : '').($off ? ' · not available ('.($off->reason ?: 'off').')' : '')];
             })
             ->all();
     }

@@ -50,26 +50,26 @@
     <div class="card">
         <h2>Price</h2>
         <table>
-            <tr>
-                <td>Rental{{ $q->quantity && $q->rate !== null ? ' ('.rtrim(rtrim(number_format((float) $q->quantity, 2), '0'), '.').' × '.$aed($q->rate).' / '.$unit.')' : '' }}</td>
-                <td class="r">{{ $aed($q->base_amount) }}</td>
-            </tr>
-            @foreach ($q->extras ?? [] as $line)
-                @if (! empty($line['waived']))
-                    <tr><td>{{ $line['label'] ?? 'Extra' }} <span class="pill ok">Waived</span></td><td class="r"><s class="muted">{{ $aed($line['standard'] ?? 0) }}</s> {{ $aed(0) }}</td></tr>
-                @else
-                    <tr><td>{{ $line['label'] ?? 'Extra' }}@if (! empty($line['qty']) && (float) $line['qty'] != 1) <span class="muted">({{ \App\Support\Pricing\PriceEngine::qtyText((float) $line['qty']) }} × {{ $aed($line['unit_price'] ?? 0) }})</span>@endif</td><td class="r">{{ $aed($line['amount'] ?? 0) }}</td></tr>
-                @endif
+            @php($priced = \App\Support\Pricing\PriceLines::for($q))
+            @foreach ($priced['lines'] as $line)
+                <tr>
+                    <td>{{ $line['label'] }}@if ($line['waived']) <span class="pill ok">Waived</span>@elseif ($line['percent']) <span class="pill ok">{{ \App\Support\Pricing\Discounts::percentText($line['percent']) }} off</span>@endif
+                        @if ($line['detail'])<br><span class="muted">{{ $line['detail'] }}</span>@endif</td>
+                    <td class="r">@if ($line['off'] > 0)<s class="muted">{{ $aed($line['list']) }}</s> @endif{{ $aed($line['net']) }}</td>
+                </tr>
             @endforeach
-            @if ((float) $q->discount > 0)
-                <tr><td>Discount</td><td class="r">− {{ $aed($q->discount) }}</td></tr>
+            @if ($priced['overall'] > 0)
+                <tr><td>Discount{{ $priced['overall_percent'] ? ' ('.\App\Support\Pricing\Discounts::percentText($priced['overall_percent']).')' : '' }}</td><td class="r">− {{ $aed($priced['overall']) }}</td></tr>
             @endif
             @if ((float) $q->tax_amount > 0)
                 <tr><td>VAT {{ rtrim(rtrim(number_format((float) $q->tax_rate, 2), '0'), '.') }}%{{ $q->tax_inclusive ? ' (included)' : '' }}</td><td class="r">{{ $aed($q->tax_amount) }}</td></tr>
             @endif
             <tr><td><strong>Total</strong></td><td class="r"><strong style="font-size:18px">{{ $aed($q->total) }}</strong></td></tr>
             @if ((float) $q->advance_required > 0)
-                <tr><td class="muted">Advance to confirm</td><td class="r">{{ $aed($q->advance_required) }}</td></tr>
+                <tr><td class="muted">Advance to confirm{{ $q->advance_percent !== null ? ' ('.\App\Support\Pricing\Discounts::percentText((float) $q->advance_percent).')' : '' }}</td><td class="r">{{ $aed($q->advance_required) }}</td></tr>
+                @if ((float) $q->total - (float) $q->advance_required > 0.005)
+                    <tr><td class="muted">Balance{{ ($due = \App\Support\Pricing\Advance::balanceDue($q)) ? ', due '.$due->format('d M Y') : '' }}</td><td class="r">{{ $aed((float) $q->total - (float) $q->advance_required) }}</td></tr>
+                @endif
             @endif
             @if ((float) $q->security_deposit > 0)
                 <tr><td class="muted">Refundable security deposit</td><td class="r">{{ $aed($q->security_deposit) }}</td></tr>

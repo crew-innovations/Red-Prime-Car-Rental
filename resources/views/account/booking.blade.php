@@ -27,17 +27,24 @@
                     <tr><td>Total</td><td class="r">AED {{ number_format($b->amountDue(), 2) }}</td></tr>
                     @if ((float) $b->tax_amount > 0)<tr><td class="rp-acc-muted">Includes VAT</td><td class="r rp-acc-muted">AED {{ number_format((float) $b->tax_amount, 2) }}</td></tr>@endif
                     <tr><td>Paid</td><td class="r">AED {{ number_format((float) $b->paid_amount, 2) }}</td></tr>
-                    <tr><td><strong>Balance due</strong></td><td class="r"><strong>AED {{ number_format((float) $b->balance, 2) }}</strong></td></tr>
+                    @if ((float) $b->advance_required > 0)
+                        <tr><td>Advance to confirm{{ $b->advance_percent !== null ? ' ('.\App\Support\Pricing\Discounts::percentText((float) $b->advance_percent).')' : '' }}</td>
+                            <td class="r">AED {{ number_format((float) $b->advance_required, 2) }}@if ($b->advance_reached_at)<br><span class="rp-acc-muted">Paid</span>@endif</td></tr>
+                    @endif
+                    <tr><td><strong>Balance due</strong>@if ((float) $b->balance > 0 && ($due = \App\Support\Pricing\Advance::balanceDue($b)))<br><span class="rp-acc-muted">by {{ $due->format('d M Y') }}</span>@endif</td><td class="r"><strong>AED {{ number_format((float) $b->balance, 2) }}</strong></td></tr>
                     @if ((float) $b->security_deposit > 0)<tr><td class="rp-acc-muted">Refundable security deposit</td><td class="r rp-acc-muted">AED {{ number_format((float) $b->security_deposit, 2) }}</td></tr>@endif
                 </table>
                 @php($online = $this->onlinePayment())
-                @if ($online['open']->isNotEmpty() || $online['balance'] > 0)
+                @if ($online['open']->isNotEmpty() || $online['balance'] > 0 || ($online['advance'] ?? 0) > 0)
                     <div class="rp-acc-links" style="margin-top:1rem">
                         @foreach ($online['open'] as $link)
                             <a class="rp-acc-link" href="{{ $link->url() }}">Pay AED {{ number_format((float) $link->amount, 2) }} online · {{ \App\Models\PaymentRequest::PURPOSES[$link->purpose] ?? 'Payment' }}</a>
                         @endforeach
+                        @if (($online['advance'] ?? 0) > 0)
+                            <x-filament::button wire:click="payOnline('advance')" icon="heroicon-o-credit-card">Pay the advance (AED {{ number_format($online['advance'], 2) }})</x-filament::button>
+                        @endif
                         @if ($online['balance'] > 0)
-                            <x-filament::button wire:click="payOnline" icon="heroicon-o-credit-card">Pay the balance online (AED {{ number_format($online['balance'], 2) }})</x-filament::button>
+                            <x-filament::button wire:click="payOnline('balance')" :color="($online['advance'] ?? 0) > 0 ? 'gray' : 'primary'" icon="heroicon-o-credit-card">Pay the balance (AED {{ number_format($online['balance'], 2) }})</x-filament::button>
                         @endif
                     </div>
                 @endif
@@ -54,6 +61,38 @@
                     </table>
                 @endif
             </div>
+        @endif
+
+        {{-- 4 Nov (Phase 4): fines, tolls and fees added after the booking, and the deposit settlement. --}}
+        @php($chargeLines = $b->chargeLines()->whereNull('voided_at')->orderBy('id')->get())
+        @if ($chargeLines->isNotEmpty())
+            <div class="rp-acc-card">
+                <div class="rp-acc-label">Fines, tolls and other charges</div>
+                <table class="rp-acc-table">
+                    @foreach ($chargeLines as $l)
+                        <tr><td>{{ $l->label }}@if ($l->isPassThrough())<br><span class="rp-acc-muted">Paid to the authority on your behalf</span>@endif</td><td class="r">AED {{ number_format((float) $l->amount, 2) }}</td></tr>
+                        @if (in_array($l->type, ['salik', 'darb', 'parking'], true))
+                            @foreach (\App\Models\TollTrip::where('booking_charge_id', $l->id)->orderBy('passed_at')->get() as $trip)
+                                <tr><td class="rp-acc-muted" style="padding-inline-start:1rem">{{ $trip->passed_at->format('d M H:i') }}{{ $trip->gate ? ' · '.$trip->gate : '' }}</td><td class="r rp-acc-muted">{{ number_format((float) $trip->amount, 2) }}</td></tr>
+                            @endforeach
+                        @endif
+                    @endforeach
+                </table>
+            </div>
+        @endif
+        @foreach ($b->depositSettlements()->latest('id')->get() as $s)
+            <div class="rp-acc-card">
+                <div class="rp-acc-label">Deposit settled · {{ $s->created_at->format('d M Y') }}</div>
+                <table class="rp-acc-table">
+                    <tr><td>Deposit held</td><td class="r">AED {{ number_format((float) $s->held, 2) }}</td></tr>
+                    <tr><td>Used for what was still owed</td><td class="r">AED {{ number_format((float) $s->applied, 2) }}</td></tr>
+                    <tr><td><strong>Refunded to you</strong></td><td class="r"><strong>AED {{ number_format((float) $s->refunded, 2) }}</strong></td></tr>
+                    @if ((float) $s->to_collect > 0)<tr><td>Still to pay</td><td class="r">AED {{ number_format((float) $s->to_collect, 2) }}</td></tr>@endif
+                </table>
+            </div>
+        @endforeach
+        @if ($b->deposit_refundable_on && $b->deposit_refundable_on->isFuture() && $b->depositHeld() > 0)
+            <div class="rp-acc-card"><div class="rp-acc-muted">Your deposit is refundable on {{ $b->deposit_refundable_on->format('d M Y') }}, after any traffic fines and tolls have arrived.</div></div>
         @endif
 
         <div class="rp-acc-card">

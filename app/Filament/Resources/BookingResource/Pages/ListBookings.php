@@ -12,6 +12,8 @@ use Illuminate\Database\Eloquent\Builder;
 
 class ListBookings extends ListRecords
 {
+    use \App\Filament\Concerns\SimpleTabs; // 6 Nov (S4): main tabs + "More views"
+
     protected static string $resource = BookingResource::class;
 
     protected function getHeaderActions(): array
@@ -29,7 +31,7 @@ class ListBookings extends ListRecords
 
     public function getDefaultActiveTab(): string|int|null
     {
-        return 'upcoming';
+        return 'today';
     }
 
     public function getTabs(): array
@@ -40,11 +42,11 @@ class ListBookings extends ListRecords
 
         $own = fn () => \App\Support\Access::scopeOwn(Booking::query(), 'booking');
 
-        return [
+        return $this->simpleTabs([
             'upcoming' => Tab::make('Upcoming')
                 ->icon('heroicon-o-calendar')
                 ->modifyQueryUsing(fn (Builder $query) => $query->whereIn('status', [BookingStatus::Confirmed, BookingStatus::PendingPayment])->where('end_at', '>=', now()->startOfDay())),
-            'today' => Tab::make('Out / back today')
+            'today' => Tab::make('Today')
                 ->icon('heroicon-o-clock')
                 ->badge(fn () => $today($own())->count() ?: null)
                 ->badgeColor('warning')
@@ -71,9 +73,12 @@ class ListBookings extends ListRecords
                 ->modifyQueryUsing(fn (Builder $query) => $query->where('balance', '>', 0)->whereIn('status', BookingStatus::billable())),
             'completed' => Tab::make('Completed')
                 ->modifyQueryUsing(fn (Builder $query) => $query->where('status', BookingStatus::Completed)->reorder('end_at', 'desc')),
+            // 4 Nov (Phase 4): completed with a deposit still held and the hold period over.
+            ...(\App\Support\Access::allows('manage-finance') ? ['deposits' => Tab::make('Deposits to settle')
+                ->modifyQueryUsing(fn (Builder $query) => $query->whereIn('bookings.id', \App\Support\Deposits\Settlement::dueQuery()->select('bookings.id')))] : []),
             'cancelled' => Tab::make('Cancelled')
                 ->modifyQueryUsing(fn (Builder $query) => $query->whereIn('status', [BookingStatus::Cancelled, BookingStatus::NoShow])),
             'all' => Tab::make('All'),
-        ];
+        ], ['today', 'upcoming', 'out', 'waiting', 'all'], ['late']);
     }
 }

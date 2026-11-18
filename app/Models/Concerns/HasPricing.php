@@ -34,7 +34,8 @@ trait HasPricing
                     ? \App\Filament\Resources\BookingResource::getUrl('edit', ['record' => $record])
                     : \App\Filament\Resources\QuotationResource::getUrl('edit', ['record' => $record]);
                 rescue(fn () => \App\Support\Drivers\Notify::staff('approve-prices', 'Price to approve: '.($record->number ?? $record->reference),
-                    'AED '.number_format((float) $record->total, 2).' (price list AED '.number_format((float) $record->standard_amount, 2).'). Reason: '.$record->adjustment_reason, $url, null, 'warning'), report: false);
+                    'AED '.number_format((float) $record->total, 2).' (price list AED '.number_format((float) $record->standard_amount, 2).'). Reason: '.$record->adjustment_reason, $url, null, 'warning', event: 'price_approval',
+                    actions: [['approvePrice', 'Approve', 'rp-approve-price', ['type' => $record->getMorphClass(), 'id' => $record->getKey()], 'success']]), report: false);
             }
         });
     }
@@ -49,7 +50,7 @@ trait HasPricing
 
     public static function pricingFields(): array
     {
-        return ['base_amount', 'extras', 'discount', 'adjustment_reason'];
+        return ['base_amount', 'extras', 'discount', 'adjustment_reason', 'base_discount_percent', 'discount_mode', 'discount_percent'];
     }
 
     /** Runs the engine for the saved fields. */
@@ -100,7 +101,10 @@ trait HasPricing
             $this->extras_amount = $this->extras !== null ? round(collect((array) $this->extras)->sum(fn ($l) => (float) ($l['amount'] ?? 0)), 2) : ($this->extras_amount ?? 0);
             $this->standard_amount = null;
             $this->price_breakdown = null;
+            $this->base_discount_percent = null; // no price list to take a % off
+            $this->applyOverallDiscount();
             $this->guardAdjustment(null);
+            $this->recordListDiscount();
 
             return;
         }
@@ -120,6 +124,12 @@ trait HasPricing
         if (! $baseChanged) {
             $this->base_amount = $result['base_amount'];
         }
+        // % off the rental line (4 Nov): follows the price list when the dates or car change.
+        $basePercent = $this->base_discount_percent !== null && $this->base_discount_percent !== '' ? (float) $this->base_discount_percent : null;
+        $this->base_discount_percent = $basePercent ?: null;
+        if ($basePercent) {
+            $this->base_amount = \App\Support\Pricing\Discounts::apply((float) $result['base_amount'], $basePercent);
+        }
         $this->rate_type = $result['rate_type'];
         $this->quantity = $result['quantity'];
         $this->rate = $result['rate'];
@@ -135,10 +145,14 @@ trait HasPricing
             $prevStandard = isset($was['standard']) ? (float) $was['standard'] : null;
             $typed = isset($was['amount']) ? (float) $was['amount'] : $line['standard'];
             $changed = ! $waived && $prevStandard !== null && abs($typed - $prevStandard) > 0.005;
+            // % off this line (4 Nov): taken off the current price-list amount.
+            $percent = ! $waived && isset($was['discount_percent']) && $was['discount_percent'] !== '' && (float) $was['discount_percent'] > 0
+                ? min(100.0, (float) $was['discount_percent']) : null;
 
             return array_merge($line, [
                 'waived' => $waived,
-                'amount' => $waived ? 0.0 : ($changed ? round($typed, 2) : $line['standard']),
+                'discount_percent' => $percent,
+                'amount' => $waived ? 0.0 : ($percent ? \App\Support\Pricing\Discounts::apply((float) $line['standard'], $percent) : ($changed ? round($typed, 2) : $line['standard'])),
             ]);
         });
         $manual = collect((array) ($this->extras ?? []))->filter(fn ($l) => blank($l['key'] ?? null))
@@ -149,7 +163,49 @@ trait HasPricing
         $this->standard_amount = round($result['base_amount'] + $lines->sum('standard') + $manual->sum('amount'), 2);
         $this->price_breakdown = $result;
 
+        $this->applyOverallDiscount();
         $this->guardAdjustment($result);
+        $this->recordListDiscount();
+    }
+
+    /** Overall discount as a % of rental + extras (before VAT), worked out on the server. */
+    protected function applyOverallDiscount(): void
+    {
+        $mode = $this->discount_mode === 'percent' ? 'percent' : ($this->discount_mode ? 'amount' : null);
+        $this->discount_mode = $mode;
+        if ($mode !== 'percent') {
+            $this->discount_percent = null;
+
+            return;
+        }
+        $p = min(100.0, max(0.0, (float) $this->discount_percent));
+        $this->discount_percent = $p ?: null;
+        $gross = (float) $this->base_amount + (float) collect((array) ($this->extras ?? []))->sum(fn ($l) => (float) ($l['amount'] ?? 0));
+        $this->discount = round($gross * $p / 100, 2);
+    }
+
+    /** What was taken off the price list, kept for the "Discounts given" report (4 Nov). */
+    protected function recordListDiscount(): void
+    {
+        if ($this->standard_amount === null || (float) $this->standard_amount <= 0) {
+            $off = (float) $this->discount;
+            $gross = (float) $this->base_amount + (float) collect((array) ($this->extras ?? []))->sum(fn ($l) => (float) ($l['amount'] ?? 0));
+            $this->list_discount_amount = $off > 0 ? round($off, 2) : null;
+            $this->list_discount_percent = $off > 0 && $gross > 0 ? round($off / $gross * 100, 2) : null;
+
+            return;
+        }
+        $off = round((float) $this->standard_amount - $this->netBeforeTax(), 2);
+        $this->list_discount_amount = $off > 0.005 ? $off : null;
+        $this->list_discount_percent = $off > 0.005 ? \App\Support\Pricing\Discounts::percentOff((float) $this->standard_amount, $this->netBeforeTax()) : null;
+    }
+
+    /** Rental + extras − discount, before VAT. */
+    public function netBeforeTax(): float
+    {
+        $extras = collect((array) ($this->extras ?? []))->sum(fn ($l) => (float) ($l['amount'] ?? 0));
+
+        return round((float) $this->base_amount + $extras - (float) $this->discount, 2);
     }
 
     /** Set to price a confirmed transfer with today's rate (explicit, "Change prices" permission). */
@@ -194,6 +250,7 @@ trait HasPricing
             if ($this->isDirty(['base_amount', 'extras', 'discount', 'standard_amount'])) {
                 $this->adjusted_by = null;
                 $this->price_approval = null;
+                $this->price_rejected_reason = null;
             }
 
             return;
@@ -217,22 +274,37 @@ trait HasPricing
         if ($user && ! Access::allows('adjust-prices')) {
             throw ValidationException::withMessages(['data.base_amount' => 'You can\'t change prices, give a discount or waive a fee. The price list gives AED '.number_format((float) $this->standard_amount, 2).'.']);
         }
+
+        $standard = (float) $this->standard_amount;
+        $off = $standard > 0 ? \App\Support\Pricing\Discounts::percentOff($standard, $net) : null;
+        $isDiscount = $standard > 0 ? $net < $standard - 0.005 : (float) $this->discount > 0;
+
+        // 4 Nov (10): a special rate and a discount on top of it don't stack unless Business settings allow it.
+        if ($isDiscount && ! empty($result['rule']) && ! \App\Support\Pricing\Discounts::stacksWithRules()) {
+            throw ValidationException::withMessages(['data.discount' => 'The special rate "'.($result['rule']['name'] ?? '').'" already applies, so no discount can be added on top (Business settings › VAT & quotations).']);
+        }
+
+        // A reason for every change, except a small discount (4 Nov: "a reason above a set %").
+        $reasonFrom = \App\Support\Pricing\Discounts::reasonFrom();
+        $needsReason = ! ($isDiscount && $off !== null && $reasonFrom !== null && $off <= $reasonFrom + 0.001);
         if (blank($this->adjustment_reason)) {
             if (! $user) {
                 // Imports, demo data and other saves without a signed-in person.
                 $this->adjustment_reason = 'Entered without a signed-in user (import or system).';
-            } else {
-                throw ValidationException::withMessages(['data.adjustment_reason' => 'Say why the price is different from the price list.']);
+            } elseif ($needsReason) {
+                throw ValidationException::withMessages(['data.adjustment_reason' => $isDiscount && $reasonFrom !== null
+                    ? 'Say why: discounts above '.\App\Support\Pricing\Discounts::percentText($reasonFrom).' need a reason.'
+                    : 'Say why the price is different from the price list.']);
             }
         }
-        $max = Setting::read('price_max_discount_percent');
+
+        // Limits: per role (4 Nov) or the single limit from before.
         $over = false;
-        if ($user && $max !== null && $max !== '' && (float) $this->standard_amount > 0 && ! Access::allows('manage-pricing')) {
-            $off = ((float) $this->standard_amount - $net) / (float) $this->standard_amount * 100;
-            if ($off > (float) $max + 0.001) {
-                // Optional (28 Oct-2): above the limit it waits for a manager instead of being refused.
-                if (! Setting::read('price_approval_required')) {
-                    throw ValidationException::withMessages(['data.discount' => 'The most you can take off is '.rtrim(rtrim(number_format((float) $max, 2), '0'), '.').'% of the price list. A manager can give more.']);
+        if ($user && $isDiscount && $off !== null) {
+            [$max, $waits] = \App\Support\Pricing\Discounts::limitFor($user);
+            if ($max !== null && $off > $max + 0.001) {
+                if (! $waits) {
+                    throw ValidationException::withMessages(['data.discount' => 'The most you can take off is '.\App\Support\Pricing\Discounts::percentText($max).' of the price list. A manager can give more.']);
                 }
                 $over = true;
             }
@@ -240,12 +312,53 @@ trait HasPricing
         $this->price_approval = $over ? 'pending' : null;
         $this->price_approved_by = null;
         $this->price_approved_at = null;
+        $this->price_rejected_reason = null;
         $this->adjusted_by = $user?->id ?? $this->adjusted_by;
     }
 
     public function priceWaiting(): bool
     {
         return $this->price_approval === 'pending';
+    }
+
+    /** Waiting for a manager, or turned down: it can't be sent or confirmed. */
+    public function priceBlocked(): bool
+    {
+        return in_array($this->price_approval, ['pending', 'rejected'], true);
+    }
+
+    /** The person who set the price (or owns the record), told about the manager's answer. */
+    public function priceOwner(): ?\App\Models\User
+    {
+        $id = $this->adjusted_by ?: ($this instanceof \App\Models\Booking ? $this->assigned_to : $this->created_by);
+
+        return $id ? \App\Models\User::find($id) : null;
+    }
+
+    protected function priceRecordUrl(): string
+    {
+        return $this instanceof \App\Models\Booking
+            ? \App\Filament\Resources\BookingResource::getUrl('edit', ['record' => $this])
+            : \App\Filament\Resources\QuotationResource::getUrl('edit', ['record' => $this]);
+    }
+
+    /** A manager turns the price down (4 Nov, 10): the agent changes it and it is checked again. */
+    public function rejectPrice(string $reason, ?\App\Models\User $by = null): void
+    {
+        $by ??= auth()->user();
+        if (! $this->priceWaiting()) {
+            return;
+        }
+        if (! $by || ! $by->can('approve-prices')) {
+            throw ValidationException::withMessages(['price' => 'Only a manager can turn this price down.']);
+        }
+        $this->forceFill(['price_approval' => 'rejected', 'price_approved_by' => $by->id, 'price_approved_at' => now(), 'price_rejected_reason' => mb_substr($reason, 0, 255)])->saveQuietly();
+        \App\Models\AuditLog::note($this, 'override', 'Price turned down by '.$by->name.': '.$reason);
+        $owner = $this->priceOwner();
+        if ($owner && $owner->id !== $by->id) {
+            rescue(fn () => \App\Support\Drivers\Notify::person($owner, 'Price not approved: '.($this->number ?? $this->reference),
+                $by->name.': '.$reason.'. Change the price and save it again.', $this->priceRecordUrl(), 'danger', event: 'price_approval'), report: false);
+        }
     }
 
     /** A manager OKs a price below the limit (28 Oct-2, optional). */
@@ -255,10 +368,15 @@ trait HasPricing
         if (! $this->priceWaiting()) {
             return;
         }
-        if (! $by || ! Access::allows('approve-prices')) {
+        if (! $by || ! $by->can('approve-prices')) {
             throw ValidationException::withMessages(['price' => 'Only a manager can approve this price.']);
         }
         $this->forceFill(['price_approval' => 'approved', 'price_approved_by' => $by->id, 'price_approved_at' => now()])->saveQuietly();
         \App\Models\AuditLog::note($this, 'override', 'Price approved by '.$by->name.': AED '.number_format((float) $this->total, 2).' (price list AED '.number_format((float) $this->standard_amount, 2).')');
+        $owner = $this->priceOwner();
+        if ($owner && $owner->id !== $by->id) {
+            rescue(fn () => \App\Support\Drivers\Notify::person($owner, 'Price approved: '.($this->number ?? $this->reference),
+                'AED '.number_format((float) $this->total, 2).' approved by '.$by->name.'.', $this->priceRecordUrl(), 'success', event: 'price_approval'), report: false);
+        }
     }
 }

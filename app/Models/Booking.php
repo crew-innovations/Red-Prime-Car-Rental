@@ -17,6 +17,7 @@ use Illuminate\Database\Eloquent\Relations\MorphTo;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 use App\Models\Concerns\Audited;
 use App\Models\Concerns\HasPricing;
@@ -54,12 +55,17 @@ class Booking extends Model implements HasMedia
     protected function casts(): array
     {
         return [
+            'cancel_requested_at' => 'datetime', // 5 Nov (S3)
+            'delivery_fuel_8' => 'integer',      // 5 Nov (S5)
+            'return_fuel_8' => 'integer',
+            'fuel_charge_proposed' => 'decimal:2',
             'status' => BookingStatus::class,
             'service_type' => ServiceType::class,
             'drive_mode' => DriveMode::class,
             'payment_status' => PaymentStatus::class,
             'start_at' => 'datetime',
             'end_at' => 'datetime',
+            'hold_until' => 'datetime',
             'delivered_at' => 'datetime',
             'returned_at' => 'datetime',
             'charges' => 'array',
@@ -88,16 +94,31 @@ class Booking extends Model implements HasMedia
             'total' => 'decimal:2',
             'security_deposit' => 'decimal:2',
             'extra_charges' => 'decimal:2',
+            'charge_lines_total' => 'decimal:2',
+            'pass_through_total' => 'decimal:2',
+            'deposit_refundable_on' => 'date',
             'paid_amount' => 'decimal:2',
             'balance' => 'decimal:2',
             'supplier_cost' => 'decimal:2',
             'supplier_cost_snapshot' => 'array',
+            // 4 Nov (sections 10, 11)
+            'base_discount_percent' => 'decimal:2',
+            'discount_percent' => 'decimal:2',
+            'list_discount_amount' => 'decimal:2',
+            'list_discount_percent' => 'decimal:2',
+            'advance_percent' => 'decimal:2',
+            'advance_required' => 'decimal:2',
+            'advance_reached_at' => 'datetime',
         ];
     }
 
     protected static function booted(): void
     {
         static::saving(function (Booking $booking) {
+            // Website hold (30 Oct): only while the booking still waits for its first payment.
+            if ($booking->hold_until && $booking->status !== BookingStatus::PendingPayment) {
+                $booking->hold_until = null;
+            }
             $booking->service_type ??= match ($booking->bookable_type) {
                 'yacht' => ServiceType::Yacht,
                 'trip' => ServiceType::Trip,
@@ -149,8 +170,10 @@ class Booking extends Model implements HasMedia
             if (! ($booking->quotation_id && ! $booking->exists && $booking->price_breakdown)) {
                 $booking->applyPricing();
             }
-            if ($booking->priceWaiting() && in_array($booking->status, BookingStatus::billable(), true)) {
-                throw ValidationException::withMessages(['data.status' => 'This price is below the discount limit and waits for a manager\'s OK. Save it as an Inquiry until then.']);
+            if ($booking->priceBlocked() && in_array($booking->status, BookingStatus::billable(), true)) {
+                throw ValidationException::withMessages(['data.status' => $booking->price_approval === 'rejected'
+                    ? 'A manager turned this price down ('.$booking->price_rejected_reason.'). Change the price, or save it as an Inquiry.'
+                    : 'This price is below the discount limit and waits for a manager\'s OK. Save it as an Inquiry until then.']);
             }
             [$booking->tax_amount, $booking->total] = Tax::apply(
                 (float) $booking->base_amount + (float) $booking->extras_amount - (float) $booking->discount,
@@ -160,6 +183,8 @@ class Booking extends Model implements HasMedia
             if ($booking->service_type !== ServiceType::Package) {
                 $booking->package_departure_id = null;
             }
+            // Advance to confirm (4 Nov, 11): default % per service, minimum checked. The amount is set by syncBalance().
+            \App\Support\Pricing\Advance::prepare($booking);
             $booking->assigned_to ??= auth()->id();
 
             // Optional rule (Business settings): confirmed bookings only come from an accepted quotation.
@@ -176,6 +201,8 @@ class Booking extends Model implements HasMedia
 
         static::created(function (Booking $booking) {
             $booking->forceFill(['reference' => sprintf('BK-%05d', $booking->id)])->saveQuietly();
+            // 4 Nov (13): a booking makes a prospect a customer, and gives them an account (setting).
+            \App\Support\Portal::onBooking($booking);
         });
 
         static::saved(function (Booking $booking) {
@@ -190,6 +217,9 @@ class Booking extends Model implements HasMedia
             $booking->advanceLead();
 
             \App\Support\Drivers\DriverJobs::sync($booking);
+
+            // 4 Nov (brief 9.3): confirmed, handed over, returned.
+            rescue(fn () => \App\Support\Notifications\EventHooks::bookingStatus($booking));
 
             // Supplier bill (Bilal, 29 Oct): posted once when the job is completed, with the completion.
             if ($booking->wasChanged('status') && $booking->status === BookingStatus::Completed && $booking->supplier_id) {
@@ -304,6 +334,10 @@ class Booking extends Model implements HasMedia
             // With a separate collection driver this driver only does the delivery.
             $until = $this->return_driver_id && $this->drive_mode !== DriveMode::WithDriver ? $this->start_at : $this->end_at;
             $mode = $this->service_type === ServiceType::Transfer ? DriveMode::WithDriver : $this->drive_mode; // a chauffeur works the whole transfer
+            if ($off = Availability::offTime($driver->id, $this->start_at, $until, $mode)) {
+                throw ValidationException::withMessages(['data.driver_id' => $driver->name.' is not available then ('.$off->label().').'
+                    .Availability::freeText('driver', $this->start_at, $until, $this->getKey(), $mode, $driver->id)]);
+            }
             if ($clash = Availability::personConflict($driver->id, $this->start_at, $until, $this->getKey(), $mode)) {
                 throw ValidationException::withMessages(['data.driver_id' => $driver->name.' is already busy on '.$clash->reference.' ('.$clash->start_at->format('d M H:i').' – '.$clash->end_at->format('d M H:i').').'
                     .Availability::freeText('driver', $this->start_at, $until, $this->getKey(), $mode, $driver->id)]);
@@ -320,6 +354,9 @@ class Booking extends Model implements HasMedia
         $driver = User::with('driverProfile')->find($this->return_driver_id);
         if (! $driver || ! $driver->hasRole('Driver') || ! $driver->is_active || ($driver->driverProfile && ! $driver->driverProfile->does('driver'))) {
             throw ValidationException::withMessages(['data.return_driver_id' => 'Pick an active driver for the collection.']);
+        }
+        if (Availability::holds($this->status) && ($off = Availability::offTime($driver->id, $this->end_at, $this->end_at, DriveMode::SelfDrive))) {
+            throw ValidationException::withMessages(['data.return_driver_id' => $driver->name.' is not available then ('.$off->label().').']);
         }
         if (Availability::holds($this->status) && ($clash = Availability::personConflict($driver->id, $this->end_at, $this->end_at, $this->getKey(), DriveMode::SelfDrive))) {
             throw ValidationException::withMessages(['data.return_driver_id' => $driver->name.' is already busy on '.$clash->reference.' ('.$clash->start_at->format('d M H:i').' – '.$clash->end_at->format('d M H:i').').'
@@ -358,6 +395,9 @@ class Booking extends Model implements HasMedia
             if (! ($person->driverProfile?->does($need) || ($need === 'crew' && $person->driverProfile?->does('captain')))) {
                 throw ValidationException::withMessages([$field => $person->name.' is not set up as '.($need === 'captain' ? 'a captain' : 'crew').' (Drivers & crew › profile).']);
             }
+            if ($off = Availability::offTime($person->id, $this->start_at, $this->end_at, DriveMode::WithDriver)) {
+                throw ValidationException::withMessages([$field => $person->name.' is not available then ('.$off->label().').']);
+            }
             if ($clash = Availability::personConflict($person->id, $this->start_at, $this->end_at, $this->getKey(), DriveMode::WithDriver)) {
                 throw ValidationException::withMessages([$field => $person->name.' is already busy on '.$clash->reference.' ('.$clash->start_at->format('d M H:i').' – '.$clash->end_at->format('d M H:i').').'
                     .Availability::freeText($need, $this->start_at, $this->end_at, $this->getKey(), DriveMode::WithDriver, $person->id)]);
@@ -382,6 +422,7 @@ class Booking extends Model implements HasMedia
         $this->addMediaCollection('delivery')->useDisk('private');
         $this->addMediaCollection('return')->useDisk('private');
         $this->addMediaCollection('documents')->useDisk('private');
+        $this->addMediaCollection('signatures')->useDisk('private'); // 4 Nov (15): customer signs on the driver's phone
     }
 
     public function registerMediaConversions(?Media $media = null): void
@@ -552,7 +593,19 @@ class Booking extends Model implements HasMedia
 
     public function scopeBlocking(Builder $query): Builder
     {
-        return $query->whereIn('status', BookingStatus::blocking());
+        return $query->whereIn('status', BookingStatus::blocking())->notExpired();
+    }
+
+    /** Leaves out website bookings whose time to pay has run out (they no longer hold anything). */
+    public function scopeNotExpired(Builder $query): Builder
+    {
+        return $query->where(fn (Builder $q) => $q->whereNull('hold_until')->orWhere('hold_until', '>', now()));
+    }
+
+    /** An unpaid website booking whose time to pay has run out. */
+    public function holdExpired(): bool
+    {
+        return $this->hold_until !== null && $this->status === BookingStatus::PendingPayment && $this->hold_until->isPast();
     }
 
     /* ---------- Helpers ---------- */
@@ -575,7 +628,34 @@ class Booking extends Model implements HasMedia
 
     public function amountDue(): float
     {
-        return round((float) $this->total + (float) $this->extra_charges, 2);
+        // 4 Nov (C.1): plus charge lines added later (fines, tolls, fees).
+        return round((float) $this->total + (float) $this->extra_charges + (float) $this->charge_lines_total, 2);
+    }
+
+    /** 4 Nov (C.1): fines, tolls and fees added after the booking was priced. */
+    public function chargeLines(): HasMany
+    {
+        return $this->hasMany(BookingCharge::class);
+    }
+
+    public function fines(): HasMany
+    {
+        return $this->hasMany(TrafficFine::class);
+    }
+
+    public function tollTrips(): HasMany
+    {
+        return $this->hasMany(TollTrip::class);
+    }
+
+    public function depositSettlements(): HasMany
+    {
+        return $this->hasMany(DepositSettlement::class);
+    }
+
+    public function preauths(): HasMany
+    {
+        return $this->hasMany(DepositPreauth::class);
     }
 
     /** Security deposit still held (received minus refunded). */
@@ -661,10 +741,18 @@ class Booking extends Model implements HasMedia
             }
 
             $paid = Transaction::totals($this->transactions()->where('is_balance', false)->getQuery())['received'];
+            // 4 Nov (C.1): charge lines are part of what is owed; pass-through ones are not revenue.
+            $lines = BookingCharge::query()->where('booking_id', $this->id)->whereNull('voided_at');
+            $this->charge_lines_total = round((float) (clone $lines)->sum('amount'), 2);
+            $this->pass_through_total = round((float) (clone $lines)->where('nature', 'pass_through')->sum('amount'), 2);
             $billable = in_array($this->status, BookingStatus::billable(), true);
             $due = $billable ? $this->amountDue() : 0;
             $balance = max(0, round($due - $paid, 2));
-            $dueDate = ($this->isCar() ? $this->end_at : $this->start_at)?->copy()->startOfDay();
+            $dueDate = \App\Support\Pricing\Advance::balanceDue($this); // Business settings (4 Nov); default as before
+
+            // Advance (4 Nov, 11): a % of the price (never the deposit); paid money excludes deposits.
+            $advance = $this->advance_percent !== null ? \App\Support\Pricing\Advance::amount((float) $this->total, (float) $this->advance_percent) : null;
+            $reached = $advance !== null && $paid > 0 && $paid + 0.005 >= $advance;
 
             if ($balance > 0) {
                 $row ??= new Transaction(['booking_id' => $this->id, 'is_balance' => true]);
@@ -685,6 +773,11 @@ class Booking extends Model implements HasMedia
             }
 
             $this->forceFill([
+                'hold_until' => $paid > 0 ? null : $this->hold_until, // first payment: the website hold ends
+                'charge_lines_total' => $this->charge_lines_total,
+                'pass_through_total' => $this->pass_through_total,
+                'advance_required' => $advance,
+                'advance_reached_at' => $reached ? ($this->advance_reached_at ?? now()) : null,
                 'paid_amount' => $paid,
                 'balance' => $balance,
                 'payment_status' => match (true) {
@@ -698,6 +791,53 @@ class Booking extends Model implements HasMedia
         } finally {
             static::$syncing = false;
         }
+
+        rescue(fn () => \App\Support\Fines\Fines::markCollected($this), report: false); // 4 Nov (2.4)
+
+        if ($this->wasChanged('advance_reached_at') && $this->advance_reached_at) {
+            rescue(fn () => \App\Support\Notifications\EventHooks::advanceReached($this));
+        }
+        $this->confirmOnAdvance();
+    }
+
+    /**
+     * 4 Nov (11): with "Confirm when the advance is paid" on, a Pending payment booking becomes
+     * Confirmed once the advance is reached. If it can't be confirmed (dates taken, price waiting),
+     * it stays Pending payment and the team is told.
+     */
+    protected function confirmOnAdvance(): void
+    {
+        if ($this->status !== BookingStatus::PendingPayment || ! $this->advance_reached_at || $this->advance_required === null
+            || (float) $this->advance_required <= 0 || $this->priceBlocked() || ! \App\Support\Pricing\Advance::confirmsBooking()) {
+            return;
+        }
+
+        // Same rule as "Create booking": with "documents approved before confirming" on, missing documents keep it pending.
+        if (Setting::read('doc_block_confirm') && ($missing = collect($this->documentChecklist())->reject(fn ($row) => $row[2])->map(fn ($row) => $row[0])->values()->all())) {
+            if ($this->wasChanged('advance_reached_at')) { // told once, when the advance is reached
+                $url = \App\Filament\Resources\BookingResource::getUrl('edit', ['record' => $this]);
+                $body = 'Confirm it once these documents are approved: '.implode(', ', $missing).'.';
+                DB::afterCommit(fn () => rescue(fn () => \App\Support\Drivers\Notify::staff('manage-bookings', $this->reference.': advance paid, documents missing', $body, $url, $this->assignee, 'warning', event: 'advance_reached'), report: false));
+            }
+
+            return;
+        }
+
+        try {
+            $this->status = BookingStatus::Confirmed;
+            $this->save();
+            AuditLog::note($this, 'status', 'Confirmed automatically: the advance of AED '.number_format((float) $this->advance_required, 2).' is paid.');
+
+            return; // the team and the customer hear about it as "Booking confirmed" and "Advance paid"
+        } catch (ValidationException $e) {
+            $this->status = BookingStatus::PendingPayment;
+            $this->syncOriginalAttribute('status');
+            $title = $this->reference.': advance paid, but it could not be confirmed';
+            $body = collect($e->errors())->flatten()->first();
+            $color = 'danger';
+        }
+        $url = \App\Filament\Resources\BookingResource::getUrl('edit', ['record' => $this]);
+        DB::afterCommit(fn () => rescue(fn () => \App\Support\Drivers\Notify::staff('manage-bookings', $title, $body, $url, $this->assignee, $color, event: 'advance_reached'), report: false));
     }
 
     /** Moves the linked lead along its pipeline as the booking progresses. */

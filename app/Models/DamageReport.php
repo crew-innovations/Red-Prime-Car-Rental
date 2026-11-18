@@ -19,6 +19,8 @@ class DamageReport extends Model implements HasMedia
 
     protected $guarded = ['id'];
 
+    public const KINDS = ['damage' => 'Damage / problem', 'accident' => 'Accident']; // 4 Nov (15)
+
     public const STATUSES = [
         'open' => 'To review',
         'no_charge' => 'Reviewed, no charge',

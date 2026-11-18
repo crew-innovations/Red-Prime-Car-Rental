@@ -231,7 +231,7 @@ class QuotationResource extends Resource
 
                     Forms\Components\Section::make('Price')
                         ->icon('heroicon-o-banknotes')
-                        ->description('From the price list. Any change needs a reason and is saved in the history.')
+                        ->description('From the price list. Changes are saved in the history; bigger discounts and other changes need a reason.')
                         ->columns(3)
                         ->schema([
                             ...\App\Filament\Concerns\PriceFields::schema('quotation'),
@@ -239,16 +239,20 @@ class QuotationResource extends Resource
                                 ->label('Security deposit')
                                 ->helperText('Refundable. Not part of the price.')
                                 ->numeric()->minValue(0)->prefix('AED')->default(0),
-                            Forms\Components\TextInput::make('advance_required')
-                                ->label('Advance to confirm')
-                                ->numeric()->minValue(0)->prefix('AED')
-                                ->helperText('Optional. Shown to the customer.'),
+                            ...\App\Filament\Concerns\PriceFields::advance('quotation'),
                         ]),
 
                     Forms\Components\Section::make('Shown to the customer')
                         ->icon('heroicon-o-chat-bubble-left-ellipsis')
                         ->collapsible()
                         ->schema([
+                            Forms\Components\Select::make('pdf_language')
+                                ->label('PDF language')
+                                ->options(\App\Support\Documents\PdfText::LANGUAGES)
+                                ->placeholder('From the customer\'s language')
+                                ->helperText(fn (): ?string => ($m = \App\Support\Documents\CompanyProfile::missing())
+                                    ? 'Company profile incomplete ('.implode(', ', $m).'): the PDF leaves these out. Business settings › Company & messages.' : null)
+                                ->native(false),
                             Forms\Components\Textarea::make('customer_notes')->label('Notes')->rows(3),
                             Forms\Components\Textarea::make('terms')
                                 ->default(fn () => Setting::read('quote_terms'))
@@ -267,7 +271,7 @@ class QuotationResource extends Resource
                                 ->label('Valid until')
                                 ->native(false)->displayFormat('d M Y')
                                 ->minDate(fn (string $operation) => $operation === 'create' ? today() : null)
-                                ->default(fn () => ($days = (int) Setting::read('quote_valid_days')) ? today()->addDays($days) : null)
+                                ->default(fn () => today()->addDays((int) Setting::read('quote_valid_days') ?: 7)) // 6 Nov (S4): H-37 default 7 days until Bilal decides
                                 ->required(),
                         ]),
                     Forms\Components\Section::make('Progress')
@@ -381,6 +385,7 @@ class QuotationResource extends Resource
     {
         return [
             self::approvePriceAction($class),
+            self::rejectPriceAction($class),
             self::sendAction($class),
             $class::make('revise')
                 ->label('Revise (negotiation)')
@@ -459,8 +464,23 @@ class QuotationResource extends Resource
             ->authorize('approve-prices')
             ->visible(fn (Model $record): bool => $record->priceWaiting())
             ->requiresConfirmation()
-            ->modalDescription(fn (Model $record): string => 'Agreed AED '.number_format((float) $record->total, 2).' against AED '.number_format((float) $record->standard_amount, 2).' on the price list. Reason: '.($record->adjustment_reason ?: '-'))
+            ->modalDescription(fn (Model $record): string => 'Agreed AED '.number_format((float) $record->total, 2).' against AED '.number_format((float) $record->standard_amount, 2).' on the price list'
+                .($record->list_discount_percent ? ' ('.\App\Support\Pricing\Discounts::percentText((float) $record->list_discount_percent).' off)' : '').'. Reason: '.($record->adjustment_reason ?: '-'))
             ->action(fn (Model $record) => $record->approvePrice());
+    }
+
+    /** 4 Nov (10): the manager can also turn the price down; the agent is told. */
+    public static function rejectPriceAction(string $class)
+    {
+        return $class::make('rejectPrice')
+            ->label('Turn price down')
+            ->icon('heroicon-o-x-circle')
+            ->color('danger')
+            ->authorize('approve-prices')
+            ->visible(fn (Model $record): bool => $record->priceWaiting())
+            ->modalDescription(fn (Model $record): string => 'The person who set the price is told and must change it before it can be sent or confirmed.')
+            ->form([Forms\Components\TextInput::make('reason')->label('Why')->required()->maxLength(200)])
+            ->action(fn (Model $record, array $data) => $record->rejectPrice($data['reason']));
     }
 
     public static function sendAction(string $class)
@@ -481,8 +501,10 @@ class QuotationResource extends Resource
                     ->disabled(! $record->customerEmail()),
             ])
             ->action(function (Quotation $record, array $data) {
-                if ($record->priceWaiting()) {
-                    Notification::make()->title('This price waits for a manager\'s OK before it can be sent.')->warning()->send();
+                if ($record->priceBlocked()) {
+                    Notification::make()->title($record->price_approval === 'rejected'
+                        ? 'A manager turned this price down: '.$record->price_rejected_reason.'. Change the price first.'
+                        : 'This price waits for a manager\'s OK before it can be sent.')->warning()->send();
 
                     return;
                 }
@@ -497,10 +519,16 @@ class QuotationResource extends Resource
                     $record->lead->advanceTo('quotation_sent');
                 }
 
+                // 4 Nov (13.1): the customer gets an account (setting "When a quotation is sent").
+                $login = \App\Support\Portal::onQuoteSent($record);
+                $loginUrl = ! empty($data['email']) && $login && ! $login->password_set_at && ! $login->last_login_at && $login->login_enabled
+                    && mb_strtolower((string) $login->email) === mb_strtolower((string) $record->customerEmail())
+                    ? rescue(fn () => \App\Support\Accounts::inviteUrl($login), null) : null;
+
                 $emailNote = null;
                 if (! empty($data['email']) && ($email = $record->customerEmail())) {
                     try {
-                        \Illuminate\Support\Facades\Notification::route('mail', $email)->notify(new \App\Notifications\QuotationSent($record));
+                        \App\Support\Notifications\Notifier::mail($email, new \App\Notifications\QuotationSent($record, $loginUrl), $record);
                         $record->forceFill(['emailed_at' => now()])->saveQuietly();
                         $emailNote = 'Emailed to '.$email.'. ';
                     } catch (\Throwable $e) {
@@ -542,7 +570,7 @@ class QuotationResource extends Resource
                     ->hiddenLabel()
                     ->content(fn (Quotation $record): HtmlString => new HtmlString(\App\Support\Sales\BookingChecks::html(\App\Support\Sales\BookingChecks::forQuotation($record)))),
                 Forms\Components\ToggleButtons::make('status')
-                    ->options([BookingStatus::Confirmed->value => 'Confirmed', BookingStatus::PendingPayment->value => 'Pending payment'])
+                    ->options([BookingStatus::Confirmed->value => 'Confirmed', BookingStatus::PendingPayment->value => 'Waiting for payment'])
                     ->colors([BookingStatus::Confirmed->value => 'success', BookingStatus::PendingPayment->value => 'warning'])
                     ->default(fn (Quotation $record): string => (float) $record->advance_required > 0 ? BookingStatus::PendingPayment->value : BookingStatus::Confirmed->value)
                     ->disableOptionWhen(fn (string $value, Quotation $record): bool => $value === BookingStatus::Confirmed->value && \App\Support\Sales\BookingChecks::confirmBlocked($record) !== null)
@@ -589,6 +617,16 @@ class QuotationResource extends Resource
                             'delivery_method' => $record->delivery_method,
                             'return_method' => $record->return_method,
                             'discount' => $record->discount,
+                            'base_discount_percent' => $record->base_discount_percent,
+                            'discount_mode' => $record->discount_mode,
+                            'discount_percent' => $record->discount_percent,
+                            'list_discount_amount' => $record->list_discount_amount,
+                            'list_discount_percent' => $record->list_discount_percent,
+                            'price_approval' => $record->price_approval === 'approved' ? 'approved' : null,
+                            'price_approved_by' => $record->price_approval === 'approved' ? $record->price_approved_by : null,
+                            'price_approved_at' => $record->price_approval === 'approved' ? $record->price_approved_at : null,
+                            'advance_percent' => $record->advance_percent ?? ((float) $record->total > 0 && (float) $record->advance_required > 0 ? round((float) $record->advance_required / (float) $record->total * 100, 2) : null),
+                            'advance_reason' => $record->advance_reason,
                             'standard_amount' => $record->standard_amount,
                             'adjustment_reason' => $record->adjustment_reason,
                             'adjusted_by' => $record->adjusted_by,

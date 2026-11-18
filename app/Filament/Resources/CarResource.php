@@ -141,6 +141,26 @@ class CarResource extends Resource
                             ->maxLength(100),
                     ]),
 
+                // 5 Nov (S5): what the fuel charge at return and the fuel report need.
+                Forms\Components\Fieldset::make('Fuel')
+                    ->columns(3)
+                    ->schema([
+                        Forms\Components\Select::make('fuel_grade')
+                            ->label('Fuel grade')
+                            ->options(\App\Support\Fuel\Fuel::GRADES)
+                            ->native(false)
+                            ->helperText('The grade this car takes.'),
+                        Forms\Components\TextInput::make('tank_litres')
+                            ->label('Tank size')
+                            ->numeric()->minValue(1)->maxValue(300)->suffix('L')
+                            ->helperText('For the fuel charge at return.'),
+                        Forms\Components\Placeholder::make('fuel_now')
+                            ->label('Fuel now')
+                            ->content(fn (?Car $record): string => $record && $record->fuel_level_8 !== null
+                                ? \App\Support\Fuel\Fuel::label($record->fuel_level_8).($record->fuel_level_at ? ' · '.$record->fuel_level_at->diffForHumans() : '')
+                                : 'Not known yet (set at the next handover or return)'),
+                    ]),
+
                 Forms\Components\Fieldset::make('Specs shown on the website')
                     ->columns(4)
                     ->schema([
@@ -392,6 +412,10 @@ class CarResource extends Resource
                             ->label('VIN / chassis no.')
                             ->maxLength(50),
                         FleetFields::expiryDate('registration_expiry', 'Registration expiry'),
+                        Forms\Components\TextInput::make('toll_tag_no')
+                            ->label('Salik / Darb tag number')
+                            ->helperText('Toll statements are matched to this car by the tag, else by the plate.')
+                            ->maxLength(40),
                     ]),
 
                 Forms\Components\Fieldset::make('Insurance')
@@ -620,6 +644,8 @@ class CarResource extends Resource
         return [
             \App\Filament\Resources\BookingResource\RelationManagers\BookingsRelationManager::class,
             RelationManagers\MaintenancesRelationManager::class,
+            RelationManagers\FinesRelationManager::class, // 4 Nov (Phase 4)
+            RelationManagers\FuelEntriesRelationManager::class, // 5 Nov (S5)
             \App\Filament\Resources\TransactionResource\RelationManagers\TransactionsRelationManager::class,
             \App\Filament\RelationManagers\HistoryRelationManager::class,
         ];

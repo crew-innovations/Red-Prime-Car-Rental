@@ -13,6 +13,8 @@ use Filament\Resources\Pages\EditRecord;
 
 class EditBooking extends EditRecord
 {
+    use \App\Filament\Concerns\HasNextStep;
+
     use GuardsSave;
 
     protected static string $resource = BookingResource::class;
@@ -22,12 +24,20 @@ class EditBooking extends EditRecord
         return 'Booking '.$this->getRecord()->reference;
     }
 
-    public function getSubheading(): ?string
+    public function getSubheading(): string|\Illuminate\Contracts\Support\Htmlable|null
+    {
+        return $this->progressBar($this->detailsLine()); // 6 Nov (S4): progress bar + the details line
+    }
+
+    protected function detailsLine(): ?string
     {
         /** @var Booking $b */
         $b = $this->getRecord();
 
-        return collect([$b->customer?->name, $b->bookable?->name, $b->drive_mode?->getLabel(), $b->status?->getLabel()])->filter()->implode(' · ');
+        return collect([$b->customer?->name, $b->bookable?->name, $b->drive_mode?->getLabel(), $b->status?->getLabel(),
+            // 5 Nov (S3): an agent asked to cancel; Admin decides from the menu.
+            $b->cancel_requested_at ? 'Cancellation asked by '.(\App\Models\User::find($b->cancel_requested_by)?->name ?? 'an agent').': '.$b->cancel_request_reason : null,
+        ])->filter()->implode(' · ');
     }
 
     protected function afterSave(): void
@@ -37,10 +47,62 @@ class EditBooking extends EditRecord
 
     protected function getHeaderActions(): array
     {
+        return $this->withNextStep($this->pageActions()); // 6 Nov (S4): one big next step, the rest under "More"
+    }
+
+    /** Every button of this page (the next step is picked from these). */
+    protected function pageActions(): array
+    {
         $after = fn () => $this->redirect(BookingResource::getUrl('edit', ['record' => $this->getRecord()]));
 
         return [
+            // 11 Nov (limousine): the website price is an estimate; the agent adds extras and confirms it for the customer.
+            Actions\Action::make('confirmRide')->label('Confirm price for customer')->icon('heroicon-o-check-badge')->color('primary')
+                ->visible(fn (): bool => \App\Support\Transfers\RideFlow::isRequest($this->getRecord()))
+                ->modalHeading('Confirm the ride price')
+                ->modalDescription(fn (): string => 'Website estimate: AED '.number_format((float) $this->getRecord()->total, 2)
+                    .($this->getRecord()->route_km ? ' for '.rtrim(rtrim(number_format((float) $this->getRecord()->route_km, 1), '0'), '.').' km' : '')
+                    .'. Add extras if there are any. The customer then sees the final price on their ride page, accepts it and pays.')
+                ->modalSubmitActionLabel('Confirm and send to customer')
+                ->form([
+                    \Filament\Forms\Components\Repeater::make('extras')->label('Extras (optional)')->addActionLabel('Add an extra')->defaultItems(0)->columns(2)->reorderable(false)
+                        ->schema([
+                            \Filament\Forms\Components\TextInput::make('label')->label('What for')->placeholder('Airport meet & greet, child seat, waiting…')->required()->maxLength(120),
+                            \Filament\Forms\Components\TextInput::make('amount')->label('Amount')->numeric()->minValue(0.01)->prefix('AED')->required(),
+                        ]),
+                    \Filament\Forms\Components\Textarea::make('note')->label('Note for the customer (optional)')->rows(2)->maxLength(300),
+                ])
+                ->action(function (array $data) {
+                    $b = $this->getRecord();
+                    $link = \App\Support\Transfers\RideFlow::confirm($b, (array) ($data['extras'] ?? []), $data['note'] ?? null, auth()->user());
+                    $b = $b->fresh();
+                    $total = 'AED '.number_format((float) $b->balance, 2);
+                    \Filament\Notifications\Notification::make()->success()->title('Price confirmed: '.$total)
+                        ->body(filled($b->customer?->email) ? 'The customer was emailed the ride page.' : 'No email on the customer: send the ride page on WhatsApp.')->send();
+                    if ($p = preg_replace('/\D+/', '', (string) ($b->customer?->whatsapp ?: $b->customer?->phone))) {
+                        $text = 'Hello '.strtok((string) $b->customer?->name, ' ').'! Your RED PRIME ride '.$b->reference.' is confirmed at '.$total.'. Accept and pay here, and follow your chauffeur on the same page: '.$link;
+                        $this->js('window.open('.json_encode('https://wa.me/'.$p.'?text='.rawurlencode($text)).', "_blank")');
+                    }
+                })->after($after),
+            // The agent sees what the customer sees: the same live map, driver and car.
+            Actions\Action::make('liveMap')->label('Live map')->icon('heroicon-o-map')->color('gray')
+                ->visible(fn (): bool => $this->getRecord()->service_type === \App\Enums\ServiceType::Transfer
+                    && in_array($this->getRecord()->status, [\App\Enums\BookingStatus::Confirmed, \App\Enums\BookingStatus::InProgress], true))
+                ->url(fn (): string => \App\Support\Transfers\Tracking::link($this->getRecord()), true),
+            // 6 Nov (limousine L3): the customer's live tracking link, to copy or send on WhatsApp.
+            Actions\Action::make('trackingLink')->label('Ride page link')->icon('heroicon-o-map-pin')->color('gray')
+                ->visible(fn (): bool => $this->getRecord()->service_type === \App\Enums\ServiceType::Transfer)
+                ->modalHeading('The customer\'s ride page')
+                ->modalDescription('One page for the whole ride: the price to accept and pay, then the trip step, the car on the map and the ETA, the driver\'s first name, the car and a phone number. No login. It stops working 3 hours after the trip.')
+                ->modalSubmitAction(false)->modalCancelActionLabel('Close')
+                ->form(fn (): array => [
+                    \Filament\Forms\Components\TextInput::make('link')->label('Link')->default(\App\Support\Transfers\Tracking::link($this->getRecord()))->readOnly()
+                        ->suffixAction(\Filament\Forms\Components\Actions\Action::make('wa')->icon('heroicon-o-chat-bubble-left-right')->tooltip('Send on WhatsApp')
+                            ->url(fn ($state): ?string => ($p = preg_replace('/\D+/', '', (string) ($this->getRecord()->customer?->whatsapp ?: $this->getRecord()->customer?->phone)))
+                                ? 'https://wa.me/'.$p.'?text='.rawurlencode('Hello! Follow your RED PRIME chauffeur live here: '.$state) : null, true)),
+                ]),
             \App\Filament\Resources\QuotationResource::approvePriceAction(Actions\Action::class)->after($after),
+            \App\Filament\Resources\QuotationResource::rejectPriceAction(Actions\Action::class)->after($after),
             BookingActions::approveHandover(Actions\Action::class)->after($after),
             BookingActions::deliver(Actions\Action::class)->after($after),
             BookingActions::receive(Actions\Action::class)->after($after),
@@ -50,8 +112,10 @@ class EditBooking extends EditRecord
                     && (\App\Support\Payments\Payments::limit($this->getRecord(), 'balance') > 0 || \App\Support\Payments\Payments::limit($this->getRecord(), 'security_deposit') > 0))
                 ->color('gray')->after($after),
             BookingActions::refundDeposit(Actions\Action::class)->after($after),
+            BookingActions::settleDeposit(Actions\Action::class)->after($after),
             BookingActions::addExpense(Actions\Action::class)->after($after),
             BookingActions::whatsapp(Actions\Action::class),
+            \App\Filament\Support\EmailActions::send(Actions\Action::class),
             // Customer documents (28 Oct): confirmation, invoice, return statement.
             Actions\ActionGroup::make([
                 Actions\Action::make('confirmationPdf')
@@ -64,7 +128,7 @@ class EditBooking extends EditRecord
                     ->icon('heroicon-o-document-plus')
                     ->authorize('record-payments')
                     ->visible(fn (): bool => in_array($this->getRecord()->status, \App\Enums\BookingStatus::billable(), true)
-                        && ! \App\Models\Invoice::where('booking_id', $this->getRecord()->id)->where('type', 'invoice')->where('status', 'issued')->exists())
+                        && ! \App\Models\Invoice::where('booking_id', $this->getRecord()->id)->where('type', 'invoice')->where('kind', 'booking')->where('status', 'issued')->exists())
                     ->requiresConfirmation()
                     ->modalDescription(fn (): string => 'Issues an invoice for AED '.number_format($this->getRecord()->amountDue(), 2).' with the next number. It cannot be edited afterwards (void it or add a credit note).'
                         .(\App\Support\Tax::enabled() ? ' VAT is on: it is a tax invoice with your TRN.' : ' VAT is off: it is not a tax invoice.'))
@@ -72,6 +136,27 @@ class EditBooking extends EditRecord
                     ->action(function (array $data) {
                         try {
                             $invoice = \App\Models\Invoice::issueFor($this->getRecord(), $data['notes'] ?? null);
+                        } catch (\Illuminate\Validation\ValidationException $e) {
+                            \Filament\Notifications\Notification::make()->title(collect($e->errors())->flatten()->first())->danger()->send();
+
+                            return;
+                        }
+                        \Filament\Notifications\Notification::make()->title('Invoice '.$invoice->number.' issued')
+                            ->actions([\Filament\Notifications\Actions\Action::make('open')->label('Open PDF')->url(route('pdf.invoice', $invoice), shouldOpenInNewTab: true)])
+                            ->success()->persistent()->send();
+                    }),
+                // 4 Nov (Phase 4): fines, tolls and fees added after the invoice.
+                Actions\Action::make('issueChargesInvoice')
+                    ->label('Invoice the new charges')
+                    ->icon('heroicon-o-document-plus')
+                    ->authorize('record-payments')
+                    ->visible(fn (): bool => \App\Models\Invoice::where('booking_id', $this->getRecord()->id)->where('type', 'invoice')->where('kind', 'booking')->where('status', 'issued')->exists()
+                        && $this->getRecord()->chargeLines()->whereNull('voided_at')->whereNull('invoice_id')->exists())
+                    ->requiresConfirmation()
+                    ->modalDescription(fn (): string => 'A separate invoice for the charges not invoiced yet: AED '.number_format((float) $this->getRecord()->chargeLines()->whereNull('voided_at')->whereNull('invoice_id')->sum('amount'), 2).'.')
+                    ->action(function () {
+                        try {
+                            $invoice = \App\Models\Invoice::issueCharges($this->getRecord());
                         } catch (\Illuminate\Validation\ValidationException $e) {
                             \Filament\Notifications\Notification::make()->title(collect($e->errors())->flatten()->first())->danger()->send();
 
@@ -200,6 +285,8 @@ class EditBooking extends EditRecord
                     ->visible(fn (): bool => (bool) $this->getRecord()->driver_id)
                     ->action(fn () => $this->redirect(\App\Filament\Pages\Messages::getUrl(['thread' => \App\Support\Chat\Chat::driverThread($this->getRecord(), $this->getRecord()->driver)->id]))),
                 BookingActions::cancel(Actions\Action::class)->after($after),
+                BookingActions::requestCancel(Actions\Action::class)->after($after),
+                BookingActions::declineCancel(Actions\Action::class)->after($after),
                 Actions\DeleteAction::make(),
                 Actions\RestoreAction::make(),
             ]),

@@ -31,6 +31,7 @@ class Quotation extends Model
         'delivery_method', 'return_method', 'crew_mode',
         'transfer_service_id', 'vehicle_category_id', 'journey_type', 'pickup_location', 'dropoff_location', 'stops', 'return_at', 'waiting_minutes', 'route_km', 'return_route_km',
         'base_amount', 'extras', 'discount', 'tax_rate', 'tax_inclusive', 'security_deposit', 'advance_required',
+        'base_discount_percent', 'discount_mode', 'discount_percent', 'advance_percent', // 4 Nov
         'terms', // the terms the customer accepts are locked with the price (28 Oct)
     ];
 
@@ -76,6 +77,12 @@ class Quotation extends Model
             'expired_at' => 'datetime',
             'emailed_at' => 'datetime',
             'accepted_terms' => 'array',
+            // 4 Nov (sections 10, 11)
+            'base_discount_percent' => 'decimal:2',
+            'discount_percent' => 'decimal:2',
+            'list_discount_amount' => 'decimal:2',
+            'list_discount_percent' => 'decimal:2',
+            'advance_percent' => 'decimal:2',
         ];
     }
 
@@ -114,6 +121,10 @@ class Quotation extends Model
             $q->extras_amount = round(collect($q->extras ?? [])->sum(fn ($line) => (float) ($line['amount'] ?? 0)), 2);
             $net = (float) $q->base_amount + (float) $q->extras_amount - (float) $q->discount;
             [$q->tax_amount, $q->total] = Tax::apply($net, $q->tax_rate !== null ? (float) $q->tax_rate : null, (bool) $q->tax_inclusive);
+            // Advance to confirm (4 Nov, 11): a % of the total; quotations from before keep their typed amount.
+            if (($p = \App\Support\Pricing\Advance::prepare($q)) !== null) {
+                $q->advance_required = \App\Support\Pricing\Advance::amount((float) $q->total, $p);
+            }
             $q->created_by ??= auth()->id();
             $q->public_token ??= Str::random(40);
         });

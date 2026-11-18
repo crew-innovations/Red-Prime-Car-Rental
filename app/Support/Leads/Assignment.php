@@ -18,15 +18,28 @@ use Illuminate\Support\Facades\Cache;
 class Assignment
 {
     public const MODES = [
-        'manual' => 'Manual (a manager assigns)',
+        'broadcast' => 'Every agent, first to accept owns it (recommended)',
+        'manual' => 'Manual (Admin assigns)',
         'round_robin' => 'Round robin in a group',
         'by_service' => 'By service (car, yacht…)',
     ];
+
+    public static function mode(): string
+    {
+        $mode = (string) \App\Models\Setting::read('lead_assignment', 'broadcast');
+
+        return array_key_exists($mode, self::MODES) ? $mode : 'broadcast';
+    }
 
     public static function auto(Lead $lead, ?int $preferred = null): ?User
     {
         if ($lead->assigned_to) {
             return null;
+        }
+
+        // 5 Nov (S3): a form that belongs to someone still gives them its leads; everything else goes to every agent.
+        if (self::mode() === 'broadcast' && ! ($preferred && self::eligible()->find($preferred))) {
+            return LeadBroadcast::open($lead);
         }
 
         [$user, $how] = self::pick($lead, $preferred);
@@ -47,7 +60,7 @@ class Assignment
             return [$u, 'form owner'];
         }
 
-        $mode = (string) Setting::read('lead_assignment', 'manual');
+        $mode = self::mode();
         if ($mode === 'by_service') {
             $service = $lead->service_type?->value;
             $map = collect((array) Setting::read('lead_assignment_by_service', []))->firstWhere('service', $service);

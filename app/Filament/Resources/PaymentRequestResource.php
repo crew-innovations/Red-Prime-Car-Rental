@@ -157,7 +157,8 @@ class PaymentRequestResource extends Resource
             ->form(function () use ($record): array {
                 $for = $record();
                 $purposes = $for instanceof \App\Models\Booking
-                    ? collect(['balance', 'advance', 'security_deposit'])->filter(fn ($p) => Payments::limit($for, $p) > 0)
+                    ? collect((float) $for->advance_required > 0 && ! $for->advance_reached_at ? ['advance', 'balance', 'security_deposit'] : ['balance', 'advance', 'security_deposit'])
+                        ->filter(fn ($p) => Payments::limit($for, $p) > 0)
                     : collect(['advance', 'balance'])->filter(fn ($p) => Payments::limit($for, $p) > 0);
 
                 return [

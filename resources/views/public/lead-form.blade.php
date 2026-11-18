@@ -18,6 +18,8 @@
     @else
         <form class="card" method="post" action="{{ route('forms.store', $form->token) }}" novalidate>
             @csrf
+            {{-- 12 Nov: a link an agent sent in a chat carries the lead, so the answers join it. --}}
+            <input type="hidden" name="lead_ref" value="{{ old('lead_ref', request('lr')) }}">
             @if ($errors->any())<div class="alert bad">{{ $errors->first() }}</div>@endif
             <div style="position:absolute;left:-9999px" aria-hidden="true"><label>Website <input name="website" tabindex="-1" autocomplete="off"></label></div>
 

@@ -23,12 +23,13 @@ trait ChatPage
     public function threads()
     {
         return Chat::visible()
-            ->with(['latestMessage', 'booking', 'customer', 'driver'])
+            ->with(['latestMessage', 'booking', 'customer', 'driver', 'lead'])
             ->when(trim($this->search) !== '', function ($q) {
                 $s = '%'.trim($this->search).'%';
                 $q->where(fn ($w) => $w->whereHas('customer', fn ($c) => $c->where('name', 'like', $s))
                     ->orWhereHas('booking', fn ($b) => $b->where('reference', 'like', $s))
-                    ->orWhereHas('driver', fn ($d) => $d->where('name', 'like', $s)));
+                    ->orWhereHas('driver', fn ($d) => $d->where('name', 'like', $s))
+                    ->orWhere('external_name', 'like', $s)->orWhereHas('lead', fn ($l) => $l->where('name', 'like', $s)->orWhere('phone', 'like', $s)));
             })
             ->orderByRaw('last_message_at IS NULL')->orderByDesc('last_message_at')->orderByDesc('id')
             ->limit(60)->get();
@@ -39,7 +40,7 @@ trait ChatPage
         if (! $this->threadId) {
             return null;
         }
-        $t = Chat::visible()->with(['booking', 'customer', 'driver'])->find($this->threadId);
+        $t = Chat::visible()->with(['booking', 'customer', 'driver', 'lead'])->find($this->threadId);
         if ($t) {
             Chat::markRead($t);
         }
@@ -79,6 +80,18 @@ trait ChatPage
         }
         $this->body = '';
         $this->internal = false;
+    }
+
+    /** 12 Nov (C3): one tap puts a ready message with the customer's link in the box; the agent then presses Send. */
+    public function useLink(string $key): void
+    {
+        $t = $this->threadId ? Chat::visible()->with('lead')->find($this->threadId) : null;
+        abort_unless($t && $t->isSocial() && Chat::role() === 'staff', 404);
+        $link = \App\Support\Chat\Social::links($t)[$key] ?? null;
+        if ($link) {
+            $this->internal = false;
+            $this->body = $link['text'];
+        }
     }
 
     public function unreadIn(ChatThread $t): int

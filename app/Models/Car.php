@@ -50,6 +50,9 @@ class Car extends Model implements HasMedia
             'next_service_date' => 'date',
             'is_published' => 'boolean',
             'is_featured' => 'boolean',
+            'tank_litres' => 'decimal:1',      // 5 Nov (S5)
+            'fuel_level_8' => 'integer',
+            'fuel_level_at' => 'datetime',
         ];
     }
 
@@ -60,6 +63,17 @@ class Car extends Model implements HasMedia
             'Insurance' => 'insurance_expiry',
             'Service' => 'next_service_date',
         ];
+    }
+
+    /** 4 Nov (Phase 4): traffic fines and toll trips of this car. */
+    public function fines(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(TrafficFine::class);
+    }
+
+    public function tollTrips(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(TollTrip::class);
     }
 
     public function registerMediaCollections(): void
@@ -131,5 +145,11 @@ class Car extends Model implements HasMedia
     public function supplier(): \Illuminate\Database\Eloquent\Relations\BelongsTo
     {
         return $this->belongsTo(\App\Models\Supplier::class)->withTrashed();
+    }
+
+    /** 5 Nov (S5): fill-ups of this car. */
+    public function fuelEntries(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(FuelEntry::class);
     }
 }

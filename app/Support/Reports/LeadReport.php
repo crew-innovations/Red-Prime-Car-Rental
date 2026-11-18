@@ -18,13 +18,15 @@ class LeadReport
 {
     public const VIEWS = ['channel' => 'Came in by', 'source' => 'Source', 'campaign' => 'Campaign', 'agent' => 'Person', 'service' => 'Service'];
 
-    public function __construct(public Carbon $from, public Carbon $to) {}
+    /** @param ?string $service only one service (6 Nov: e.g. limousine leads by channel) */
+    public function __construct(public Carbon $from, public Carbon $to, public ?string $service = null) {}
 
     public function leads(): Collection
     {
         return Access::scopeOwn(Lead::query(), 'lead')
             ->with(['leadSource', 'assignee'])
             ->whereBetween('created_at', [$this->from->copy()->startOfDay(), $this->to->copy()->endOfDay()])
+            ->when($this->service, fn ($q) => $q->where('service_type', $this->service))
             ->get(['id', 'name', 'status', 'channel', 'lead_source_id', 'assigned_to', 'service_type', 'platform', 'utm_campaign', 'assignment_status', 'converted_at', 'created_at']);
     }
 

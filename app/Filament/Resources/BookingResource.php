@@ -512,13 +512,36 @@ class BookingResource extends Resource
             ]);
     }
 
+    /** Advance required / paid / remaining with a bar (4 Nov, 11). */
+    public static function advanceProgress(?Booking $record): HtmlString
+    {
+        $required = (float) $record?->advance_required;
+        if (! $record || $required <= 0) {
+            return new HtmlString('');
+        }
+        $paid = (float) $record->paid_amount;
+        $left = max(0, round($required - $paid, 2));
+        $pct = (int) min(100, round($paid / $required * 100));
+        $color = $left <= 0 ? 'success' : 'warning';
+        $due = \App\Support\Pricing\Advance::balanceDue($record);
+
+        return new HtmlString(
+            '<div style="font-size:.9rem"><b>AED '.number_format($required, 2).'</b>'
+            .($record->advance_percent !== null ? ' ('.\App\Support\Pricing\Discounts::percentText((float) $record->advance_percent).')' : '')
+            .' · paid AED '.number_format(min($paid, $required), 2)
+            .' · '.($left > 0 ? '<span style="color:rgb(var(--warning-600));font-weight:600">AED '.number_format($left, 2).' still to pay</span>' : '<span style="color:rgb(var(--success-600));font-weight:600">reached'.($record->advance_reached_at ? ' '.$record->advance_reached_at->format('d M H:i') : '').'</span>')
+            .'</div><div style="height:8px;border-radius:6px;background:rgba(127,127,127,.2);margin-top:6px;overflow:hidden"><div style="height:8px;width:'.$pct.'%;background:rgb(var(--'.$color.'-500))"></div></div>'
+            .((float) $record->balance > 0 && $due ? '<div style="font-size:.8rem;opacity:.75;margin-top:4px">Balance AED '.number_format((float) $record->balance, 2).' due '.$due->format('d M Y').'</div>' : '')
+        );
+    }
+
     protected static function priceSection(): Forms\Components\Section
     {
         return Forms\Components\Section::make('Price')
             ->icon('heroicon-o-banknotes')
             ->description(fn (?Booking $record): string => $record?->quotation
                 ? 'Agreed in quotation '.$record->quotation->number.' at AED '.number_format((float) $record->quotation->total, 2).'. Any change needs a reason and is saved in the history.'
-                : 'From the price list. Any change needs a reason and is saved in the history.')
+                : 'From the price list. Changes are saved in the history; bigger discounts and other changes need a reason.')
             ->columns(3)
             ->schema([
                 ...\App\Filament\Concerns\PriceFields::schema('booking'),
@@ -529,6 +552,12 @@ class BookingResource extends Resource
                     ->minValue(0)
                     ->prefix('AED')
                     ->default(0),
+                ...\App\Filament\Concerns\PriceFields::advance('booking'),
+                Forms\Components\Placeholder::make('advance_progress')
+                    ->label('Advance')
+                    ->hiddenOn('create')
+                    ->visible(fn (?Booking $record): bool => (float) $record?->advance_required > 0)
+                    ->content(fn (?Booking $record): HtmlString => self::advanceProgress($record)),
                 Forms\Components\Group::make()
                     ->visibleOn('create')
                     ->columns(2)
@@ -572,6 +601,12 @@ class BookingResource extends Resource
                     ->collection('documents')->disk('private')->visibility('private')
                     ->multiple()->openable()->downloadable()
                     ->acceptedFileTypes(['image/*', 'application/pdf']),
+                // 4 Nov (15): signed by the customer on the driver's phone. Read-only here.
+                Forms\Components\SpatieMediaLibraryFileUpload::make('signatures')
+                    ->label('Customer signatures (driver\'s phone)')
+                    ->collection('signatures')->disk('private')->visibility('private')
+                    ->image()->multiple()->panelLayout('grid')->openable()->downloadable()->disabled()->dehydrated(false)
+                    ->visible(fn (?Booking $record): bool => (bool) $record?->getMedia('signatures')->isNotEmpty()),
             ]);
     }
 
@@ -591,6 +626,12 @@ class BookingResource extends Resource
                     ->required()
                     ->live()
                     ->columns(2),
+                Forms\Components\Placeholder::make('website_hold')
+                    ->hiddenLabel()
+                    ->visible(fn (?Booking $record): bool => $record?->source === 'website' && $record->hold_until !== null)
+                    ->content(fn (?Booking $record) => new \Illuminate\Support\HtmlString('<span style="color:#d97706;font-weight:600">'.e($record->holdExpired()
+                        ? 'Website booking: not paid in time. It no longer holds the dates and will be cancelled.'
+                        : 'Website booking: waiting for payment until '.$record->hold_until->timezone(config('app.timezone'))->format('j M, H:i').'. Send the payment link (Payment section); after that time it is cancelled.').'</span>')),
                 Forms\Components\Placeholder::make('status_hint')
                     ->hiddenLabel()
                     ->content(fn (Get $get): string => match ($get('status')) {
@@ -704,12 +745,12 @@ class BookingResource extends Resource
                     ->hiddenLabel()
                     ->content(function (?Booking $record): HtmlString {
                         $line = fn (string $a, ?string $b) => $b ? '<div style="display:flex;justify-content:space-between;gap:1rem;font-size:.875rem;padding:.15rem 0"><span style="opacity:.75">'.$a.'</span><span style="text-align:right">'.e($b).'</span></div>' : '';
-                        $fuel = fn (?string $f) => Booking::FUEL_LEVELS[$f] ?? null;
+                        $fuel = fn ($f) => ($f === null || $f === '') ? null : \App\Support\Fuel\Fuel::label($f); // 5 Nov (S5): eighths
                         $html = '<div style="font-weight:600;margin-bottom:.25rem">Out</div>'
                             .$line('When', $record->delivered_at?->format('d M Y, H:i'))
                             .$line('By', $record->deliveredBy?->name)
                             .$line('Odometer', $record->delivery_km ? number_format($record->delivery_km).' km' : null)
-                            .$line('Fuel', $fuel($record->delivery_fuel))
+                            .$line('Fuel', $fuel($record->delivery_fuel_8 ?? $record->delivery_fuel))
                             .$line('Notes', $record->delivery_notes);
                         if ($record->returned_at) {
                             $charges = collect($record->charges ?? [])->map(fn ($v, $k) => \App\Support\Options::chargeLabel($k).' AED '.number_format((float) $v))->implode(', ');
@@ -717,7 +758,7 @@ class BookingResource extends Resource
                                 .$line('When', $record->returned_at->format('d M Y, H:i'))
                                 .$line('By', $record->receivedBy?->name)
                                 .$line('Odometer', $record->return_km ? number_format($record->return_km).' km'.($record->delivery_km ? ' ('.number_format($record->return_km - $record->delivery_km).' driven)' : '') : null)
-                                .$line('Fuel', $fuel($record->return_fuel))
+                                .$line('Fuel', $fuel($record->return_fuel_8 ?? $record->return_fuel)).($record->fuel_charge_note ? $line('Fuel charge changed', $record->fuel_charge_note) : '')
                                 .$line('Condition', Booking::CONDITIONS[$record->return_condition] ?? null)
                                 .$line('Charges', $charges ?: null)
                                 .$line('Notes', $record->return_notes);
@@ -915,6 +956,8 @@ class BookingResource extends Resource
             ->filtersFormColumns(2)
             ->filters([
                 Tables\Filters\SelectFilter::make('status')->options(BookingStatus::class)->multiple(),
+                Tables\Filters\TernaryFilter::make('website')->label('Made on the website')
+                    ->queries(true: fn ($query) => $query->where('source', 'website'), false: fn ($query) => $query->whereNull('source')),
                 Tables\Filters\SelectFilter::make('service_type')->label('Service')->options(ServiceType::class),
                 Tables\Filters\SelectFilter::make('drive_mode')->label('Rental type')->options(DriveMode::class),
                 Tables\Filters\SelectFilter::make('payment_status')->label('Payment')->options(PaymentStatus::class)->multiple(),
@@ -929,6 +972,9 @@ class BookingResource extends Resource
                     ->query(fn (Builder $query, array $data): Builder => $query
                         ->when($data['from'] ?? null, fn (Builder $q, $d) => $q->whereDate('end_at', '>=', $d))
                         ->when($data['until'] ?? null, fn (Builder $q, $d) => $q->whereDate('start_at', '<=', $d))),
+                // 5 Nov (S3): Admin's "Agents" page opens a list per agent.
+                Tables\Filters\SelectFilter::make('assigned_to')->label('Agent')->relationship('assignee', 'name')
+                    ->visible(fn (): bool => ! \App\Support\Access::agentScoped()),
                 Tables\Filters\TrashedFilter::make(),
             ])
             ->actions([
@@ -940,6 +986,7 @@ class BookingResource extends Resource
                     BookingActions::refundDeposit(Tables\Actions\Action::class),
                     BookingActions::whatsapp(Tables\Actions\Action::class),
                     BookingActions::cancel(Tables\Actions\Action::class),
+                    BookingActions::requestCancel(Tables\Actions\Action::class),
                     Tables\Actions\DeleteAction::make(),
                     Tables\Actions\RestoreAction::make(),
                 ]),
@@ -979,6 +1026,9 @@ class BookingResource extends Resource
                 ->color(fn (Booking $record): ?string => $record->status === BookingStatus::InProgress && $record->end_at->isPast() ? 'danger' : null),
             Tables\Columns\TextColumn::make('status')
                 ->badge()
+                ->description(fn (Booking $record): ?string => $record->source === 'website'
+                    ? ($record->hold_until ? 'Website · pay by '.$record->hold_until->format('j M H:i') : 'Website')
+                    : null)
                 ->sortable(),
             Tables\Columns\TextColumn::make('total')
                 ->label('Total')
@@ -1004,6 +1054,8 @@ class BookingResource extends Resource
     {
         return [
             \App\Filament\Resources\TransactionResource\RelationManagers\TransactionsRelationManager::class,
+            BookingResource\RelationManagers\ChargeLinesRelationManager::class, // 4 Nov (Phase 4)
+            BookingResource\RelationManagers\PreauthsRelationManager::class,
             \App\Filament\RelationManagers\HistoryRelationManager::class,
         ];
     }

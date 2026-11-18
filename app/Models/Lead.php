@@ -37,6 +37,8 @@ class Lead extends Model
             'next_follow_up_at' => 'datetime',
             'assigned_at' => 'datetime',
             'accepted_at' => 'datetime',
+            'broadcast_at' => 'datetime',          // 5 Nov (S3)
+            'broadcast_reminded_at' => 'datetime',
             'platform' => 'array',
             'answers' => 'array',
         ];
@@ -86,15 +88,18 @@ class Lead extends Model
         static::saved(function (Lead $lead) {
             if ($lead->wasChanged('assigned_to') || $lead->wasRecentlyCreated) {
                 if ($lead->assignment_status === 'pending' && ($agent = $lead->assignee)) {
-                    \App\Support\Drivers\Notify::person($agent, 'New lead for you: '.$lead->name, 'Open it and press "Accept lead" to take it.', \App\Filament\Resources\LeadResource::getUrl('edit', ['record' => $lead]));
+                    \App\Support\Drivers\Notify::person($agent, 'New lead for you: '.$lead->name, 'Open it and press "Accept lead" to take it.', \App\Filament\Resources\LeadResource::getUrl('edit', ['record' => $lead]), event: 'lead_new');
                 }
             }
         });
 
         // A won deal always has a customer profile.
         static::saved(function (Lead $lead) {
-            if ($lead->status === LeadStatus::Converted && ! $lead->customer_id && ! $lead->trashed()) {
+            if ($lead->status === LeadStatus::Converted && ! $lead->trashed() && (! $lead->customer_id || $lead->customer?->status === 'prospect')) {
                 $lead->convertToCustomer();
+            }
+            if ($lead->status === LeadStatus::Lost && $lead->wasChanged('status')) {
+                rescue(fn () => \App\Support\Portal::onLost($lead)); // spam / fake: the prospect's login is switched off
             }
         });
     }
@@ -130,7 +135,7 @@ class Lead extends Model
         $name = auth()->user()->name;
         $this->activities()->create(['type' => \App\Enums\ActivityType::Note, 'body' => 'Handed back by '.$name.': '.$reason, 'user_id' => auth()->id()]);
         $this->update(['assigned_to' => null]);
-        \App\Support\Drivers\Notify::staff('assign-leads', 'Lead handed back: '.$this->name, $name.': '.$reason, \App\Filament\Resources\LeadResource::getUrl('edit', ['record' => $this]));
+        \App\Support\Drivers\Notify::staff('assign-leads', 'Lead handed back: '.$this->name, $name.': '.$reason, \App\Filament\Resources\LeadResource::getUrl('edit', ['record' => $this]), event: 'lead_returned');
     }
 
     public function bookings(): HasMany
@@ -217,6 +222,9 @@ class Lead extends Model
                 ]);
 
             $this->forceFill(['customer_id' => $customer->id])->saveQuietly();
+            if ($customer->status === 'prospect') {
+                $customer->forceFill(['status' => 'customer'])->saveQuietly(); // won: a prospect becomes a customer (4 Nov, 13)
+            }
 
             return $customer;
         });

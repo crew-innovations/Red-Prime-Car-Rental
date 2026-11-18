@@ -23,9 +23,9 @@ enum BookingStatus: string implements HasLabel, HasColor, HasIcon
         return match ($this) {
             self::Inquiry => 'Inquiry',
             self::Quotation => 'Quotation',
-            self::PendingPayment => 'Pending payment',
+            self::PendingPayment => 'Waiting for payment', // 6 Nov (S4 / C.2): plain words
             self::Confirmed => 'Confirmed',
-            self::InProgress => 'In progress',
+            self::InProgress => 'With customer',
             self::Completed => 'Completed',
             self::Cancelled => 'Cancelled',
             self::NoShow => 'No-show',

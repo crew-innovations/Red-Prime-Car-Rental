@@ -43,8 +43,8 @@ class DriverDocumentReminders extends Command
 
             $title = ($expired ? 'Expired: ' : 'Expires soon: ').$doc->typeLabel().' of '.$doc->user->name;
             $url = \App\Filament\Resources\DriverResource::getUrl('edit', ['record' => $doc->user_id]);
-            Notify::staff('manage-drivers', $title, $doc->expiryLabel(), $url, null, $expired ? 'danger' : 'warning');
-            Notify::driver($doc->user, ($expired ? 'Your ' : 'Renew soon: your ').$doc->typeLabel().($expired ? ' has expired' : ''), $doc->expiryLabel().'. Please send the new copy to the office.', null, $expired ? 'danger' : 'warning');
+            Notify::staff('manage-drivers', $title, $doc->expiryLabel(), $url, null, $expired ? 'danger' : 'warning', event: 'document_rejected');
+            Notify::driver($doc->user, ($expired ? 'Your ' : 'Renew soon: your ').$doc->typeLabel().($expired ? ' has expired' : ''), $doc->expiryLabel().'. Please send the new copy to the office.', null, $expired ? 'danger' : 'warning', event: 'document_rejected');
 
             $doc->forceFill([$column => now()])->saveQuietly();
             $sent++;

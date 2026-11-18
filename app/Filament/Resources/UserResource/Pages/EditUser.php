@@ -15,7 +15,7 @@ class EditUser extends EditRecord
 
     protected function getHeaderActions(): array
     {
-        return [];
+        return [\App\Filament\Support\EmailActions::send(\Filament\Actions\Action::class)];
     }
 
     protected function beforeSave(): void

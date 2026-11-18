@@ -79,7 +79,12 @@ class DamageReportResource extends Resource
                     ->weight(FontWeight::SemiBold)
                     ->description(fn (DamageReport $record): string => trim(($record->booking?->bookable?->name ?? '').' · '.($record->booking?->customer?->name ?? ''), ' ·'))
                     ->url(fn (DamageReport $record): ?string => $record->booking ? BookingResource::getUrl('edit', ['record' => $record->booking]) : null),
-                Tables\Columns\TextColumn::make('description')->wrap()->limit(160),
+                Tables\Columns\TextColumn::make('kind')->label('What')->badge()
+                    ->formatStateUsing(fn (?string $state): string => DamageReport::KINDS[$state ?? 'damage'] ?? 'Damage')
+                    ->color(fn (?string $state): string => $state === 'accident' ? 'danger' : 'warning')
+                    ->description(fn (DamageReport $record): ?string => $record->police_report_no ? 'Police report '.$record->police_report_no : null),
+                Tables\Columns\TextColumn::make('description')->wrap()->limit(160)
+                    ->description(fn (DamageReport $record): ?string => $record->location ? 'Where: '.$record->location : null),
                 Tables\Columns\TextColumn::make('photos')
                     ->state(fn (DamageReport $record): int => $record->getMedia('photos')->count() + ($record->booking_job_id && $record->stage === 'collection' ? $record->booking?->getMedia('return')->count() ?? 0 : 0))
                     ->label('Photos')->badge()->color('gray'),
@@ -90,6 +95,7 @@ class DamageReportResource extends Resource
             ])
             ->filters([
                 Tables\Filters\SelectFilter::make('status')->options(DamageReport::STATUSES)->default('open'),
+                Tables\Filters\SelectFilter::make('kind')->label('What')->options(DamageReport::KINDS),
             ])
             ->actions([
                 Tables\Actions\Action::make('view')

@@ -158,7 +158,7 @@ class Calendar extends Page
     /** Filter choices. */
     public function options(): array
     {
-        $agents = Access::agentScoped() || Access::isDriverOnly() ? [] : User::query()->whereHas('roles', fn ($q) => $q->whereIn('name', ['Sales', 'Agent', 'Manager', 'Admin', 'Operations']))->orderBy('name')->pluck('name', 'id')->all();
+        $agents = Access::agentScoped() || Access::isDriverOnly() ? [] : User::query()->whereHas('roles', fn ($q) => $q->whereIn('name', Access::withLegacy(['Agent', 'Admin'])))->orderBy('name')->pluck('name', 'id')->all();
         $drivers = Access::isDriverOnly() ? [] : User::query()->whereHas('roles', fn ($q) => $q->where('name', 'Driver'))->orderBy('name')->pluck('name', 'id')->all();
         $items = collect()
             ->merge(\App\Models\Car::query()->orderBy('name')->get(['id', 'name'])->mapWithKeys(fn ($c) => ['car:'.$c->id => 'Car · '.$c->name]))

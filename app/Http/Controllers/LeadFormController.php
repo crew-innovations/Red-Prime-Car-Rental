@@ -75,6 +75,14 @@ class LeadFormController extends Controller
             if ($locked->closedReason()) {
                 return true;
             }
+            // 12 Nov: the agent sent this form in a chat (signed lead in the link): the answers
+            // complete that lead and it stays with its agent. No second lead.
+            if ($lead = \App\Support\Transfers\LimoLink::lead(request()->input('lead_ref'))) {
+                self::complete($lead, $form, $data, $answers);
+                $locked->increment('submissions');
+
+                return false;
+            }
             LeadIntake::receive([
                 'name' => $data['name'], 'phone' => $data['phone'], 'email' => $data['email'] ?? null,
                 'service_type' => $form->service_type?->value, 'answers' => $answers,
@@ -92,5 +100,26 @@ class LeadFormController extends Controller
         }
 
         return redirect()->route('forms.show', $token)->with('sent', true);
+    }
+
+    /** The customer's form answers go onto the lead they were sent for. */
+    protected static function complete(\App\Models\Lead $lead, LeadForm $form, array $data, array $answers): void
+    {
+        $lead->name = mb_substr($data['name'], 0, 255);
+        $lead->phone = $lead->phone ?: mb_substr(trim($data['phone']), 0, 40);
+        $lead->whatsapp = $lead->whatsapp ?: $lead->phone;
+        if (blank($lead->email) && filter_var($data['email'] ?? null, FILTER_VALIDATE_EMAIL)) {
+            $lead->email = mb_strtolower(trim($data['email']));
+        }
+        $lead->service_type = $lead->service_type ?: $form->service_type;
+        $lead->answers = array_merge((array) $lead->answers, $answers) ?: null;
+        $lead->save();
+        $lead->activities()->create(['type' => \App\Enums\ActivityType::Note, 'user_id' => null,
+            'body' => mb_substr('The customer filled in "'.$form->name.'":'."\n".'Name: '.$data['name']."\n".'Phone: '.$data['phone']
+                .(filled($data['email'] ?? null) ? "\nEmail: ".$data['email'] : '').collect($answers)->map(fn ($v, $k) => "\n".$k.': '.$v)->implode(''), 0, 5000)]);
+        if ($lead->assignee) {
+            rescue(fn () => \App\Support\Drivers\Notify::person($lead->assignee, 'Form filled in: '.$lead->name, 'The details are on the lead.',
+                \App\Filament\Resources\LeadResource::getUrl('edit', ['record' => $lead], panel: 'admin'), 'success', 'lead_returned'), report: false);
+        }
     }
 }

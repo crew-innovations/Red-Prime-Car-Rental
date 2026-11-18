@@ -24,11 +24,13 @@ class BookingFlow
     public static function deliver(Booking $booking, array $data): void
     {
         DB::transaction(function () use ($booking, $data) {
+            $fuel = \App\Support\Fuel\Fuel::eighth($data['delivery_fuel'] ?? null); // 5 Nov (S5): eighths; old quarter kept in step
             $booking->update([
                 'status' => BookingStatus::InProgress,
                 'delivered_at' => $data['delivered_at'] ?? now(),
                 'delivery_km' => $data['delivery_km'] ?? null,
-                'delivery_fuel' => $data['delivery_fuel'] ?? null,
+                'delivery_fuel' => \App\Support\Fuel\Fuel::toQuarter($fuel),
+                'delivery_fuel_8' => $fuel,
                 'delivery_notes' => $data['delivery_notes'] ?? null,
                 'delivered_by' => auth()->id(),
                 'driver_id' => $data['driver_id'] ?? $booking->driver_id,
@@ -46,6 +48,9 @@ class BookingFlow
 
             if ($booking->bookable instanceof Car && ! empty($data['delivery_km']) && (int) $data['delivery_km'] > (int) $booking->bookable->mileage) {
                 $booking->bookable->forceFill(['mileage' => (int) $data['delivery_km']])->saveQuietly();
+            }
+            if ($booking->bookable instanceof Car) {
+                \App\Support\Fuel\Fuel::setCarLevel($booking->bookable, $fuel, $data['delivered_at'] ?? now());
             }
         });
     }
@@ -69,15 +74,29 @@ class BookingFlow
                 throw \Illuminate\Validation\ValidationException::withMessages(['data.charges.damage' => 'A damage charge needs approval first (Operations › Damage reports). Approved so far: AED '.number_format($approved, 2).'.']);
             }
 
+            // 5 Nov (S5): fuel in eighths, and the fuel charge the CRM works out. Charging less than
+            // that needs a reason, so the owner sees why money was given away.
+            $fuel = \App\Support\Fuel\Fuel::eighth($data['return_fuel'] ?? null);
+            $proposal = $booking->bookable instanceof Car ? \App\Support\Fuel\Fuel::proposeCharge($booking, $fuel) : ['amount' => null];
+            $fuelNote = filled($data['fuel_charge_note'] ?? null) ? mb_substr(trim($data['fuel_charge_note']), 0, 255) : null;
+            if ($proposal['amount'] !== null && (float) ($charges['fuel'] ?? 0) + 0.005 < $proposal['amount'] && ! $fuelNote) {
+                throw \Illuminate\Validation\ValidationException::withMessages(['data.fuel_charge_note' => 'The fuel charge is lower than the AED '.number_format($proposal['amount'], 2).' worked out. Say why.']);
+            }
+
             $booking->update([
                 'status' => BookingStatus::Completed,
                 'returned_at' => $data['returned_at'] ?? now(),
                 'return_km' => $data['return_km'] ?? null,
-                'return_fuel' => $data['return_fuel'] ?? null,
+                'return_fuel' => \App\Support\Fuel\Fuel::toQuarter($fuel),
+                'return_fuel_8' => $fuel,
+                'fuel_charge_proposed' => $proposal['amount'],
+                'fuel_charge_note' => $fuelNote,
                 'return_condition' => $data['return_condition'] ?? null,
                 'inspection_result' => $data['after_return'] ?? null,
                 'return_notes' => $data['return_notes'] ?? null,
                 'received_by' => auth()->id(),
+                // 4 Nov (4.1): with a hold period set, the deposit is refundable from this date.
+                'deposit_refundable_on' => ($days = \App\Support\Deposits\Settlement::holdDays()) ? \Illuminate\Support\Carbon::parse($data['returned_at'] ?? now())->addDays($days)->toDateString() : null,
                 'charges' => $charges->all() ?: null,
                 'extra_charges' => $charges->sum(),
             ]);
@@ -113,6 +132,9 @@ class BookingFlow
             $item = $booking->bookable;
             if ($item instanceof Car && ! empty($data['return_km']) && (int) $data['return_km'] > (int) $item->mileage) {
                 $item->forceFill(['mileage' => (int) $data['return_km']])->saveQuietly();
+            }
+            if ($item instanceof Car) {
+                \App\Support\Fuel\Fuel::setCarLevel($item, $fuel, $data['returned_at'] ?? now());
             }
             // Booking status, money and the car's readiness are separate: the car is
             // only handed over again once it is marked ready.
@@ -163,7 +185,7 @@ class BookingFlow
         self::depositOut($booking, min($amount, $booking->depositHeld()), $method, 'Deposit refund · '.$booking->reference);
     }
 
-    protected static function depositOut(Booking $booking, float $amount, ?string $method, string $description): void
+    public static function depositOut(Booking $booking, float $amount, ?string $method, string $description): void
     {
         if ($amount <= 0) {
             return;

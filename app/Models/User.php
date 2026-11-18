@@ -49,6 +49,23 @@ class User extends Authenticatable implements FilamentUser
     }
 
     /** The customer record a customer account belongs to. */
+    /** Emails sent to this login (4 Nov, 14.4). */
+    public function emailLogs(): HasMany
+    {
+        return $this->hasMany(EmailLog::class);
+    }
+
+    public function devices(): HasMany
+    {
+        return $this->hasMany(UserDevice::class);
+    }
+
+    /** 4 Nov (15): time the driver cannot work. */
+    public function unavailability(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(DriverUnavailability::class);
+    }
+
     public function customer(): BelongsTo
     {
         return $this->belongsTo(Customer::class)->withTrashed();
@@ -82,6 +99,12 @@ class User extends Authenticatable implements FilamentUser
             'login_enabled' => 'boolean',
             'invited_at' => 'datetime',
             'last_login_at' => 'datetime',
+            // 4 Nov, Phase 2
+            'notification_prefs' => 'array',
+            'invite_version' => 'integer',
+            'password_set_at' => 'datetime',
+            // 5 Nov: the hidden technical account (Crew Innovations)
+            'is_system' => 'boolean',
         ];
     }
 

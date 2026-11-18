@@ -27,7 +27,7 @@ class ExpenseBreakdown extends ChartWidget
         $rows = Transaction::query()
             ->expense()
             ->where('status', '<>', 'refunded')
-            ->whereNotIn('category', Transaction::NON_COST_CATEGORIES)
+            ->whereNotIn('category', Transaction::NON_COST_CATEGORIES)->where('pass_through', false)
             ->counting()
             ->when($this->filter === 'month', fn ($q) => $q->where('date', '>=', now()->startOfMonth()))
             ->when($this->filter === 'year', fn ($q) => $q->where('date', '>=', now()->startOfYear()))

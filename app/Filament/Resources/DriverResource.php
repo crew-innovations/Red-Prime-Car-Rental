@@ -42,7 +42,8 @@ class DriverResource extends Resource
 
     public static function canViewAny(): bool
     {
-        return Access::allows('manage-bookings') || Access::allows('manage-drivers');
+        // 5 Nov (S3): agents see the driver on their own booking, not the drivers list with everyone's jobs.
+        return Access::allows('manage-drivers') || (Access::allows('manage-bookings') && ! Access::agentScoped());
     }
 
     public static function canCreate(): bool
@@ -249,6 +250,8 @@ class DriverResource extends Resource
         return [
             DriverResource\RelationManagers\DocumentsRelationManager::class,
             DriverResource\RelationManagers\JobsRelationManager::class,
+            DriverResource\RelationManagers\UnavailabilityRelationManager::class,
+            \App\Filament\RelationManagers\EmailsRelationManager::class,
             DriverResource\RelationManagers\DriverBookingsRelationManager::class,
             \App\Filament\RelationManagers\HistoryRelationManager::class,
         ];

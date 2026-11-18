@@ -32,6 +32,10 @@ class LeadReports extends Page
     #[Url]
     public string $by = 'channel';
 
+    /** 6 Nov (limousine L4): one service only, e.g. which channels bring limousine leads. */
+    #[Url]
+    public ?string $service = null;
+
     public static function canAccess(): bool
     {
         return ! Access::isDriverOnly() && Access::allows('manage-leads');
@@ -62,6 +66,8 @@ class LeadReports extends Page
             [$from, $until] = [$until, $from];
         }
 
-        return new LeadReport($from, $until);
+        $service = \App\Enums\ServiceType::tryFrom((string) $this->service)?->value;
+
+        return new LeadReport($from, $until, $service);
     }
 }

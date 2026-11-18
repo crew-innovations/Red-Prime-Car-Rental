@@ -12,6 +12,8 @@ use Filament\Resources\Pages\EditRecord;
 
 class EditQuotation extends EditRecord
 {
+    use \App\Filament\Concerns\HasNextStep;
+
     use GuardsSave {
         save as protected guardedSave;
         getFormActions as protected guardedFormActions;
@@ -24,7 +26,12 @@ class EditQuotation extends EditRecord
         return 'Quotation '.$this->getRecord()->number;
     }
 
-    public function getSubheading(): ?string
+    public function getSubheading(): string|\Illuminate\Contracts\Support\Htmlable|null
+    {
+        return $this->progressBar($this->detailsLine()); // 6 Nov (S4): progress bar + the details line
+    }
+
+    protected function detailsLine(): ?string
     {
         /** @var Quotation $q */
         $q = $this->getRecord();
@@ -49,6 +56,12 @@ class EditQuotation extends EditRecord
 
     protected function getHeaderActions(): array
     {
+        return $this->withNextStep($this->pageActions()); // 6 Nov (S4): one big next step, the rest under "More"
+    }
+
+    /** Every button of this page (the next step is picked from these). */
+    protected function pageActions(): array
+    {
         $after = fn () => $this->redirect(QuotationResource::getUrl('edit', ['record' => $this->getRecord()]));
 
         $workflow = array_map(
@@ -56,13 +69,14 @@ class EditQuotation extends EditRecord
             QuotationResource::workflowActions(Actions\Action::class),
         );
         // The first two (send, convert) stay as buttons; the rest go in the menu.
-        $buttons = array_values(array_filter($workflow, fn ($a) => in_array($a->getName(), ['approvePrice', 'send', 'accept', 'convert'], true)));
-        $menu = array_values(array_filter($workflow, fn ($a) => ! in_array($a->getName(), ['approvePrice', 'send', 'accept', 'convert'], true)));
+        $buttons = array_values(array_filter($workflow, fn ($a) => in_array($a->getName(), ['approvePrice', 'rejectPrice', 'send', 'accept', 'convert'], true)));
+        $menu = array_values(array_filter($workflow, fn ($a) => ! in_array($a->getName(), ['approvePrice', 'rejectPrice', 'send', 'accept', 'convert'], true)));
 
         return [
             ...$buttons,
             Actions\ActionGroup::make([
                 ...$menu,
+                \App\Filament\Support\EmailActions::send(Actions\Action::class),
                 \App\Filament\Resources\PaymentRequestResource::linkAction(Actions\Action::class, fn () => $this->getRecord())
                     ->visible(fn (): bool => $this->getRecord()->status === \App\Enums\QuotationStatus::Accepted && ! $this->getRecord()->booking_id),
                 Actions\Action::make('customer')

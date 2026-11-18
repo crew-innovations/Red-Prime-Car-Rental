@@ -9,6 +9,12 @@
         <div class="rp-rep-range">
             <label>From <input type="date" wire:model.live="from"></label>
             <label>Until <input type="date" wire:model.live="until"></label>
+            <label>Service
+                <select wire:model.live="service">
+                    <option value="">All services</option>
+                    @foreach (\App\Enums\ServiceType::cases() as $st)<option value="{{ $st->value }}">{{ $st->getLabel() }}</option>@endforeach
+                </select>
+            </label>
         </div>
         <div class="rp-rep-quick">
             <button type="button" wire:click="setRange('month')">This month</button>

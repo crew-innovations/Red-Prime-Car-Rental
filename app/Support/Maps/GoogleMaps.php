@@ -25,6 +25,72 @@ class GoogleMaps
 
     public const AUTOCOMPLETE_URL = 'https://places.googleapis.com/v1/places:autocomplete';
 
+    public const GEOCODE_URL = 'https://maps.googleapis.com/maps/api/geocode/json';
+
+    /** "25.2048,55.2708" (a pin on the map) → [lat, lng], or null when it is an address. */
+    public static function ll(?string $text): ?array
+    {
+        if (! preg_match('/^\s*(-?\d{1,2}(?:\.\d+)?)\s*,\s*(-?\d{1,3}(?:\.\d+)?)\s*$/', (string) $text, $m)) {
+            return null;
+        }
+        $lat = (float) $m[1];
+        $lng = (float) $m[2];
+
+        return abs($lat) <= 90 && abs($lng) <= 180 ? [$lat, $lng] : null;
+    }
+
+    /** 11 Nov (limousine): where an address is, to move the map picker there. Null when unknown. @return array{lat: float, lng: float}|null */
+    public static function locate(string $text): ?array
+    {
+        $i = self::integration();
+        $text = mb_substr(trim($text), 0, 200);
+        if (! $i->isReady() || mb_strlen($text) < 3) {
+            return null;
+        }
+
+        return \Illuminate\Support\Facades\Cache::remember('gmaps:loc:'.sha1(mb_strtolower($text)), now()->addDay(), function () use ($i, $text) {
+            try {
+                $r = Http::timeout(6)->get(self::GEOCODE_URL, ['address' => $text, 'region' => (string) $i->config('region', 'ae'), 'key' => $i->secret('server_key')]);
+            } catch (\Throwable) {
+                return null;
+            }
+            $at = $r->successful() ? $r->json('results.0.geometry.location') : null;
+
+            return isset($at['lat'], $at['lng']) ? ['lat' => (float) $at['lat'], 'lng' => (float) $at['lng']] : null;
+        });
+    }
+
+    /** A route point for Google: the exact pin when given, else the address. */
+    protected static function waypoint(string $place): array
+    {
+        $ll = self::ll($place);
+
+        return $ll ? ['location' => ['latLng' => ['latitude' => $ll[0], 'longitude' => $ll[1]]]] : ['address' => $place];
+    }
+
+    /** 11 Nov (limousine): the address of a pin (map or "my location"). Null when Google is off or finds nothing. */
+    public static function reverse(float $lat, float $lng): ?string
+    {
+        $i = self::integration();
+        if (! $i->isReady() || abs($lat) > 90 || abs($lng) > 180) {
+            return null;
+        }
+        $key = 'gmaps:rev:'.round($lat, 4).','.round($lng, 4);
+
+        return \Illuminate\Support\Facades\Cache::remember($key, now()->addDay(), function () use ($i, $lat, $lng) {
+            try {
+                $r = Http::timeout(6)->get(self::GEOCODE_URL, ['latlng' => $lat.','.$lng, 'key' => $i->secret('server_key'), 'language' => 'en']);
+            } catch (\Throwable) {
+                return null;
+            }
+            $results = $r->successful() ? (array) $r->json('results', []) : [];
+            // A plus code ("6789+XQ Dubai") says little to a driver: prefer the first real address.
+            $best = collect($results)->first(fn ($x) => ! in_array('plus_code', (array) ($x['types'] ?? []), true)) ?? ($results[0] ?? null);
+
+            return filled($best['formatted_address'] ?? null) ? mb_substr((string) $best['formatted_address'], 0, 255) : null;
+        });
+    }
+
     public static function integration(): Integration
     {
         return Integration::for('google_maps');
@@ -41,6 +107,18 @@ class GoogleMaps
      */
     public static function route(string $from, string $to, array $stops = [], ?Carbon $departAt = null, ?Integration $i = null): array
     {
+        // 6 Nov (limousine): the same route within 30 minutes is not asked twice (website prices every class, Google bills per call).
+        if (! $i && trim($from) !== '' && trim($to) !== '') {
+            $key = 'gmaps:route:'.sha1(json_encode([mb_strtolower(trim($from)), mb_strtolower(trim($to)), array_values($stops), $departAt?->format('Y-m-d H')]));
+
+            return \Illuminate\Support\Facades\Cache::remember($key, now()->addMinutes(30), fn () => self::routeLive($from, $to, $stops, $departAt));
+        }
+
+        return self::routeLive($from, $to, $stops, $departAt, $i);
+    }
+
+    protected static function routeLive(string $from, string $to, array $stops = [], ?Carbon $departAt = null, ?Integration $i = null): array
+    {
         $i ??= self::integration();
         if (! $i->isReady()) {
             throw new RuntimeException('Google Maps is not set up (Settings › Integrations). Type the distance by hand.');
@@ -52,8 +130,8 @@ class GoogleMaps
         }
 
         $body = [
-            'origin' => ['address' => $from],
-            'destination' => ['address' => $to],
+            'origin' => self::waypoint($from),
+            'destination' => self::waypoint($to),
             'travelMode' => 'DRIVE',
             'routingPreference' => 'TRAFFIC_AWARE',
             'computeAlternativeRoutes' => false,
@@ -63,7 +141,7 @@ class GoogleMaps
         ];
         $stops = array_values(array_filter(array_map('trim', $stops)));
         if ($stops) {
-            $body['intermediates'] = array_map(fn ($s) => ['address' => $s], $stops);
+            $body['intermediates'] = array_map(fn ($s) => self::waypoint($s), $stops);
         }
         if ($departAt && $departAt->isFuture()) {
             $body['departureTime'] = $departAt->copy()->utc()->format('Y-m-d\TH:i:s\Z'); // traffic estimate for that time
@@ -181,6 +259,14 @@ class GoogleMaps
         return collect($response->json('suggestions', []))
             ->map(fn ($s) => $s['placePrediction']['text']['text'] ?? null)->filter()->unique()->take(8)
             ->mapWithKeys(fn ($a) => [$a => $a])->all();
+    }
+
+    /** The restricted browser key for maps inside the CRM (live drivers map), or null. */
+    public static function browserKey(): ?string
+    {
+        $i = self::integration();
+
+        return $i->enabled ? ($i->secret('browser_key') ?: null) : null;
     }
 
     /** Map preview inside the CRM (restricted browser key), or null. */

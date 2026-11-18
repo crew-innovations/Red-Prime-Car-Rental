@@ -70,8 +70,8 @@ class QuotationDecision
 
         $who = self::VIA[$via] ?? $via;
         $body = 'AED '.number_format((float) $quotation->total, 2).' · '.$who.($missing ? ' · documents requested' : ' · documents complete').'. Next: create the booking.';
-        Notify::person($quotation->lead?->assignee ?? $quotation->creator, 'Quotation '.$quotation->number.' accepted by '.($quotation->customerName() ?? 'the customer'), $body,
-            \App\Filament\Resources\QuotationResource::getUrl('edit', ['record' => $quotation]), 'success');
+        // 4 Nov (9.3): managers, the owner agent and the customer, once even if "accept" is sent twice.
+        \App\Support\Notifications\EventHooks::quoteAccepted($quotation, $body);
 
         return ['quotation' => $quotation, 'documents_url' => $documentsUrl, 'missing' => $missing];
     }
@@ -89,8 +89,7 @@ class QuotationDecision
         });
 
         if ($via !== 'staff') {
-            Notify::person($q->lead?->assignee ?? $q->creator, 'Quotation '.$q->number.' declined', $reason,
-                \App\Filament\Resources\QuotationResource::getUrl('edit', ['record' => $q]), 'danger');
+            \App\Support\Notifications\EventHooks::quoteRejected($q, $reason);
         }
 
         return $q;

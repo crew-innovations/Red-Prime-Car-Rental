@@ -40,6 +40,10 @@
                 <div><dt>To collect<span>All open balances today</span></dt><dd>{{ $aed($s['outstanding']) }}</dd></div>
                 <div><dt>Security deposits held<span>Refundable, not revenue</span></dt><dd>{{ $aed($s['deposits_held']) }}</dd></div>
                 <div><dt>Deposits returned<span>In the period, not a cost</span></dt><dd>{{ $aed($s['deposit_refunds']) }}</dd></div>
+                @if (($s['pass_through_charged'] ?? 0) > 0 || ($s['pass_through_paid'] ?? 0) > 0)
+                    <div><dt>Fines & tolls passed on<span>Charged to customers, not revenue</span></dt><dd>{{ $aed($s['pass_through_charged']) }}</dd></div>
+                    <div><dt>Fines & tolls paid to authorities<span>For customers, not a cost</span></dt><dd>{{ $aed($s['pass_through_paid']) }}</dd></div>
+                @endif
                 <div><dt>Refunded payments<span>In the period</span></dt><dd>{{ $aed($s['refunds']) }}</dd></div>
             </dl>
         </x-filament::section>

@@ -22,7 +22,7 @@ class BookingProfit
     {
         $revenue = ProfitReport::earnedFor($b);
         $costs = Transaction::query()->expense()->where('booking_id', $b->id)->whereNull('reversed_at')->where('status', '<>', PaymentStatus::Refunded->value)
-            ->whereNotIn('category', Transaction::NON_COST_CATEGORIES)->get();
+            ->whereNotIn('category', Transaction::NON_COST_CATEGORIES)->where('pass_through', false)->get();
         $counting = $costs->filter(fn (Transaction $t) => $t->counts());
         $supplierRows = $counting->filter(fn (Transaction $t) => $t->supplier_id);
         $other = round($counting->reject(fn (Transaction $t) => $t->supplier_id)->sum('amount'), 2);

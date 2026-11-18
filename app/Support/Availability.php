@@ -301,6 +301,28 @@ class Availability
         return null;
     }
 
+    /**
+     * Time the person marked as not available (4 Nov, 15) that falls on the work: a delivery or
+     * collection moment, or the whole span for a chauffeur / captain / crew.
+     */
+    public static function offTime(int $userId, $start, $end, DriveMode|string|null $driveMode = DriveMode::WithDriver): ?\App\Models\DriverUnavailability
+    {
+        if (! $start || ! \Illuminate\Support\Facades\Schema::hasTable('driver_unavailability')) {
+            return null;
+        }
+        $start = Carbon::parse($start);
+        $end = $end ? Carbon::parse($end) : $start->copy();
+        foreach (self::driverWindows($start, $end, $driveMode) as [$a, $b]) {
+            $off = \App\Models\DriverUnavailability::query()->where('user_id', $userId)
+                ->where('starts_at', '<=', $b)->where('ends_at', '>=', $a)->orderBy('starts_at')->first();
+            if ($off) {
+                return $off;
+            }
+        }
+
+        return null;
+    }
+
     /** When this person works on that booking: the whole span with driver, else delivery and / or collection. */
     protected static function windowsFor(Booking $b, int $personId): array
     {
@@ -354,7 +376,7 @@ class Availability
     {
         return \App\Models\User::role('Driver')->with('driverProfile')->where('is_active', true)->whereNotIn('id', $except)->orderBy('name')->get()
             ->filter(fn ($u) => $work === 'driver' ? (! $u->driverProfile || $u->driverProfile->does('driver')) : ($u->driverProfile && ($u->driverProfile->does($work) || ($work === 'crew' && $u->driverProfile->does('captain')))))
-            ->reject(fn ($u) => self::personConflict($u->id, $start, $end, $ignoreBookingId, $driveMode))
+            ->reject(fn ($u) => self::personConflict($u->id, $start, $end, $ignoreBookingId, $driveMode) || self::offTime($u->id, $start, $end, $driveMode))
             ->take($limit)->pluck('name')->all();
     }
 

@@ -24,13 +24,18 @@ use Illuminate\Validation\ValidationException;
  */
 class DriverJob extends Page
 {
+    use \App\Filament\Concerns\DriverLocale;
+
     protected static string $view = 'filament.pages.driver-job';
 
-    protected static ?string $slug = 'my-jobs/{job}';
+    protected static ?string $slug = 'driver/jobs/{job}';
 
     protected static bool $shouldRegisterNavigation = false;
 
     public BookingJob $record;
+
+    /** Opened from "Decline" on the job list: the decline form opens straight away. */
+    public $defaultAction = null;
 
     public static function getRelativeRouteName(): string
     {
@@ -47,6 +52,21 @@ class DriverJob extends Page
         $record = BookingJob::with(['booking.bookable', 'booking.customer'])->find($job);
         abort_unless($record && (int) $record->driver_id === (int) auth()->id(), 404);
         $this->record = $record;
+        if (request()->query('decline') && \App\Support\Drivers\DriverFlow::canDecline($record)) {
+            $this->defaultAction = 'decline';
+        }
+    }
+
+    /** Settings the phone script needs (steps queue, location sharing). */
+    public function phoneConfig(): array
+    {
+        $share = \App\Support\Transfers\Tracking::sharesLocation($this->record); // 6 Nov: limousine trips share location (H-48)
+
+        return [
+            'job' => $this->record->id,
+            'share' => $share,
+            'interval' => max(15, (int) Setting::read('location_interval_seconds', 60)),
+        ];
     }
 
     /** Driver ↔ office conversation for this booking (28 Oct-2). */
@@ -59,12 +79,12 @@ class DriverJob extends Page
 
     public function getTitle(): string|Htmlable
     {
-        return $this->record->typeLabel().' · '.$this->record->booking?->reference;
+        return __('driver.type_'.$this->record->typeKey()).' · '.$this->record->booking?->reference;
     }
 
     public function getBreadcrumbs(): array
     {
-        return [MyJobs::getUrl() => 'My jobs', 'Job'];
+        return [MyJobs::getUrl() => __('driver.nav_jobs'), __('driver.job')];
     }
 
     public function booking(): ?Booking
@@ -126,7 +146,7 @@ class DriverJob extends Page
     {
         $this->record->refresh();
         DriverJobs::step($this->record, $step, auth()->user());
-        Notification::make()->title(\App\Models\BookingJob::DRIVER_STEPS[$step].' · saved')->success()->send();
+        Notification::make()->title(__('driver.step_'.$step).' · '.__('driver.saved'))->success()->send();
     }
 
     /** Inspection fields shared by handover and collection. */
@@ -139,65 +159,75 @@ class DriverJob extends Page
         $list = (array) Setting::read($stage.'_checklist', []);
         $minPhotos = max(0, (int) Setting::read($stage.'_min_photos', 0));
 
+        $signature = (string) Setting::read('handover_signature', 'optional');
+
         return array_values(array_filter([
             Forms\Components\TextInput::make('km')
-                ->label('Odometer')
+                ->label(__('driver.odometer'))
                 ->numeric()->minValue($minKm)->suffix('km')
                 ->extraInputAttributes(['inputmode' => 'numeric'])
-                ->helperText($minKm ? 'Last reading '.number_format($minKm).' km' : null)
+                ->helperText($minKm ? __('driver.last_reading', ['km' => number_format($minKm)]) : null)
                 ->required((bool) Setting::read($stage.'_require_km', true)),
             Forms\Components\ToggleButtons::make('fuel')
-                ->label('Fuel level')
-                ->options(Booking::FUEL_LEVELS)
+                ->label(__('driver.fuel_level'))
+                ->options(\App\Support\Fuel\Fuel::gaugeOptions(__('driver.fuel_empty'), __('driver.fuel_full')))
                 ->inline()
+                ->extraAttributes(['class' => 'rp-fuel-gauge'])
                 ->required((bool) Setting::read($stage.'_require_fuel', true)),
             $stage === 'return' ? Forms\Components\ToggleButtons::make('condition')
-                ->label('Condition')
+                ->label(__('driver.condition'))
                 ->options(Booking::CONDITIONS)
                 ->colors(['good' => 'success', 'minor' => 'warning', 'damaged' => 'danger'])
                 ->default('good')
                 ->live()
                 ->required() : null,
             $stage === 'return' ? Forms\Components\Textarea::make('damage')
-                ->label('What damage did you find?')
+                ->label(__('driver.what_damage'))
                 ->rows(3)
                 ->required()
                 ->visible(fn (Forms\Get $get): bool => in_array($get('condition'), ['minor', 'damaged'], true)) : null,
             $list ? Forms\Components\CheckboxList::make('checklist')
-                ->label('Checklist')
+                ->label(__('driver.checklist'))
                 ->options(array_combine($list, $list))
                 ->bulkToggleable()
                 ->rules(Setting::read('checklist_all_required') ? ['array', 'size:'.count($list)] : ['array'])
-                ->validationMessages(['size' => 'Tick every item on the checklist.']) : null,
+                ->validationMessages(['size' => __('driver.tick_all')]) : null,
             Forms\Components\FileUpload::make('photos')
-                ->label($minPhotos ? "Photos (at least {$minPhotos})" : 'Photos')
-                ->helperText('Take new photos or pick from your gallery. Wait until each one shows as uploaded.')
+                ->label($minPhotos ? __('driver.photos_min', ['n' => $minPhotos]) : __('driver.photos'))
+                ->helperText(__('driver.photos_help'))
                 ->disk('private')->directory('tmp')->visibility('private')
                 ->image()->multiple()->maxFiles(20)->maxSize(10240)
                 ->imageResizeMode('contain')->imageResizeTargetWidth('1600')->imageResizeTargetHeight('1600')
                 ->panelLayout('grid')
                 ->minFiles($minPhotos)
                 ->required($minPhotos > 0),
-            Forms\Components\Textarea::make('notes')->label('Notes')->rows(2),
+            Forms\Components\Textarea::make('notes')->label(__('driver.notes'))->rows(2),
+            // 4 Nov (15): the customer signs on the phone (Business settings: off / optional / required).
+            $signature !== 'off' ? Forms\Components\TextInput::make('signer')->label(__('driver.signer'))->maxLength(120)
+                ->default(fn () => $this->booking()?->customer?->name) : null,
+            $signature !== 'off' ? Forms\Components\ViewField::make('signature')->label(__('driver.signature').($signature === 'required' ? ' *' : ''))
+                ->view('filament.driver.signature-pad')
+                ->rules($signature === 'required' ? ['required', 'string'] : ['nullable', 'string'])
+                ->validationMessages(['required' => __('driver.signature_needed')]) : null,
         ]));
     }
 
     public function handoverAction(): Action
     {
         return Action::make('handover')
-            ->label('Hand over the car')
+            ->label(__('driver.handover'))
             ->icon('heroicon-o-key')
             ->size(ActionSize::ExtraLarge)
             ->extraAttributes(['class' => 'rp-dv-bigbtn'])
             ->visible(fn (): bool => DriverWork::canHandOver($this->record))
-            ->modalHeading('Hand over · '.($this->booking()?->bookable?->name ?? 'car'))
-            ->modalDescription('Check the car with the customer, then save. The office records any payment.')
-            ->modalSubmitActionLabel('Save handover')
+            ->modalHeading(__('driver.handover').' · '.($this->booking()?->bookable?->name ?? ''))
+            ->modalDescription(__('driver.handover_desc'))
+            ->modalSubmitActionLabel(__('driver.save_handover'))
             ->closeModalByClickingAway(false)
             ->form(fn (): array => $this->inspectionFields('handover'))
             ->action(function (array $data, Action $action): void {
                 $this->runSafely($action, fn () => DriverWork::handOver($this->record->refresh(), auth()->user(), $data));
-                Notification::make()->title('Handover saved')->body('The office has been told. Drive safe.')->success()->send();
+                Notification::make()->title(__('driver.handover_saved'))->body(__('driver.handover_saved_body'))->success()->send();
                 $this->record->refresh();
             });
     }
@@ -205,19 +235,19 @@ class DriverJob extends Page
     public function collectAction(): Action
     {
         return Action::make('collect')
-            ->label('Collect the car')
+            ->label(__('driver.collect'))
             ->icon('heroicon-o-arrow-uturn-left')
             ->size(ActionSize::ExtraLarge)
             ->extraAttributes(['class' => 'rp-dv-bigbtn'])
             ->visible(fn (): bool => DriverWork::canCollect($this->record))
-            ->modalHeading('Collection check · '.($this->booking()?->bookable?->name ?? 'car'))
-            ->modalDescription('Record how the car came back. The office completes the return and any charges.')
-            ->modalSubmitActionLabel('Save collection')
+            ->modalHeading(__('driver.collect').' · '.($this->booking()?->bookable?->name ?? ''))
+            ->modalDescription(__('driver.collect_desc'))
+            ->modalSubmitActionLabel(__('driver.save_collection'))
             ->closeModalByClickingAway(false)
             ->form(fn (): array => $this->inspectionFields('return'))
             ->action(function (array $data, Action $action): void {
                 $this->runSafely($action, fn () => DriverWork::collect($this->record->refresh(), auth()->user(), $data));
-                Notification::make()->title('Collection saved')->body('The office will complete the return.')->success()->send();
+                Notification::make()->title(__('driver.collection_saved'))->body(__('driver.collection_saved_body'))->success()->send();
                 $this->record->refresh();
             });
     }
@@ -225,22 +255,22 @@ class DriverJob extends Page
     public function startCharterAction(): Action
     {
         return Action::make('startCharter')
-            ->label(fn (): string => $this->record->type === 'transfer' ? 'Customer picked up' : 'Start the charter')
+            ->label(fn (): string => $this->record->type === 'transfer' ? __('driver.picked_up') : __('driver.start_charter'))
             ->icon('heroicon-o-play')
             ->size(ActionSize::ExtraLarge)
             ->extraAttributes(['class' => 'rp-dv-bigbtn'])
             ->visible(fn (): bool => DriverWork::canStartCharter($this->record))
-            ->modalHeading(fn (): string => 'Start · '.($this->booking()?->bookable?->name ?? ($this->record->type === 'transfer' ? 'transfer' : 'yacht')))
-            ->modalDescription(fn (): string => $this->record->type === 'transfer' ? 'The customer is in the car and you are leaving. The office records any payment.' : 'Guests are on board and you are leaving. The office records any payment.')
-            ->modalSubmitActionLabel('Start now')
+            ->modalHeading(fn (): string => ($this->record->type === 'transfer' ? __('driver.picked_up') : __('driver.start_charter')).($this->booking()?->bookable?->name ? ' · '.$this->booking()->bookable->name : ''))
+            ->modalDescription(fn (): string => $this->record->type === 'transfer' ? __('driver.start_desc_transfer') : __('driver.start_desc_charter'))
+            ->modalSubmitActionLabel(__('driver.start_now'))
             ->form([
-                Forms\Components\TextInput::make('guests')->label(fn (): string => $this->record->type === 'transfer' ? 'Passengers' : 'Guests on board')->numeric()->minValue(1)
+                Forms\Components\TextInput::make('guests')->label(fn (): string => $this->record->type === 'transfer' ? __('driver.passengers') : __('driver.guests'))->numeric()->minValue(1)
                     ->default(fn () => $this->booking()?->guests),
-                Forms\Components\Textarea::make('notes')->label('Notes')->rows(2),
+                Forms\Components\Textarea::make('notes')->label(__('driver.notes'))->rows(2),
             ])
             ->action(function (array $data, Action $action): void {
                 $this->runSafely($action, fn () => DriverWork::startCharter($this->record->refresh(), auth()->user(), $data));
-                Notification::make()->title($this->record->type === 'transfer' ? 'Transfer started' : 'Charter started')->body('The office has been told. Have a good trip.')->success()->send();
+                Notification::make()->title(__('driver.started'))->body(__('driver.started_body'))->success()->send();
                 $this->record->refresh();
             });
     }
@@ -248,21 +278,21 @@ class DriverJob extends Page
     public function finishCharterAction(): Action
     {
         return Action::make('finishCharter')
-            ->label(fn (): string => $this->record->type === 'transfer' ? 'Customer dropped off' : 'Finish the charter')
+            ->label(fn (): string => $this->record->type === 'transfer' ? __('driver.dropped_off') : __('driver.finish_charter'))
             ->icon('heroicon-o-flag')
             ->size(ActionSize::ExtraLarge)
             ->extraAttributes(['class' => 'rp-dv-bigbtn'])
             ->visible(fn (): bool => DriverWork::canFinishCharter($this->record))
-            ->modalHeading(fn (): string => 'Finish · '.($this->booking()?->bookable?->name ?? ($this->record->type === 'transfer' ? 'transfer' : 'yacht')))
-            ->modalDescription(fn (): string => $this->record->type === 'transfer' ? 'At the destination. Note waiting time, tolls or extra stops; the office closes the booking.' : 'Back at the marina. The office closes the booking and any charges.')
-            ->modalSubmitActionLabel('Save')
+            ->modalHeading(fn (): string => ($this->record->type === 'transfer' ? __('driver.dropped_off') : __('driver.finish_charter')).($this->booking()?->bookable?->name ? ' · '.$this->booking()->bookable->name : ''))
+            ->modalDescription(fn (): string => $this->record->type === 'transfer' ? __('driver.finish_desc_transfer') : __('driver.finish_desc_charter'))
+            ->modalSubmitActionLabel(__('driver.save'))
             ->form([
-                Forms\Components\Textarea::make('notes')->label(fn (): string => $this->record->type === 'transfer' ? 'Notes (waiting time, extra stops, tolls, anything to know)' : 'Notes (fuel, extra time, anything to know)')->rows(3),
-                Forms\Components\Textarea::make('damage')->label('Damage or problems (if any)')->rows(2),
+                Forms\Components\Textarea::make('notes')->label(fn (): string => $this->record->type === 'transfer' ? __('driver.finish_notes_transfer') : __('driver.finish_notes_charter'))->rows(3),
+                Forms\Components\Textarea::make('damage')->label(__('driver.problems_if_any'))->rows(2),
             ])
             ->action(function (array $data, Action $action): void {
                 $this->runSafely($action, fn () => DriverWork::finishCharter($this->record->refresh(), auth()->user(), $data));
-                Notification::make()->title($this->record->type === 'transfer' ? 'Transfer finished' : 'Charter finished')->body('The office will close it.')->success()->send();
+                Notification::make()->title(__('driver.finished'))->body(__('driver.finished_body'))->success()->send();
                 $this->record->refresh();
             });
     }
@@ -270,29 +300,66 @@ class DriverJob extends Page
     public function damageAction(): Action
     {
         return Action::make('damage')
-            ->label('Report damage or a problem')
+            ->label(__('driver.report'))
             ->icon('heroicon-o-exclamation-triangle')
             ->color('danger')
             ->outlined()
             ->size(ActionSize::Large)
             ->extraAttributes(['class' => 'rp-dv-bigbtn'])
             ->visible(fn (): bool => (bool) Setting::read('driver_can_report_damage', true) && ($this->record->isOpen() || $this->record->done_at?->gt(now()->subDay())))
-            ->modalHeading('Report damage or a problem')
-            ->modalDescription('The office reviews it. You do not need to agree any charge with the customer.')
-            ->modalSubmitActionLabel('Send report')
+            ->modalHeading(__('driver.report'))
+            ->modalDescription(__('driver.report_desc'))
+            ->modalSubmitActionLabel(__('driver.send_report'))
             ->closeModalByClickingAway(false)
+            ->fillForm(fn () => ['kind' => 'damage', 'client_action_id' => (string) \Illuminate\Support\Str::uuid()])
             ->form([
-                Forms\Components\Textarea::make('description')->label('What happened?')->rows(4)->required()->maxLength(2000),
+                Forms\Components\Hidden::make('client_action_id'),
+                Forms\Components\ToggleButtons::make('kind')->label(__('driver.what_kind'))->inline()->live()
+                    ->options(['damage' => __('driver.kind_damage'), 'accident' => __('driver.kind_accident')])
+                    ->colors(['damage' => 'warning', 'accident' => 'danger'])->required(),
+                Forms\Components\Textarea::make('description')->label(__('driver.what_happened'))->rows(4)->required()->maxLength(2000),
+                Forms\Components\TextInput::make('police_report_no')->label(__('driver.police_no'))->maxLength(60)
+                    ->helperText(__('driver.police_help'))
+                    ->visible(fn (Forms\Get $get): bool => $get('kind') === 'accident'),
+                Forms\Components\ViewField::make('location')->label(__('driver.where'))->view('filament.driver.location-field'),
+                Forms\Components\Hidden::make('lat'),
+                Forms\Components\Hidden::make('lng'),
                 Forms\Components\FileUpload::make('photos')
-                    ->label('Photos')
+                    ->label(__('driver.photos'))
                     ->disk('private')->directory('tmp')->visibility('private')
                     ->image()->multiple()->maxFiles(12)->maxSize(10240)
                     ->imageResizeMode('contain')->imageResizeTargetWidth('1600')->imageResizeTargetHeight('1600')
                     ->panelLayout('grid'),
             ])
             ->action(function (array $data, Action $action): void {
-                $this->runSafely($action, fn () => DriverWork::reportDamage($this->record->refresh(), auth()->user(), (string) $data['description'], (array) ($data['photos'] ?? [])));
-                Notification::make()->title('Report sent to the office')->success()->send();
+                $this->runSafely($action, fn () => DriverWork::reportDamage($this->record->refresh(), auth()->user(), (string) $data['description'], (array) ($data['photos'] ?? []),
+                    \Illuminate\Support\Arr::only($data, ['kind', 'police_report_no', 'location', 'lat', 'lng', 'client_action_id'])));
+                Notification::make()->title(__('driver.report_sent'))->body(($data['kind'] ?? '') === 'accident' ? __('driver.accident_body') : null)->success()->send();
+            });
+    }
+
+    public function declineAction(): Action
+    {
+        return Action::make('decline')
+            ->label(__('driver.decline'))
+            ->color('gray')
+            ->size(ActionSize::Large)
+            ->extraAttributes(['class' => 'rp-dv-bigbtn'])
+            ->visible(fn (): bool => \App\Support\Drivers\DriverFlow::canDecline($this->record))
+            ->modalHeading(__('driver.decline_title'))
+            ->modalDescription(__('driver.decline_desc'))
+            ->modalSubmitActionLabel(__('driver.decline'))
+            ->form([
+                Forms\Components\Radio::make('why')->label(__('driver.decline_reason'))->required()
+                    ->options(collect(['busy', 'sick', 'far', 'car', 'other'])->mapWithKeys(fn ($k) => [$k => __('driver.reason_'.$k)])->all())->live(),
+                Forms\Components\TextInput::make('other')->label(__('driver.reason_write'))->maxLength(200)
+                    ->required(fn (Forms\Get $get): bool => $get('why') === 'other')->visible(fn (Forms\Get $get): bool => $get('why') === 'other'),
+            ])
+            ->action(function (array $data, Action $action): void {
+                $reason = $data['why'] === 'other' ? (string) $data['other'] : __('driver.reason_'.$data['why'], [], 'en');
+                $this->runSafely($action, fn () => \App\Support\Drivers\DriverFlow::run($this->record, auth()->user(), 'decline', ['reason' => $reason]));
+                Notification::make()->title(__('driver.declined'))->body(__('driver.declined_body'))->success()->send();
+                $this->redirect(MyJobs::getUrl());
             });
     }
 
@@ -302,7 +369,7 @@ class DriverJob extends Page
         try {
             $work();
         } catch (ValidationException $e) {
-            Notification::make()->title('Not saved yet')->body(collect($e->errors())->flatten()->implode(' '))->danger()->persistent()->send();
+            Notification::make()->title(__('driver.not_saved'))->body(collect($e->errors())->flatten()->implode(' '))->danger()->persistent()->send();
             $action->halt();
         }
     }

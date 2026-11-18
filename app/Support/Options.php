@@ -16,7 +16,7 @@ class Options
     /** Simple suggestion lists: key => [title, help, defaults]. */
     public const LISTS = [
         'lost_reasons' => ['Lead lost reasons', 'Offered when a lead is marked lost.', [
-            'Price too high', 'Car not available', 'Booked with competitor', 'No response', 'Changed plans', 'Not eligible (age / licence)',
+            'Price too high', 'Car not available', 'Booked with competitor', 'No response', 'Changed plans', 'Not eligible (age / licence)', 'Spam / fake enquiry',
         ]],
         'cancel_reasons' => ['Booking cancel reasons', 'Offered when a booking is cancelled or a no-show.', [
             'Customer changed plans', 'Payment not received', 'Car not available', 'Weather', 'Booked by mistake',
@@ -84,7 +84,7 @@ class Options
     /** Money categories the CRM uses itself; their labels can change, they cannot be removed. */
     public const SYSTEM_CATEGORIES = [
         'income' => ['car_rental', 'yacht_charter', 'yacht_trip', 'travel_package', 'chauffeur', 'extras', 'deposit', 'fines_recovered', 'damage', 'other_income'],
-        'expense' => ['fuel', 'maintenance', 'marina', 'cleaning', 'salik_fines', 'deposit_refund', 'other_expense'],
+        'expense' => ['fuel', 'maintenance', 'marina', 'cleaning', 'salik_fines', 'deposit_refund', 'other_expense', 'fines_paid', 'tolls_paid', 'tolls', 'toll_topup'],
     ];
 
     /* ------------------------------------------------------------------ */

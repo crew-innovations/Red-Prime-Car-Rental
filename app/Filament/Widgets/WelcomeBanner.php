@@ -24,6 +24,31 @@ class WelcomeBanner extends Widget
 
     protected int|string|array $columnSpan = 'full';
 
+    protected static function finesAlerts(): array
+    {
+        return rescue(function () {
+            $fines = \App\Models\TrafficFine::where('status', 'new')->count();
+            $toCharge = \App\Models\TrafficFine::where('status', 'matched')->count();
+            $trips = \App\Models\TollTrip::where('status', 'new')->count();
+            $low = \App\Models\TollAccount::query()->where('is_active', true)->whereNotNull('low_balance')->whereColumn('balance', '<', 'low_balance')->count();
+            $fineUrl = fn ($tab) => \App\Filament\Resources\TrafficFineResource::getUrl('index', ['activeTab' => $tab]);
+
+            return array_values(array_filter([
+                $fines ? ['value' => $fines, 'label' => 'fine'.($fines > 1 ? 's' : '').' to review', 'url' => $fineUrl('review')] : null,
+                $toCharge ? ['value' => $toCharge, 'label' => 'fine'.($toCharge > 1 ? 's' : '').' to charge', 'url' => $fineUrl('matched')] : null,
+                $trips ? ['value' => $trips, 'label' => 'toll trip'.($trips > 1 ? 's' : '').' to review', 'url' => \App\Filament\Resources\TollTripResource::getUrl('index', ['activeTab' => 'review'])] : null,
+                $low ? ['value' => $low, 'label' => 'toll account'.($low > 1 ? 's' : '').' low', 'url' => \App\Filament\Resources\TollAccountResource::getUrl('index')] : null,
+            ]));
+        }, [], false);
+    }
+
+    protected static function depositAlerts(): array
+    {
+        $n = rescue(fn () => \App\Support\Deposits\Settlement::dueQuery()->count(), 0, false);
+
+        return $n ? [['value' => $n, 'label' => 'deposit'.($n > 1 ? 's' : '').' to settle', 'url' => \App\Filament\Resources\BookingResource::getUrl('index', ['activeTab' => 'deposits'])]] : [];
+    }
+
     protected function getViewData(): array
     {
         $hour = (int) now()->format('G');
@@ -64,6 +89,12 @@ class WelcomeBanner extends Widget
             $notReady ? ['value' => $notReady, 'label' => 'waiting for cleaning / inspection', 'url' => CarResource::getUrl('index', ['activeTab' => 'attention'])] : null,
             $docsToReview ? ['value' => $docsToReview, 'label' => 'customer document'.($docsToReview > 1 ? 's' : '').' to review', 'url' => null] : null,
             $docs ? ['value' => $docs, 'label' => 'car document'.($docs > 1 ? 's' : '').' due', 'url' => CarResource::getUrl('index')] : null,
+            // 4 Nov (Phase 4): fines and tolls to review, deposits to settle, low toll account.
+            ...(\App\Support\Access::allows('manage-fines') ? self::finesAlerts() : []),
+            ...(\App\Support\Access::allows('manage-finance') ? self::depositAlerts() : []),
+            // 4 Nov (16.4): drivers who would miss job notifications.
+            ($noPush = (\App\Support\Access::allows('manage-apps') || \App\Support\Access::allows('manage-drivers')) ? rescue(fn () => \App\Filament\Pages\AppSettings::driversWithoutPush(), 0, false) : 0)
+                ? ['value' => $noPush, 'label' => 'driver'.($noPush > 1 ? 's' : '').' with notifications off', 'url' => \App\Filament\Pages\AppSettings::canAccess() ? \App\Filament\Pages\AppSettings::getUrl() : null] : null,
         ]));
 
         return [

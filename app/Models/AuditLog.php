@@ -31,6 +31,7 @@ class AuditLog extends Model
         'download' => 'Document downloaded', 'invite' => 'Login link created', 'integration' => 'Integration changed',
         'payment' => 'Online payment', 'webhook' => 'Webhook', 'payment_link' => 'Payment link', 'refund' => 'Refund',
         'job_report' => 'Job report', 'supplier_bill' => 'Supplier bill', 'supplier_payment' => 'Supplier payment',
+        'lead_claim' => 'Lead accepted / tried', 'reassign' => 'Moved to another agent', 'archive' => 'Archived', 'cancel_request' => 'Cancellation request',
     ];
 
     protected static ?string $requestId = null;

@@ -64,7 +64,8 @@ class ProfitReport
             return round((float) $b->paid_amount, 2); // money kept
         }
 
-        return round((float) $b->total - (float) $b->tax_amount + (float) $b->extra_charges, 2);
+        // 4 Nov (C.2): charge lines count, except pass-through fines and tolls (collected for the authority).
+        return round((float) $b->total - (float) $b->tax_amount + (float) $b->extra_charges + (float) $b->charge_lines_total - (float) $b->pass_through_total, 2);
     }
 
     /** Actual, approved costs of these bookings (any date). booking_id => amount */
@@ -77,7 +78,7 @@ class ProfitReport
         return Transaction::query()->counting()->expense()
             ->whereIn('booking_id', $bookingIds)
             ->where('status', '<>', PaymentStatus::Refunded)
-            ->whereNotIn('category', Transaction::NON_COST_CATEGORIES)
+            ->whereNotIn('category', Transaction::NON_COST_CATEGORIES)->where('pass_through', false)
             ->selectRaw('booking_id, SUM(amount) as total')
             ->groupBy('booking_id')
             ->pluck('total', 'booking_id')
@@ -93,7 +94,7 @@ class ProfitReport
         $totals = Transaction::totals(clone $period);
 
         $expensesBy = (clone $period)->counting()->expense()->where('status', '<>', PaymentStatus::Refunded)
-            ->whereNotIn('category', Transaction::NON_COST_CATEGORIES)
+            ->whereNotIn('category', Transaction::NON_COST_CATEGORIES)->where('pass_through', false)
             ->selectRaw('category, SUM(amount) as total')->groupBy('category')->orderByDesc('total')
             ->pluck('total', 'category')->map(fn ($v) => round((float) $v, 2));
 
@@ -112,7 +113,7 @@ class ProfitReport
             ->whereBetween('start_at', [$this->from, $this->to])->get()->sum(fn (Booking $b) => $b->amountDue()), 2);
         $invoiced = round((float) Invoice::query()->where('status', 'issued')->where('type', 'invoice')->whereBetween('issued_on', [$this->from->toDateString(), $this->to->toDateString()])->sum('total')
             - (float) Invoice::query()->where('status', 'issued')->where('type', 'credit_note')->whereBetween('issued_on', [$this->from->toDateString(), $this->to->toDateString()])->sum('total'), 2);
-        $charges = round($earned->sum(fn (Booking $b) => (float) $b->extra_charges), 2);
+        $charges = round($earned->sum(fn (Booking $b) => (float) $b->extra_charges + (float) $b->charge_lines_total - (float) $b->pass_through_total), 2);
         $expenses = round($expensesBy->sum(), 2);
 
         return [
@@ -121,6 +122,9 @@ class ProfitReport
             'earned' => $earnedTotal,
             'earned_count' => $earned->count(),
             'extra_charges' => $charges,
+            // 4 Nov (C.2): fines and tolls passed on to customers, and paid to the authorities (not revenue, not cost).
+            'pass_through_charged' => round($earned->sum(fn (Booking $b) => (float) $b->pass_through_total), 2),
+            'pass_through_paid' => round((float) (clone $period)->counting()->expense()->where('pass_through', true)->where('status', PaymentStatus::Paid)->sum('amount'), 2),
             'invoiced' => $invoiced,
             'received' => round($totals['received'], 2),
             'outstanding' => round((float) Transaction::totals(Transaction::query())['outstanding'], 2),
@@ -175,7 +179,7 @@ class ProfitReport
             if (in_array($by, ['car', 'yacht'], true)) {
                 $ownCosts = round((float) Transaction::query()->counting()->expense()->whereNull('booking_id')
                     ->where('related_type', $by)->where('related_id', $key)
-                    ->where('status', '<>', PaymentStatus::Refunded)->whereNotIn('category', Transaction::NON_COST_CATEGORIES)
+                    ->where('status', '<>', PaymentStatus::Refunded)->whereNotIn('category', Transaction::NON_COST_CATEGORIES)->where('pass_through', false)
                     ->whereBetween('date', [$this->from->toDateString(), $this->to->toDateString()])->sum('amount'), 2);
             }
 
@@ -239,7 +243,7 @@ class ProfitReport
         $income = (clone $period)->income()->whereNotIn('category', Transaction::NON_REVENUE_CATEGORIES)
             ->whereIn('status', [PaymentStatus::Paid, PaymentStatus::PartiallyPaid])
             ->selectRaw("category, SUM(CASE status WHEN 'paid' THEN amount ELSE COALESCE(amount_paid, 0) END) as total")->groupBy('category')->pluck('total', 'category');
-        $expense = (clone $period)->expense()->whereNotIn('category', Transaction::NON_COST_CATEGORIES)
+        $expense = (clone $period)->expense()->whereNotIn('category', Transaction::NON_COST_CATEGORIES)->where('pass_through', false)
             ->selectRaw('category, SUM(amount) as total')->groupBy('category')->pluck('total', 'category');
 
         $labels = Transaction::categories();

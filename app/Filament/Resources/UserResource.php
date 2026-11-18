@@ -27,21 +27,12 @@ class UserResource extends Resource
 
     protected static ?int $navigationSort = 2;
 
-    public const ROLE_DESCRIPTIONS = [
-        'Super Admin' => 'Full access, including settings and users',
-        'Admin' => 'Manages the CRM and team',
-        'Manager' => 'Oversees sales and operations',
-        'Sales' => 'Leads, customers and quotations',
-        'Agent' => 'Their own enquiries, customers, quotations and bookings',
-        'Operations' => 'Fleet, bookings and deliveries',
-        'Finance' => 'Payments and reports',
-        'Staff' => 'Limited day-to-day access',
-        'Driver' => 'Only their own jobs and profile (add drivers under Operations › Drivers)',
-    ];
+    /** 5 Nov: the four staff roles (App\Support\Access). Drivers are added under Drivers & crew. */
+    public const ROLE_DESCRIPTIONS = \App\Support\Access::ROLE_DESCRIPTIONS;
 
     public static function canViewAny(): bool
     {
-        return (bool) auth()->user()?->hasAnyRole(['Super Admin', 'Admin']);
+        return \App\Support\Access::allows('manage-team'); // Admin (and old Manager until moved); Super Admin always
     }
 
     public static function form(Form $form): Form
@@ -75,9 +66,18 @@ class UserResource extends Resource
                 Forms\Components\Section::make('Access')
                     ->columnSpan(1)
                     ->schema([
+                        // 5 Nov: one of the four staff roles. Old roles (Manager, Sales…) and the hidden
+                        // Super Admin are not offered; the form keeps them only if the person still has one.
                         Forms\Components\CheckboxList::make('roles')
-                            ->relationship('roles', 'name', fn ($query) => $query->where('name', '!=', 'Customer'))
-                            ->descriptions(self::ROLE_DESCRIPTIONS)
+                            ->label('Role')
+                            ->relationship('roles', 'name', fn ($query, ?User $record) => $query->where(fn ($q) => $q
+                                ->whereIn('name', \App\Support\Access::STAFF_ROLES)
+                                ->when($record, fn ($q) => $q->orWhereIn('id', $record->roles()->where('name', '!=', 'Customer')->pluck('roles.id'))))
+                                ->orderByRaw("CASE name WHEN 'Admin' THEN 1 WHEN 'Agent' THEN 2 WHEN 'Accounts' THEN 3 WHEN 'Driver' THEN 4 ELSE 9 END"))
+                            // Options are keyed by role id, so the descriptions are too.
+                            ->descriptions(fn (): array => \Spatie\Permission\Models\Role::query()->whereIn('name', array_keys(self::ROLE_DESCRIPTIONS))
+                                ->pluck('name', 'id')->map(fn ($name) => self::ROLE_DESCRIPTIONS[$name])->all())
+                            ->helperText('Usually one role. Admin can do everything.')
                             ->required(),
                         Forms\Components\Toggle::make('is_active')
                             ->label('Can log in')
@@ -100,11 +100,11 @@ class UserResource extends Resource
                 Tables\Columns\TextColumn::make('roles.name')
                     ->label('Role')
                     ->badge()
-                    ->color(fn (string $state): string => match ($state) {
+                    ->color(fn (string $state): string => match (\App\Support\Access::canonical($state)) {
                         'Super Admin', 'Admin' => 'danger',
-                        'Manager' => 'warning',
-                        'Sales' => 'success',
-                        'Operations' => 'info',
+                        'Agent' => 'success',
+                        'Accounts' => 'info',
+                        'Driver' => 'warning',
                         default => 'gray',
                     }),
                 Tables\Columns\TextColumn::make('phone')->placeholder('-'),
@@ -114,7 +114,8 @@ class UserResource extends Resource
                 Tables\Columns\TextColumn::make('created_at')->label('Added')->date('d M Y')->sortable(),
             ])
             ->filters([
-                Tables\Filters\SelectFilter::make('roles')->relationship('roles', 'name')->preload(),
+                Tables\Filters\SelectFilter::make('roles')->label('Role')
+                    ->relationship('roles', 'name', fn ($query) => $query->whereIn('name', \App\Support\Access::STAFF_ROLES))->preload(),
                 Tables\Filters\TernaryFilter::make('is_active')->label('Active'),
             ])
             ->actions([
@@ -122,10 +123,10 @@ class UserResource extends Resource
             ]);
     }
 
-    /** Customer logins are managed from the customer's page, not here. */
+    /** Customer logins are managed from the customer's page, not here. The hidden technical account is never listed (5 Nov). */
     public static function getEloquentQuery(): \Illuminate\Database\Eloquent\Builder
     {
-        return parent::getEloquentQuery()->whereNull('customer_id');
+        return parent::getEloquentQuery()->whereNull('customer_id')->where('is_system', false);
     }
 
     public static function canDelete(Model $record): bool

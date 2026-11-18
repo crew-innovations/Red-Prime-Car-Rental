@@ -43,6 +43,7 @@ class PackageDeparture extends Model
     {
         return (int) \App\Support\Availability::latest($this->bookings()->getQuery())
             ->whereIn('status', \App\Enums\BookingStatus::billable())
+            ->notExpired()
             ->when($ignoreBookingId, fn ($q) => $q->whereKeyNot($ignoreBookingId))
             ->sum('guests');
     }

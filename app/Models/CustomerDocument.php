@@ -28,6 +28,12 @@ class CustomerDocument extends Model
         ];
     }
 
+    protected static function booted(): void
+    {
+        // 4 Nov (brief 9.3): the customer hears when a document has to be sent again.
+        static::saved(fn (CustomerDocument $d) => rescue(fn () => \App\Support\Notifications\EventHooks::document($d)));
+    }
+
     public function customer(): BelongsTo
     {
         return $this->belongsTo(Customer::class)->withTrashed();

@@ -15,9 +15,11 @@ use Livewire\Attributes\Url;
  */
 class MyJobs extends Page
 {
+    use \App\Filament\Concerns\DriverLocale;
+
     protected static string $view = 'filament.pages.my-jobs';
 
-    protected static ?string $slug = 'my-jobs';
+    protected static ?string $slug = 'driver/jobs';
 
     protected static ?string $navigationIcon = 'heroicon-o-truck';
 
@@ -33,6 +35,26 @@ class MyJobs extends Page
     public static function canAccess(): bool
     {
         return (bool) auth()->user()?->hasRole('Driver');
+    }
+
+    public static function getNavigationLabel(): string
+    {
+        \App\Support\Drivers\DriverLang::apply(auth()->user());
+
+        return __('driver.nav_jobs');
+    }
+
+    public function getTitle(): string
+    {
+        return __('driver.nav_jobs');
+    }
+
+    /** The job happening now or next today (highlighted on the timeline). */
+    public function nextJobId(Collection $jobs): ?int
+    {
+        return $jobs->first(fn ($j) => in_array($j->status, ['on_the_way', 'arrived', 'waiting'], true))?->id
+            ?? $jobs->first(fn ($j) => $j->scheduled_at->gte(now()->subMinutes(30)))?->id
+            ?? $jobs->first()?->id;
     }
 
     public static function getNavigationBadge(): ?string
@@ -65,7 +87,8 @@ class MyJobs extends Page
 
         return match ($this->tab) {
             'upcoming' => $q->open()->where('scheduled_at', '>', now()->endOfDay())->orderBy('scheduled_at')->limit(50)->get(),
-            'done' => $q->where('status', 'done')->where('done_at', '>=', now()->subDays(30))->orderByDesc('done_at')->limit(50)->get(),
+            'done' => $q->whereIn('status', ['done', 'declined'])->where(fn ($w) => $w->where('done_at', '>=', now()->subDays(30))->orWhere('declined_at', '>=', now()->subDays(30)))
+                ->orderByRaw('COALESCE(done_at, declined_at) DESC')->limit(50)->get(),
             default => $q->open()->where('scheduled_at', '<=', now()->endOfDay())->orderBy('scheduled_at')->get(),
         };
     }

@@ -18,6 +18,9 @@
     RewriteCond %{REQUEST_URI} (.+)/$
     RewriteRule ^ %1 [L,R=301]
 
+    # robots.txt and sitemap.xml are answered by the app (website vs CRM domain)
+    RewriteRule ^(robots\.txt|sitemap\.xml)$ index.php [L]
+
     # Send Requests To Front Controller...
     RewriteCond %{REQUEST_FILENAME} !-d
     RewriteCond %{REQUEST_FILENAME} !-f

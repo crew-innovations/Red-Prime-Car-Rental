@@ -33,11 +33,19 @@ class AccountInviteController extends Controller
             'password.confirmed' => 'The two passwords are not the same.',
         ]);
 
+        $first = ! $user->password_set_at;
         $user->forceFill([
             'password' => $request->input('password'),
             'email_verified_at' => $user->email_verified_at ?? now(),
+            'password_set_at' => now(),
         ])->save();
         AuditLog::note($user, 'password', 'Password chosen through the login link');
+        // 4 Nov (13.3): a short confirmation, so a password set by someone else is noticed.
+        \App\Support\Notifications\Notifier::send($user, new \App\Notifications\ManualEmail(
+            $first ? 'Your account is ready' : 'Your password was changed',
+            'Hi '.strtok((string) $user->name, ' ').",\n\n".($first ? 'Your password is set. You can log in any time at '.Accounts::homeUrl($user).'.' : 'The password of your account was just changed.')
+                ."\n\nIf this was not you, please contact us straight away.",
+            'security', $first ? 'Password set' : 'Password changed'));
 
         Auth::login($user);
         $request->session()->regenerate();

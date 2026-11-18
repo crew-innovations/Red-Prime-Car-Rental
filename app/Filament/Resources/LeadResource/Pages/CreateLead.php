@@ -31,8 +31,20 @@ class CreateLead extends CreateRecord
         if ($customer = Customer::find($this->customer)) {
             $data['customer_id'] = $customer->id;
         }
+        // 5 Nov (S3): only Admin gives leads to someone else; an agent's new lead is their own.
+        if (! \App\Support\Access::allows('assign-leads')) {
+            $data['assigned_to'] = auth()->id();
+        }
 
         return $data;
+    }
+
+    /** 5 Nov (S3): a lead Admin added without a salesperson goes to every agent. */
+    protected function afterCreate(): void
+    {
+        if (! $this->getRecord()->assigned_to) {
+            \App\Support\Leads\Assignment::auto($this->getRecord());
+        }
     }
 
     protected function getRedirectUrl(): string

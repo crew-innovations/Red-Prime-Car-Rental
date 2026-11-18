@@ -17,7 +17,29 @@ use Livewire\Attributes\Url;
 
 class CreateQuotation extends CreateRecord
 {
+    use CreateRecord\Concerns\HasWizard; // 6 Nov (S4 / C.2): 4 steps, ends with "Save and send"
+
     protected static string $resource = QuotationResource::class;
+
+    public function getSteps(): array
+    {
+        return \App\Filament\Support\Wizardize::steps(QuotationResource::class, $this, [
+            ['Customer & car', 'heroicon-o-user', ['Customer & service'], 'Who, and what they want'],
+            ['Dates', 'heroicon-o-calendar', ['Dates'], 'When'],
+            ['Price', 'heroicon-o-banknotes', ['Price'], 'Worked out for you'],
+            ['Check & send', 'heroicon-o-paper-airplane', ['Shown to the customer', 'Status', 'Internal'], 'What the customer sees'],
+        ]);
+    }
+
+    protected function hasSkippableSteps(): bool
+    {
+        return true;
+    }
+
+    protected function getSubmitFormAction(): \Filament\Actions\Action
+    {
+        return parent::getSubmitFormAction()->label('Save and send');
+    }
 
     /** Prefill from a lead or a customer. */
     #[Url]
@@ -91,13 +113,14 @@ class CreateQuotation extends CreateRecord
         }
     }
 
+    /** Creating and sending are one step: the quote opens with the send window ready. */
     protected function getRedirectUrl(): string
     {
-        return $this->getResource()::getUrl('edit', ['record' => $this->getRecord()]);
+        return $this->getResource()::getUrl('edit', ['record' => $this->getRecord(), 'action' => 'send']);
     }
 
     protected function getCreatedNotificationTitle(): ?string
     {
-        return 'Quotation saved as draft. Use "Send to customer" when ready.';
+        return 'Quotation saved. Check the message and send it.';
     }
 }

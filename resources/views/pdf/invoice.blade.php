@@ -59,7 +59,7 @@
 
     <table class="totals">
         <tr><td style="width:55%"></td><td class="muted">Subtotal</td><td class="r">{{ $aed($i->subtotal) }}</td></tr>
-        @if ((float) $i->discount > 0)<tr><td></td><td class="muted">Discount</td><td class="r">− {{ $aed($i->discount) }}</td></tr>@endif
+        @if ((float) $i->discount > 0)<tr><td></td><td class="muted">Discount{{ ($ib = (float) $i->subtotal - (float) collect((array) $i->lines)->where('charge', true)->sum('amount')) > 0 ? ' ('.\App\Support\Pricing\Discounts::percentText(round((float) $i->discount / $ib * 100, 2)).')' : '' }}</td><td class="r">− {{ $aed($i->discount) }}</td></tr>@endif
         @if ($i->is_tax_invoice)
             <tr><td></td><td class="muted">VAT {{ rtrim(rtrim(number_format((float) $i->tax_rate, 2), '0'), '.') }}%{{ $i->tax_inclusive ? ' (included)' : '' }}</td><td class="r">{{ $aed($i->tax_amount) }}</td></tr>
         @endif

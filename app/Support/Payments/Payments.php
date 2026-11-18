@@ -106,6 +106,12 @@ class Payments
 
             return $left > 0 ? min($left, self::limit($for, 'advance')) : null;
         }
+        // 4 Nov (11): a booking's advance link asks for what is left of the advance; the balance link for the rest.
+        if ($for instanceof Booking && $purpose === 'advance' && (float) $for->advance_required > 0) {
+            $left = round((float) $for->advance_required - (float) $for->paid_amount, 2);
+
+            return $left > 0 ? min($left, self::limit($for, 'advance')) : null;
+        }
 
         return self::limit($for, $purpose) ?: null;
     }
@@ -167,6 +173,25 @@ class Payments
 
             return $r;
         });
+    }
+
+    /** Customer from their account (4 Nov, 11): one link for what is left of the advance (re-used while open). */
+    public static function advanceLink(Booking $b): PaymentRequest
+    {
+        $amount = (float) (self::defaultAmount($b, 'advance') ?? 0);
+        $open = PaymentRequest::query()->where('booking_id', $b->id)->where('purpose', 'advance')->whereIn('status', ['open', 'processing', 'failed'])
+            ->where(fn ($q) => $q->whereNull('expires_at')->orWhere('expires_at', '>', now()))->latest('id')->first();
+        if ($open) {
+            if (abs((float) $open->amount - $amount) < 0.005 || $amount < 0.005) {
+                return $open;
+            }
+            self::cancel($open, 'Replaced: the advance changed');
+        }
+        if ($amount < 0.005) {
+            throw \Illuminate\Validation\ValidationException::withMessages(['amount' => 'The advance is already paid.']);
+        }
+
+        return self::request($b, 'advance', $amount, null, null, null);
     }
 
     /** Customer from their account: one link for the whole balance (re-used while it is open). */
@@ -401,7 +426,7 @@ class Payments
             $notify = $second
                 ? ['Paid twice: '.$r->number, 'A second online payment arrived for the same link. Refund one of them.', 'danger']
                 : ['Online payment received: AED '.number_format((float) $r->amount, 2), $r->number.' · '.$r->forLabel().' · '.$gateway->label()
-                    .($booking && $booking->status === BookingStatus::PendingPayment ? ' · The booking is still "Pending payment": confirm it if this was the advance.' : ''), 'success'];
+                    .($booking && $booking->status === BookingStatus::PendingPayment ? ' · The booking is still "Waiting for payment": confirm it if this was the advance.' : ''), 'success'];
 
             return ['ok', $r->number.' paid'];
         });
@@ -410,7 +435,7 @@ class Payments
             $r->refresh();
             $owner = $r->booking?->assignee ?? $r->quotation?->creator;
             $url = $r->booking_id ? \App\Filament\Resources\BookingResource::getUrl('edit', ['record' => $r->booking_id]) : null;
-            DB::afterCommit(fn () => rescue(fn () => Notify::staff('manage-finance', $notify[0], $notify[1], $url, $owner, $notify[2])));
+            DB::afterCommit(fn () => rescue(fn () => Notify::staff('manage-finance', $notify[0], $notify[1], $url, $owner, $notify[2], event: 'payment_check')));
         }
 
         return $out;

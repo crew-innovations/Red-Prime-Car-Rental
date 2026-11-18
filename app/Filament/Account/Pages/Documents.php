@@ -88,7 +88,7 @@ class Documents extends Page implements HasForms
 
         $customer = CustomerArea::customer();
         Notify::staff('review-documents', 'New document from '.$customer->name, Options::documentLabel($doc->type).' uploaded from their account.',
-            \App\Filament\Resources\DocumentResource::getUrl('index', ['activeTab' => 'review'], panel: 'admin'), $customer->assignee, 'info');
+            \App\Filament\Resources\DocumentResource::getUrl('index', ['activeTab' => 'review'], panel: 'admin'), $customer->assignee, 'info', event: 'document_uploaded');
 
         Notification::make()->title('Thank you, we received your document')->body('Our team will check it.')->success()->send();
         $this->form->fill();

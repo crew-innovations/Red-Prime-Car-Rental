@@ -47,7 +47,7 @@ class SupplierLedger
             if ($b->supplier_cost_status) {
                 rescue(fn () => Notify::staff('manage-finance', 'Supplier bill not posted: '.$b->reference,
                     (string) (data_get($b->supplier_cost_snapshot, 'reason') ?: 'The supplier cost is not known yet.').' Set it on the booking, then post the bill.',
-                    \App\Filament\Resources\BookingResource::getUrl('edit', ['record' => $b]), null, 'warning'), report: false);
+                    \App\Filament\Resources\BookingResource::getUrl('edit', ['record' => $b]), null, 'warning', event: 'other'), report: false);
             }
 
             return null;

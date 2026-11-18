@@ -40,7 +40,11 @@ class BookingJob extends Model
         'waiting' => 'Waiting for office OK',
         'done' => 'Done',
         'cancelled' => 'Cancelled',
+        'declined' => 'Declined by the driver', // 4 Nov (15): the office gives it to someone else
     ];
+
+    /** Not work any more for the driver: finished, cancelled or declined. */
+    public const CLOSED = ['done', 'cancelled', 'declined'];
 
     protected function casts(): array
     {
@@ -53,6 +57,10 @@ class BookingJob extends Model
             'done_at' => 'datetime',
             'approved_at' => 'datetime',
             'inspection' => 'array',
+            'declined_at' => 'datetime',
+            'started_at' => 'datetime',
+            'late_reported_at' => 'datetime',
+            'late_minutes' => 'integer',
         ];
     }
 
@@ -83,12 +91,35 @@ class BookingJob extends Model
 
     public function scopeOpen(Builder $query): Builder
     {
-        return $query->whereNotIn('status', ['done', 'cancelled']);
+        return $query->whereNotIn('status', self::CLOSED);
     }
 
     public function isOpen(): bool
     {
-        return ! in_array($this->status, ['done', 'cancelled'], true);
+        return ! in_array($this->status, self::CLOSED, true);
+    }
+
+    /** Moving or with the customer: the times location may be shared (4 Nov, 15). */
+    public function isActive(): bool
+    {
+        if (in_array($this->status, ['on_the_way', 'arrived', 'waiting'], true)) {
+            return true;
+        }
+        $b = $this->booking;
+
+        return $this->isOpen() && $b?->status === \App\Enums\BookingStatus::InProgress
+            && (in_array($this->type, ['charter', 'transfer'], true) || $b->drive_mode === \App\Enums\DriveMode::WithDriver);
+    }
+
+    /** Google Maps directions to where the driver goes next. */
+    public function navigateUrl(): ?string
+    {
+        $b = $this->booking;
+        if ($this->type === 'transfer' && $b) {
+            return \App\Support\Maps\GoogleMaps::directionsLink($b->pickup_location, $b->dropoff_location, collect((array) $b->stops)->pluck('address')->filter()->all());
+        }
+
+        return $this->address ? 'https://www.google.com/maps/dir/?api=1&destination='.rawurlencode($this->address) : null;
     }
 
     public function typeLabel(): string
@@ -102,6 +133,19 @@ class BookingJob extends Model
         }
 
         return self::TYPES[$this->type] ?? ucfirst($this->type);
+    }
+
+    /** Key for the driver screens' translations (type_... in lang/en/driver.php). */
+    public function typeKey(): string
+    {
+        if ($this->type === 'charter') {
+            return $this->role === 'captain' ? 'charter_captain' : 'charter_crew';
+        }
+        if ($this->booking?->drive_mode === \App\Enums\DriveMode::WithDriver && in_array($this->type, ['delivery', 'collection'], true)) {
+            return $this->type === 'delivery' ? 'chauffeur_start' : 'chauffeur_end';
+        }
+
+        return $this->type;
     }
 
     public function statusLabel(): string
@@ -118,7 +162,7 @@ class BookingJob extends Model
         return match ($this->status) {
             'assigned' => 'warning',
             'acknowledged', 'on_the_way', 'arrived' => 'info',
-            'waiting' => 'warning',
+            'waiting', 'declined' => 'warning',
             'done' => 'success',
             default => 'gray',
         };

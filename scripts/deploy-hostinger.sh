@@ -15,6 +15,11 @@ if ! grep -q '"name": "barryvdh/laravel-dompdf"' composer.lock 2>/dev/null; then
     step "Adding the PDF library (one time)"
     composer update barryvdh/laravel-dompdf --with-dependencies --no-dev --optimize-autoloader --no-scripts --no-interaction
 fi
+# QR code library for the quotation PDF (added 4 Nov), same one-time step.
+if ! grep -q '"name": "chillerlan/php-qrcode"' composer.lock 2>/dev/null; then
+    step "Adding the QR code library (one time)"
+    composer update chillerlan/php-qrcode --with-dependencies --no-dev --optimize-autoloader --no-scripts --no-interaction
+fi
 composer install --no-dev --optimize-autoloader --no-scripts --no-interaction
 
 step "Registering packages"
@@ -56,6 +61,9 @@ fi
 step "Refreshing caches"
 php artisan optimize:clear
 php artisan optimize
+
+step "Team roles (5 Nov: four roles). Check who moved where"
+php artisan crm:roles-report || true
 
 echo
 echo "DONE - open /crm in the browser."

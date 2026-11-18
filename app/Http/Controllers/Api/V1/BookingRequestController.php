@@ -22,9 +22,10 @@ use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 
 /**
- * Website enquiries and booking requests. A request always becomes a new
- * lead in the CRM (Yacht Trips or Car Rental pipeline). It never creates or
- * confirms a booking: staff follow the normal quotation / booking process.
+ * Website enquiries, booking requests and bookings. A request always becomes a new
+ * lead in the CRM (Yacht Trips or Car Rental pipeline). With request_type "booking"
+ * (the website's "Book now", 30 Oct, decision H-7) a "Pending payment" booking is made
+ * as well (App\Support\Site\WebsiteBooking); it is never confirmed here.
  * Prices and places are worked out here; anything the browser sends about
  * price, availability or publication is ignored.
  */
@@ -42,7 +43,7 @@ class BookingRequestController extends Controller
         $data = $request->validate([
             'product_type' => ['required', Rule::in(self::TYPES)],
             'product_slug' => ['required', 'string', 'max:255'],
-            'request_type' => ['sometimes', Rule::in(['enquiry', 'booking_request'])],
+            'request_type' => ['sometimes', Rule::in(['enquiry', 'booking_request', 'booking'])],
             'departure_id' => ['nullable', 'integer', 'min:1'],
             'date' => ['nullable', 'date_format:Y-m-d', 'after_or_equal:today'],
             'end_date' => ['nullable', 'date_format:Y-m-d', 'after_or_equal:date'],
@@ -52,7 +53,9 @@ class BookingRequestController extends Controller
             'end_at' => ['nullable', 'date_format:Y-m-d H:i', 'after:start_at'],
             'drive_mode' => ['nullable', Rule::in(['self_drive', 'with_driver'])],
             // Limousine & transfers (28 Oct-2): product_slug = vehicle category, service = transfer service.
-            'service' => ['required_if:product_type,transfer', 'nullable', 'string', 'max:255'],
+            'service' => ['nullable', 'string', 'max:255'], // 11 Nov: empty = the distance ride
+            'pickup_ll' => ['nullable', 'string', 'max:40', 'regex:/^-?\d{1,2}(\.\d+)?,\s?-?\d{1,3}(\.\d+)?$/'],
+            'dropoff_ll' => ['nullable', 'string', 'max:40', 'regex:/^-?\d{1,2}(\.\d+)?,\s?-?\d{1,3}(\.\d+)?$/'],
             'pickup' => ['required_if:product_type,transfer', 'nullable', 'string', 'min:3', 'max:255'],
             'dropoff' => ['nullable', 'string', 'min:3', 'max:255'],
             'stops' => ['sometimes', 'array', 'max:5'],
@@ -62,22 +65,29 @@ class BookingRequestController extends Controller
             'luggage' => ['nullable', 'integer', 'min:0', 'max:60'],
             'name' => ['required', 'string', 'max:120'],
             'phone' => ['required', 'string', 'max:30', 'regex:/^[0-9+()\-\s]{6,30}$/'],
-            'email' => ['nullable', 'email:rfc', 'max:255'],
+            'email' => ['nullable', 'required_if:request_type,booking', 'email:rfc', 'max:255'],
+            // Website booking (30 Oct): delivery / collection, the address and optional extras from the price list.
+            'delivery' => ['sometimes', 'boolean'],
+            'collection' => ['sometimes', 'boolean'],
+            'address' => ['nullable', 'string', 'max:255'],
+            'extras' => ['sometimes', 'array', 'max:20'],
+            'extras.*' => ['string', 'max:80'],
             'message' => ['nullable', 'string', 'max:2000'],
             'idempotency_key' => ['nullable', 'string', 'max:64', 'regex:/^[A-Za-z0-9_\-:.]+$/'],
             'utm_source' => ['nullable', 'string', 'max:100'],
             'utm_medium' => ['nullable', 'string', 'max:100'],
             'utm_campaign' => ['nullable', 'string', 'max:150'],
+            'lead_ref' => ['nullable', 'string', 'max:40'], // 6 Nov (limousine L4): booking link sent from a lead
         ]);
 
         $key = $data['idempotency_key'] ?? $request->header('Idempotency-Key');
         $externalId = $key ? 'web:'.substr(preg_replace('/[^A-Za-z0-9_\-:.]/', '', (string) $key), 0, 60) : null;
         $type = $data['request_type'] ?? 'enquiry';
 
-        return DB::transaction(function () use ($data, $externalId, $type) {
+        $result = DB::transaction(function () use ($data, $externalId, $type) {
             [$service, $item] = $this->product($data['product_type'], $data['product_slug']);
             if ($item instanceof \App\Models\VehicleCategory) {
-                $transferService = TransferQuote::resolve((string) $data['service'], $item->slug)[0];
+                $transferService = TransferQuote::resolve($data['service'] ?? null, $item->slug)[0];
                 if (empty($data['start_at'])) {
                     throw ValidationException::withMessages(['start_at' => 'Choose the pickup date and time.']);
                 }
@@ -85,9 +95,17 @@ class BookingRequestController extends Controller
             $guests = (int) ($data['guests'] ?? 0) ?: null;
             [$departure, $tripDate, $start, $end] = $this->dates($item, $data, $guests);
 
-            // The same request sent twice (double click, retry) returns the first lead.
+            // The same request sent twice (double click, retry) returns the first lead (and its booking).
             if ($externalId && ($existing = Lead::where('external_id', $externalId)->first())) {
-                return $this->respond($existing, $item, $type, $guests, $departure ?? $tripDate, true, 200);
+                return [$existing, $item, $type, $guests, $departure ?? $tripDate, true, 200, [], $existing->bookings()->latest('id')->first(), false];
+            }
+            // 6 Nov (limousine L4): from an agent's booking link the booking joins that lead (and its agent).
+            if ($linked = \App\Support\Transfers\LimoLink::lead($data['lead_ref'] ?? null)) {
+                $estimate = $this->estimate($item, $guests, $departure, $data);
+                $booking = $type === 'booking' ? \App\Support\Site\WebsiteBooking::make($linked, $item, $data, $departure, $tripDate, $start, $end, $guests, $estimate) : null;
+                rescue(fn () => \App\Models\LeadActivity::create(['lead_id' => $linked->id, 'type' => 'note', 'body' => 'Booked from the link the agent sent'.($booking ? ': '.$booking->reference : '').'.']), report: false);
+
+                return [$linked, $item, $type, $guests, $departure ?? $tripDate, false, 201, $estimate, $booking, (bool) $booking];
             }
             $recent = Phone::key($data['phone']) === null ? null : Lead::query()
                 ->where('interested_in_type', $item->getMorphClass())
@@ -97,7 +115,7 @@ class BookingRequestController extends Controller
                 ->latest()
                 ->first();
             if ($recent) {
-                return $this->respond($recent, $item, $type, $guests, $departure ?? $tripDate, true, 200);
+                return [$recent, $item, $type, $guests, $departure ?? $tripDate, true, 200, [], $type === 'booking' ? $recent->bookings()->latest('id')->first() : null, false];
             }
 
             $estimate = $this->estimate($item, $guests, $departure, $data);
@@ -122,13 +140,25 @@ class BookingRequestController extends Controller
                 'utm_medium' => $data['utm_medium'] ?? null,
                 'utm_campaign' => $data['utm_campaign'] ?? null,
                 'external_id' => $externalId,
-                'priority' => $type === 'booking_request' ? 'hot' : 'warm',
+                'priority' => in_array($type, ['booking_request', 'booking'], true) ? 'hot' : 'warm',
             ]);
 
             \App\Support\Leads\Assignment::auto($lead); // business settings: manual (default) does nothing
 
-            return $this->respond($lead, $item, $type, $guests, $departure ?? $tripDate, false, 201, $estimate);
+            $booking = $type === 'booking'
+                ? \App\Support\Site\WebsiteBooking::make($lead, $item, $data, $departure, $tripDate, $start, $end, $guests, $estimate)
+                : null;
+
+            return [$lead, $item, $type, $guests, $departure ?? $tripDate, false, 201, $estimate, $booking, (bool) $booking];
         });
+
+        [$lead, $item, $type, $guests, $date, $duplicate, $status, $estimate, $booking, $isNew] = $result;
+        $account = null;
+        if ($booking && $isNew) {
+            $account = \App\Support\Site\WebsiteBooking::afterCreated($booking, (string) $data['email'], app()->getLocale() === 'ar' || $request->header('Accept-Language') === 'ar' ? 'ar' : 'en')['account'];
+        }
+
+        return $this->respond($lead, $item, $type, $guests, $date, $duplicate, $status, $estimate, $booking, $account);
     }
 
     /** The published product, looked up by slug. @return array{0: ServiceType, 1: \Illuminate\Database\Eloquent\Model} */
@@ -252,7 +282,7 @@ class BookingRequestController extends Controller
     protected function message(string $type, $item, ?int $guests, $date, array $estimate, ?string $text, array $data = []): string
     {
         $lines = [
-            $type === 'booking_request' ? '[Website booking request]' : '[Website enquiry]',
+            match ($type) { 'booking' => '[Website booking]', 'booking_request' => '[Website booking request]', default => '[Website enquiry]' },
             $item->name.($date instanceof PackageDeparture ? ' · departure '.$date->start_date->format('d M Y') : '').($date instanceof TripDate ? ' · '.$date->date->format('d M Y') : ''),
             ! empty($data['start_at']) ? 'From '.$data['start_at'].(! empty($data['end_at']) ? ' to '.$data['end_at'] : '').(! empty($data['drive_mode']) ? ' · '.str_replace('_', '-', $data['drive_mode']) : '') : null,
             ! empty($data['service']) ? 'Service: '.$data['service'] : null,
@@ -270,16 +300,43 @@ class BookingRequestController extends Controller
         return trim(implode("\n", array_filter($lines)));
     }
 
-    protected function respond(Lead $lead, $item, string $type, ?int $guests, $date, bool $duplicate, int $status, array $estimate = []): JsonResponse
+    protected function respond(Lead $lead, $item, string $type, ?int $guests, $date, bool $duplicate, int $status, array $estimate = [], ?\App\Models\Booking $booking = null, ?string $account = null): JsonResponse
     {
+        if ($booking) {
+            return response()->json([
+                'data' => [
+                    'reference' => $booking->reference,
+                    'lead_reference' => sprintf('LD-%05d', $lead->id),
+                    'status' => $booking->status->value,
+                    'request_type' => $type,
+                    'booked' => true,
+                    'confirmed' => false,
+                    'duplicate' => $duplicate,
+                    'hold_until' => $booking->hold_until?->toIso8601String(),
+                    'hold_hours' => \App\Support\Site\WebsiteBooking::holdHours(),
+                    'total' => (float) $booking->total,
+                    'currency' => 'AED',
+                    'account' => $account,
+                    // 11 Nov (limousine): a ride request waits for the agent's price; the customer follows it on one page.
+                    'awaiting_price' => $ride = \App\Support\Transfers\RideFlow::isRequest($booking),
+                    'ride_url' => $booking->service_type === ServiceType::Transfer ? \App\Support\Transfers\Tracking::link($booking) : null,
+                    'message' => $ride
+                        ? 'Thank you. We have your ride request. Our team confirms the final price shortly; you then accept and pay on your ride page.'
+                        : 'Thank you. Your booking is saved and waiting for payment. Our team will send you the payment link.',
+                    'product' => ['type' => $item->getMorphClass() === 'trip' ? 'yacht_trip' : $item->getMorphClass(), 'slug' => $item->slug, 'name' => $item->name],
+                ],
+            ], $status);
+        }
+
         return response()->json([
             'data' => [
                 'reference' => sprintf('LD-%05d', $lead->id),
                 'status' => 'received',
                 'request_type' => $type,
+                'booked' => false,
                 'confirmed' => false,
                 'duplicate' => $duplicate,
-                'message' => $type === 'booking_request'
+                'message' => in_array($type, ['booking_request', 'booking'], true)
                     ? 'Thank you. Your request is with our team. We will confirm availability and the final price shortly. Nothing is booked or charged yet.'
                     : 'Thank you. Our team will contact you shortly.',
                 'product' => ['type' => $item->getMorphClass() === 'trip' ? 'yacht_trip' : $item->getMorphClass(), 'slug' => $item->slug, 'name' => $item->name],

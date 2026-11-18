@@ -34,7 +34,7 @@ class MyWork extends Widget
             return false;
         }
 
-        return $user->hasAnyRole(['Sales', 'Agent'])
+        return \App\Support\Access::rolesOf($user)->contains('Agent')
             || Lead::query()->where('assigned_to', $user->id)->open()->exists()
             || Quotation::query()->where('created_by', $user->id)->whereIn('status', [QuotationStatus::Draft, QuotationStatus::Sent, QuotationStatus::Negotiation, QuotationStatus::Accepted])->exists();
     }

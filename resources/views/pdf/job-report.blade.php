@@ -89,7 +89,7 @@
             <thead><tr><th></th><th>Handover</th><th>Return</th></tr></thead>
             <tbody>
                 <tr><td class="muted">Odometer</td><td>{{ $b->delivery_km ? number_format($b->delivery_km).' km' : '-' }}</td><td>{{ $b->return_km ? number_format($b->return_km).' km' : '-' }}@if ($b->delivery_km && $b->return_km) <span class="muted">({{ number_format($b->return_km - $b->delivery_km) }} km)</span>@endif</td></tr>
-                <tr><td class="muted">Fuel</td><td>{{ $fuel[$b->delivery_fuel] ?? '-' }}</td><td>{{ $fuel[$b->return_fuel] ?? '-' }}</td></tr>
+                <tr><td class="muted">Fuel</td><td>{{ \App\Support\Fuel\Fuel::label($b->delivery_fuel_8 ?? $b->delivery_fuel) }}</td><td>{{ \App\Support\Fuel\Fuel::label($b->return_fuel_8 ?? $b->return_fuel) }}</td></tr>
                 <tr><td class="muted">Condition</td><td>{{ $b->delivery_notes ? \Illuminate\Support\Str::limit($b->delivery_notes, 140) : 'As handed over' }}</td><td>{{ \App\Models\Booking::CONDITIONS[$b->return_condition] ?? '-' }}</td></tr>
             </tbody>
         </table>

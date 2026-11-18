@@ -55,13 +55,17 @@ class Transaction extends Model implements HasMedia
         'marketing' => 'Marketing & ads',
         'rent' => 'Office & rent',
         'deposit_refund' => 'Deposit refund',
+        'fines_paid' => 'Fines paid for customers',      // 4 Nov (C.2): pass-through
+        'tolls_paid' => 'Tolls paid for customers',      // pass-through
+        'tolls' => 'Salik / Darb / parking (company)',   // tolls no customer pays
+        'toll_topup' => 'Salik / Darb top-up',           // a transfer to the toll account, not a cost
         'other_expense' => 'Other expense',
     ];
 
     /** Money that is not real revenue (held / returned to the customer). */
     public const NON_REVENUE_CATEGORIES = ['deposit'];
 
-    public const NON_COST_CATEGORIES = ['deposit_refund'];
+    public const NON_COST_CATEGORIES = ['deposit_refund', 'toll_topup'];
 
     protected function casts(): array
     {
@@ -77,6 +81,7 @@ class Transaction extends Model implements HasMedia
             'is_estimate' => 'boolean',
             'approved_at' => 'datetime',
             'reversed_at' => 'datetime',
+            'pass_through' => 'boolean',
         ];
     }
 
@@ -139,6 +144,8 @@ class Transaction extends Model implements HasMedia
 
         $sync = fn (Transaction $t) => $t->booking_id ? $t->booking()->first()?->syncBalance() : null;
         static::saved($sync);
+        // 4 Nov (brief 9.3): payment received / deposit refunded.
+        static::saved(fn (Transaction $t) => rescue(fn () => \App\Support\Notifications\EventHooks::transaction($t)));
         static::deleted($sync);
         static::restored($sync);
     }

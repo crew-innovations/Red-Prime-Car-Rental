@@ -9,6 +9,9 @@ use Illuminate\Support\Facades\Storage;
 // Landing page of the CRM domain: what this system is, plus Team and Customer login buttons.
 Route::get('/', fn () => view('public.home'))->name('home');
 
+// The CRM domain is never indexed (the website domain answers robots.txt itself, routes/website.php).
+Route::get('/robots.txt', fn () => response("User-agent: *\nDisallow: /\n", 200, ['Content-Type' => 'text/plain; charset=UTF-8']))->name('crm.robots');
+
 // Private files (customer and driver documents, handover / return photos): a valid
 // signed link AND a logged-in user allowed to see that file (App\Support\PrivateFiles).
 Route::get('/crm/private-file/{path}', function (Request $request, string $path) {
@@ -70,6 +73,10 @@ Route::post('/quote/{token}/accept', [QuotationPublicController::class, 'accept'
 Route::post('/quote/{token}/decline', [QuotationPublicController::class, 'decline'])->middleware('throttle:10,1')->name('quotations.public.decline');
 
 // Shared lead forms (28 Oct-2, Phase 16).
+// 5 Nov (S3, B.7): accept a lead from the email or phone notification. GET only shows it; POST accepts.
+Route::get('/lead-claim/{token}', [\App\Http\Controllers\LeadClaimController::class, 'show'])->middleware('throttle:lead-claim')->where('token', '[A-Za-z0-9]{20,100}')->name('lead-claim.show');
+Route::post('/lead-claim/{token}', [\App\Http\Controllers\LeadClaimController::class, 'accept'])->middleware('throttle:lead-claim')->where('token', '[A-Za-z0-9]{20,100}')->name('lead-claim.accept');
+
 Route::get('/f/{token}', [\App\Http\Controllers\LeadFormController::class, 'show'])->middleware('throttle:60,1')->name('forms.show');
 Route::post('/f/{token}', [\App\Http\Controllers\LeadFormController::class, 'store'])->middleware('throttle:10,1')->name('forms.store');
 
@@ -93,3 +100,40 @@ Route::get('/quote/{token}/pdf', [\App\Http\Controllers\DocumentPdfController::c
 // "Choose your password" link for driver and customer logins (signed, expires, single use).
 Route::get('/invite/{user}', [\App\Http\Controllers\AccountInviteController::class, 'show'])->middleware(['signed:relative', 'throttle:30,1'])->whereNumber('user')->name('account.invite');
 Route::post('/invite/{user}', [\App\Http\Controllers\AccountInviteController::class, 'store'])->middleware(['signed:relative', 'throttle:10,1'])->whereNumber('user')->name('account.invite.store');
+
+// Installable apps and push notifications (4 Nov 2026, brief 9 / 16).
+Route::get('/manifest/{app}.webmanifest', [\App\Http\Controllers\Pwa\AppController::class, 'manifest'])->whereIn('app', \App\Support\Push\Apps::KEYS)->name('pwa.manifest');
+Route::get('/sw.js', [\App\Http\Controllers\Pwa\AppController::class, 'worker'])->name('pwa.worker');
+Route::get('/pwa/offline', [\App\Http\Controllers\Pwa\AppController::class, 'offline'])->name('pwa.offline');
+Route::get('/app/{app}', fn (string $app) => redirect(rtrim(\App\Support\Push\Apps::get($app)['scope'], '/').'/install'))->whereIn('app', \App\Support\Push\Apps::KEYS)->name('pwa.short');
+// Install pages live inside each app's scope, so the browser offers "Install".
+Route::get('/crm/driver/install', [\App\Http\Controllers\Pwa\AppController::class, 'install'])->defaults('app', 'driver')->name('pwa.install.driver');
+Route::get('/crm/install', [\App\Http\Controllers\Pwa\AppController::class, 'install'])->defaults('app', 'staff')->name('pwa.install.staff');
+Route::get('/account/install', [\App\Http\Controllers\Pwa\AppController::class, 'install'])->defaults('app', 'customer')->name('pwa.install.customer');
+Route::post('/device', [\App\Http\Controllers\Pwa\DeviceController::class, 'store'])->middleware(['auth', 'throttle:30,1'])->name('pwa.device');
+
+// Driver pages moved under /crm/driver (4 Nov, the driver app's own scope); old links still work.
+Route::get('/crm/my-jobs', fn (\Illuminate\Http\Request $r) => redirect('/crm/driver/jobs'.($r->getQueryString() ? '?'.$r->getQueryString() : ''), 301));
+Route::get('/crm/my-jobs/{job}', fn (int $job) => redirect('/crm/driver/jobs/'.$job, 301))->whereNumber('job');
+
+// Unsubscribe from announcements (4 Nov, 14.3): a signed link in each marketing email, no login needed.
+Route::get('/unsubscribe/{customer}', function (\Illuminate\Http\Request $request, int $customer) {
+    $c = \App\Models\Customer::find($customer);
+    if ($c && ! $c->unsubscribed_at) {
+        $c->forceFill(['unsubscribed_at' => now()])->saveQuietly();
+        \App\Models\AuditLog::note($c, 'email', 'Unsubscribed from announcements (link in an email)');
+    }
+
+    return response()->view('emails.unsubscribed', ['company' => \App\Support\Mail\Branding::name()]);
+})->middleware(['signed:relative', 'throttle:20,1'])->whereNumber('customer')->name('email.unsubscribe');
+
+// Driver phone (4 Nov, 15): steps / late / decline with the phone's action id, and live location (setting).
+Route::middleware(['auth', 'throttle:60,1'])->group(function () {
+    Route::post('/crm/driver/jobs/{job}/action', [\App\Http\Controllers\Driver\DriverApiController::class, 'action'])->whereNumber('job')->name('driver.action');
+    Route::post('/crm/driver/location', [\App\Http\Controllers\Driver\DriverApiController::class, 'location'])->name('driver.location');
+});
+
+// 6 Nov (limousine L3): live tracking for the customer. Signed links only (no login); they expire.
+Route::get('/track/{booking}', [\App\Http\Controllers\Public\TrackController::class, 'show'])->middleware(['signed', 'throttle:60,1'])->name('track.show');
+Route::get('/track/{booking}/data', [\App\Http\Controllers\Public\TrackController::class, 'data'])->middleware(['signed', 'throttle:20,1'])->name('track.data');
+Route::post('/track/{booking}/pay', [\App\Http\Controllers\Public\TrackController::class, 'pay'])->middleware(['signed', 'throttle:10,1'])->name('track.pay');

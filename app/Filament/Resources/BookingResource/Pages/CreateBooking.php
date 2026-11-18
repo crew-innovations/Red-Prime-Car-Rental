@@ -16,7 +16,24 @@ use Livewire\Attributes\Url;
 
 class CreateBooking extends CreateRecord
 {
+    use CreateRecord\Concerns\HasWizard; // 6 Nov (S4 / C.2): 4 steps
+
     protected static string $resource = BookingResource::class;
+
+    public function getSteps(): array
+    {
+        return \App\Filament\Support\Wizardize::steps(BookingResource::class, $this, [
+            ['Customer & car', 'heroicon-o-user', ['Customer & service'], 'Who, and what they want'],
+            ['Dates', 'heroicon-o-calendar', ['Journey', 'Dates & place'], 'When and where'],
+            ['Price', 'heroicon-o-banknotes', ['Price', 'Payment'], 'Worked out for you'],
+            ['Check & save', 'heroicon-o-check-circle', ['Status', 'Team & notes'], 'Anything else'],
+        ]);
+    }
+
+    protected function hasSkippableSteps(): bool
+    {
+        return true; // staff can jump to any step; saving still checks every field
+    }
 
     /** Prefill from a lead, a customer, or a car / yacht / trip page. */
     #[Url]

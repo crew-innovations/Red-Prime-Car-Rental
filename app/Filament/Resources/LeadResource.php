@@ -60,7 +60,8 @@ class LeadResource extends Resource
     public static function form(Form $form): Form
     {
         return $form
-            ->disabled(fn (): bool => ! static::canModify())
+            // 5 Nov (S3): a lead waiting for an agent is read-only for agents until one accepts it.
+            ->disabled(fn (?Lead $record): bool => ! static::canModify() || static::waitingForAgent($record))
             ->columns(3)
             ->schema([
                 Forms\Components\Group::make()
@@ -91,10 +92,12 @@ class LeadResource extends Resource
                                     ->hintIcon(fn (?string $state, ?Lead $record): ?string => self::existingContactHint($state, $record) ? 'heroicon-o-exclamation-circle' : null),
                                 Forms\Components\TextInput::make('whatsapp')
                                     ->label('WhatsApp')
+                                    ->visible(fn (Get $get, string $operation): bool => $operation !== 'create' || (bool) $get('more_options')) // 6 Nov (S4): under "More options" when adding
                                     ->tel()
                                     ->placeholder('Same as phone')
                                     ->maxLength(30),
                                 Forms\Components\TextInput::make('email')
+                                    ->visible(fn (Get $get, string $operation): bool => $operation !== 'create' || (bool) $get('more_options'))
                                     ->email()
                                     ->maxLength(255)
                                     ->live(onBlur: true)
@@ -106,6 +109,13 @@ class LeadResource extends Resource
                                     ->searchable()
                                     ->preload()
                                     ->required(),
+                                // 6 Nov (S4 / C.2): adding a lead shows only what is needed; the rest is one tap away.
+                                Forms\Components\Toggle::make('more_options')
+                                    ->label('More options: WhatsApp, email, budget, follow-up')
+                                    ->dehydrated(false)
+                                    ->live()
+                                    ->visibleOn('create')
+                                    ->columnSpanFull(),
                             ]),
 
                         Forms\Components\Section::make('What they want')
@@ -163,6 +173,7 @@ class LeadResource extends Resource
                                     ->minValue(1)
                                     ->visible(fn (Get $get): bool => in_array($get('service_type'), [ServiceType::Yacht->value, ServiceType::Trip->value, ServiceType::Package->value], true)),
                                 Forms\Components\TextInput::make('budget')
+                                    ->visible(fn (Get $get, string $operation): bool => $operation !== 'create' || (bool) $get('more_options'))
                                     ->numeric()
                                     ->minValue(0)
                                     ->prefix('AED'),
@@ -197,6 +208,7 @@ class LeadResource extends Resource
                     ->columnSpan(['lg' => 1])
                     ->schema([
                         Forms\Components\Section::make('Pipeline')
+                            ->collapsible()->collapsed(fn (string $operation): bool => $operation === 'create') // 6 Nov (S4): defaults are fine when adding
                             ->icon('heroicon-o-funnel')
                             ->schema([
                                 Forms\Components\ToggleButtons::make('pipeline')
@@ -235,13 +247,16 @@ class LeadResource extends Resource
                             ]),
 
                         Forms\Components\Section::make('Follow-up')
+                            ->collapsible()->collapsed(fn (string $operation): bool => $operation === 'create') // 6 Nov (S4): defaults are fine when adding
                             ->icon('heroicon-o-clock')
                             ->schema([
                                 Forms\Components\Select::make('assigned_to')
                                     ->label('Salesperson')
-                                    ->relationship('assignee', 'name', fn (Builder $query) => $query->where('is_active', true)->whereDoesntHave('roles', fn ($r) => $r->whereIn('name', ['Customer', 'Driver'])))
-                                    ->default(fn () => auth()->id())
-                                    ->disabled(fn (string $operation): bool => $operation !== 'create' && ! \App\Support\Access::allows('assign-leads'))
+                                    ->relationship('assignee', 'name', fn (Builder $query) => $query->where('is_active', true)->where('is_system', false)->whereDoesntHave('roles', fn ($r) => $r->whereIn('name', ['Customer', 'Driver'])))
+                                    // 5 Nov (S3): an agent's own new lead is theirs; Admin leaves it empty to send it to every agent.
+                                    ->default(fn () => \App\Support\Access::allows('assign-leads') ? null : auth()->id())
+                                    ->placeholder(fn (string $operation): ?string => $operation === 'create' ? 'Every agent (first to accept)' : 'Waiting for an agent')
+                                    ->disabled(fn (): bool => ! \App\Support\Access::allows('assign-leads'))
                                     ->helperText(fn (?Lead $record): ?string => match ($record?->assignment_status) {
                                         'pending' => 'Waiting for '.$record->assignee?->name.' to accept.',
                                         'accepted' => 'Accepted '.$record->accepted_at?->format('d M, H:i').'.',
@@ -275,12 +290,23 @@ class LeadResource extends Resource
                             ]),
 
                         Forms\Components\Section::make('Internal notes')
+                            ->collapsible()->collapsed(fn (string $operation): bool => $operation === 'create') // 6 Nov (S4): defaults are fine when adding
                             ->icon('heroicon-o-lock-closed')
                             ->collapsible()
                             ->schema([
                                 Forms\Components\Textarea::make('notes')
                                     ->hiddenLabel()
                                     ->rows(4),
+                            ]),
+
+                        // 5 Nov (S3, B.6): everything that happened, from the enquiry to the deposit settled.
+                        Forms\Components\Section::make('Timeline')
+                            ->icon('heroicon-o-queue-list')
+                            ->collapsible()
+                            ->hiddenOn('create')
+                            ->schema([
+                                Forms\Components\Placeholder::make('timeline')->hiddenLabel()
+                                    ->content(fn (?Lead $record) => $record ? view('filament.leads.timeline', ['events' => \App\Support\Leads\LeadTimeline::for($record)]) : null),
                             ]),
                     ]),
             ]);
@@ -415,6 +441,19 @@ class LeadResource extends Resource
                 Tables\Filters\TrashedFilter::make(),
             ])
             ->actions([
+                // 5 Nov (S3): a lead waiting for an agent: one button.
+                Tables\Actions\Action::make('claim')
+                    ->label('Accept')
+                    ->icon('heroicon-o-hand-raised')
+                    ->color('danger')
+                    ->button()
+                    ->visible(fn (Lead $record): bool => static::waitingForAgent($record))
+                    ->action(function (Lead $record) {
+                        [$won, $owner] = \App\Support\Leads\LeadBroadcast::claim($record, auth()->user(), 'crm', request()->ip());
+                        $won
+                            ? \Filament\Notifications\Notification::make()->title('The lead is yours: '.$record->name)->body('Call or message them now.')->success()->send()
+                            : \Filament\Notifications\Notification::make()->title($owner ? 'Taken by '.$owner->name : 'Could not accept this lead')->danger()->send();
+                    }),
                 Tables\Actions\Action::make('whatsapp')
                     ->label('')
                     ->tooltip('WhatsApp')
@@ -422,14 +461,14 @@ class LeadResource extends Resource
                     ->color('success')
                     ->url(fn (Lead $record): ?string => Phone::whatsappUrl($record->whatsapp ?: $record->phone, \App\Support\Options::message('msg_greeting', ['name' => $record->name])))
                     ->openUrlInNewTab()
-                    ->visible(fn (Lead $record): bool => filled($record->whatsapp ?: $record->phone)),
+                    ->visible(fn (Lead $record): bool => filled($record->whatsapp ?: $record->phone) && ! static::waitingForAgent($record)),
                 Tables\Actions\Action::make('call')
                     ->label('')
                     ->tooltip('Call')
                     ->icon('heroicon-o-phone')
                     ->color('info')
                     ->url(fn (Lead $record): ?string => Phone::telUrl($record->phone))
-                    ->visible(fn (Lead $record): bool => filled($record->phone)),
+                    ->visible(fn (Lead $record): bool => filled($record->phone) && ! static::waitingForAgent($record)),
                 Tables\Actions\EditAction::make()->iconButton(),
                 Tables\Actions\ActionGroup::make([
                     Tables\Actions\Action::make('quote')
@@ -449,7 +488,7 @@ class LeadResource extends Resource
                     self::markLostAction(),
                     Tables\Actions\DeleteAction::make(),
                     Tables\Actions\RestoreAction::make(),
-                ]),
+                ])->hidden(fn (Lead $record): bool => static::waitingForAgent($record)),
             ])
             ->bulkActions([
                 Tables\Actions\BulkActionGroup::make([
@@ -460,7 +499,7 @@ class LeadResource extends Resource
                         ->form([
                             Forms\Components\Select::make('assigned_to')
                                 ->label('Salesperson')
-                                ->options(fn () => User::where('is_active', true)->whereDoesntHave('roles', fn ($r) => $r->whereIn('name', ['Customer', 'Driver']))->pluck('name', 'id'))
+                                ->options(fn () => User::where('is_active', true)->where('is_system', false)->whereDoesntHave('roles', fn ($r) => $r->whereIn('name', ['Customer', 'Driver']))->pluck('name', 'id'))
                                 ->required(),
                         ])
                         ->action(fn (Collection $records, array $data) => $records->each->update(['assigned_to' => $data['assigned_to']]))
@@ -548,6 +587,12 @@ class LeadResource extends Resource
             'create' => Pages\CreateLead::route('/create'),
             'edit' => Pages\EditLead::route('/{record}/edit'),
         ];
+    }
+
+    /** 5 Nov (S3): the signed-in agent is looking at a lead that nobody has accepted yet. */
+    public static function waitingForAgent(?Lead $record): bool
+    {
+        return $record !== null && ! $record->assigned_to && \App\Support\Access::agentScoped();
     }
 
     public static function getEloquentQuery(): Builder

@@ -23,16 +23,21 @@ class Accounts
         return max(1, (int) Setting::read('invite_link_hours', 72));
     }
 
-    /** Ties a link to the current password: setting a new one makes old links useless. */
+    /**
+     * Ties a link to the current password and the link counter: setting a password, or making a
+     * newer link (4 Nov, 13.3), makes older links useless. Counter 0 = links from before 4 Nov.
+     */
     public static function fingerprint(User $user): string
     {
-        return substr(hash_hmac('sha256', $user->getKey().'|'.$user->getAuthPassword(), (string) config('app.key')), 0, 24);
+        $v = (int) ($user->invite_version ?? 0);
+
+        return substr(hash_hmac('sha256', $user->getKey().'|'.$user->getAuthPassword().($v ? '|v'.$v : ''), (string) config('app.key')), 0, 24);
     }
 
     /** A new "choose your password" link. Also used to help someone who forgot theirs. */
     public static function inviteUrl(User $user): string
     {
-        $user->forceFill(['invited_at' => now()])->saveQuietly();
+        $user->forceFill(['invited_at' => now(), 'invite_version' => (int) ($user->invite_version ?? 0) + 1])->saveQuietly();
         AuditLog::note($user, 'invite', 'Login link created for '.$user->email);
 
         // Signed on the path only (like private files), so it also works behind the hosting proxy.
@@ -44,7 +49,7 @@ class Accounts
 
     public static function emailInvite(User $user, string $url): void
     {
-        $user->notify(new AccountInvite($url, self::linkHours(), $user->isCustomerAccount() ? 'customer' : 'driver'));
+        \App\Support\Notifications\Notifier::send($user, new AccountInvite($url, self::linkHours(), $user->isCustomerAccount() ? 'customer' : 'driver'), $user->customer);
     }
 
     /** Create (or return) the login of a customer record. */

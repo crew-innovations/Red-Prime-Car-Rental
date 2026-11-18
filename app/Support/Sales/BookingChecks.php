@@ -61,7 +61,7 @@ class BookingChecks
     public static function confirmBlocked(Quotation $q): ?string
     {
         if (Setting::read('doc_block_confirm') && ($missing = self::missingDocuments($q))) {
-            return 'Can be confirmed once these documents are approved: '.implode(', ', $missing).'. Create it as Pending payment for now.';
+            return 'Can be confirmed once these documents are approved: '.implode(', ', $missing).'. Create it as Waiting for payment for now.';
         }
 
         return null;

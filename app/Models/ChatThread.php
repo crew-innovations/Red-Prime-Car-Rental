@@ -12,7 +12,7 @@ class ChatThread extends Model
 
     protected function casts(): array
     {
-        return ['last_message_at' => 'datetime', 'closed_at' => 'datetime'];
+        return ['last_message_at' => 'datetime', 'last_inbound_at' => 'datetime', 'closed_at' => 'datetime'];
     }
 
     public function booking(): BelongsTo
@@ -23,6 +23,22 @@ class ChatThread extends Model
     public function customer(): BelongsTo
     {
         return $this->belongsTo(Customer::class)->withTrashed();
+    }
+
+    /** 12 Nov: a conversation from Instagram / Messenger / WhatsApp belongs to a lead. */
+    public function lead(): BelongsTo
+    {
+        return $this->belongsTo(Lead::class)->withTrashed();
+    }
+
+    public function isSocial(): bool
+    {
+        return $this->kind === 'social';
+    }
+
+    public function channelLabel(): ?string
+    {
+        return \App\Support\Chat\Social::CHANNELS[$this->channel] ?? null;
     }
 
     public function driver(): BelongsTo
@@ -42,6 +58,10 @@ class ChatThread extends Model
 
     public function title(): string
     {
+        if ($this->isSocial()) {
+            return $this->lead?->name ?: ($this->external_name ?: ($this->channelLabel().' user'));
+        }
+
         $who = $this->kind === 'driver' ? ($this->driver?->name ?? 'Driver') : ($this->customer?->name ?? 'Customer');
 
         return $who.($this->booking ? ' · '.$this->booking->reference : '').($this->subject ? ' · '.$this->subject : '');

@@ -33,7 +33,7 @@ class AccountPanelProvider extends PanelProvider
             ->id('account')
             ->path('account')
             ->login()
-            ->passwordReset()
+            ->passwordReset(\App\Filament\Auth\RequestPasswordReset::class)
             ->profile(\App\Filament\Account\Pages\AccountProfile::class, isSimple: false)
             ->brandName('Red Prime · My account')
             ->brandLogo(asset('images/logo-mark-light.png'))
@@ -60,6 +60,12 @@ class AccountPanelProvider extends PanelProvider
                 PanelsRenderHook::HEAD_END,
                 fn (): HtmlString => new HtmlString('<link rel="stylesheet" href="'.asset('css/crm.css').'?v='.@filemtime(public_path('css/crm.css')).'">'),
             )
+            // Installed app and push notifications (4 Nov, brief 9 / 16).
+            ->renderHook(PanelsRenderHook::HEAD_END, fn (): HtmlString => \App\Support\Push\PanelHooks::head())
+            ->renderHook(PanelsRenderHook::BODY_END, fn (): HtmlString => \App\Support\Push\PanelHooks::body())
+            // The bell for customers too (4 Nov, 9.1).
+            ->databaseNotifications()
+            ->databaseNotificationsPolling('60s')
             ->middleware([
                 EncryptCookies::class,
                 AddQueuedCookiesToResponse::class,

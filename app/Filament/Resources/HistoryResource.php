@@ -148,7 +148,7 @@ class HistoryResource extends Resource
                     ->multiple()
                     ->options(AuditLog::EVENTS),
                 Tables\Filters\SelectFilter::make('role')
-                    ->options(fn (): array => collect(['Super Admin', ...Access::ROLES, 'Driver', 'Customer'])->mapWithKeys(fn ($r) => [$r => $r])->all()),
+                    ->options(fn (): array => collect(['Super Admin', ...Access::STAFF_ROLES, 'Customer', ...array_keys(Access::LEGACY)])->mapWithKeys(fn ($r) => [$r => $r])->all()),
                 Tables\Filters\SelectFilter::make('outcome')
                     ->options(['ok' => 'Done', 'failed' => 'Failed', 'denied' => 'Refused'])
                     ->query(fn (Builder $query, array $data) => match ($data['value'] ?? null) {

@@ -30,9 +30,9 @@ class DemoDataSeeder extends Seeder
         $admin = User::first();
         $sales = User::firstOrCreate(
             ['email' => 'sales@redprime.test'],
-            ['name' => 'Sara (Sales)', 'password' => 'change-me', 'is_active' => true],
+            ['name' => 'Sara (Agent)', 'password' => 'change-me', 'is_active' => true],
         );
-        $sales->assignRole('Sales');
+        $sales->assignRole('Agent');
 
         $cars = [
             ['Lamborghini Urus 2024', 'Lamborghini', 'Urus', 'SUV', 3500, CarStatus::Available, 'Best Seller', '4.0L V8 Twin Turbo', 657],

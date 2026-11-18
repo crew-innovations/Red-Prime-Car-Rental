@@ -24,11 +24,16 @@ class PrivateFiles
         }
 
         if ($user->hasCrmRole() && ! $user->isDriverOnly()) {
-            return true;
+            if (! \App\Support\Access::agentScopedUser($user)) {
+                return true;
+            }
+
+            return self::agentAllows($user, $path); // 5 Nov (S3): agents only open files of their own records
         }
 
         if ($user->isDriverOnly()) {
-            if (DriverDocument::where('user_id', $user->id)->where('path', $path)->exists()) {
+            if (DriverDocument::where('user_id', $user->id)->where('path', $path)->exists()
+                || \App\Models\FuelEntry::where('user_id', $user->id)->where('receipt_path', $path)->exists()) { // 5 Nov (S5): own fuel receipts
                 return true;
             }
             $media = self::media($path);
@@ -47,6 +52,34 @@ class PrivateFiles
         }
 
         return false;
+    }
+
+    /** An agent: documents of their own customers, photos / papers of their own bookings, fleet files. */
+    protected static function agentAllows(User $user, string $path): bool
+    {
+        // scopeOwn() works for the signed-in person; anyone else is refused.
+        if (! auth()->user()?->is($user)) {
+            return false;
+        }
+        $own = fn (string $kind, $query) => \App\Support\Access::scopeOwn($query, $kind);
+
+        $doc = CustomerDocument::where('path', $path)->first();
+        if ($doc) {
+            return $own('customer', \App\Models\Customer::withTrashed())->whereKey($doc->customer_id)->exists();
+        }
+        if (DriverDocument::where('path', $path)->exists() || str_starts_with($path, 'fuel/')) {
+            return false;
+        }
+        $media = self::media($path);
+
+        return match (true) {
+            ! $media => false,
+            $media->model_type === 'booking' => $own('booking', Booking::withTrashed())->whereKey($media->model_id)->exists(),
+            $media->model_type === (new DamageReport)->getMorphClass() => ($r = DamageReport::find($media->model_id)) && $r->booking_id
+                && $own('booking', Booking::withTrashed())->whereKey($r->booking_id)->exists(),
+            in_array($media->model_type, ['car', 'yacht', 'trip'], true) => true,
+            default => false,
+        };
     }
 
     /**

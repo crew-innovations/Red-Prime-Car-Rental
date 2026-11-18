@@ -73,9 +73,16 @@ class BusinessSettings extends Page implements HasForms
             $values[$key] = filled($values[$key] ?? null) ? $values[$key] : $default;
         }
         foreach (array_keys(Access::ABILITIES) as $ability) {
-            $values['perm_'.self::permKey($ability)] = Access::rolesFor($ability);
+            $values['perm_'.self::permKey($ability)] = array_values(array_intersect(Access::rolesFor($ability), Access::ROLES));
         }
 
+        foreach (['salik', 'darb', 'parking'] as $t) {
+            $values['toll_fee_'.$t] = ((array) ($values['toll_service_fee'] ?? []))[$t] ?? null;
+        }
+        $channels = (array) ($values['notification_channels'] ?? []);
+        $values['chan_staff'] = $channels['*'] ?? \App\Support\Notifications\Preferences::ROLE_DEFAULTS['*'];
+        $values['chan_driver'] = $channels['Driver'] ?? \App\Support\Notifications\Preferences::ROLE_DEFAULTS['Driver'];
+        $values['chan_customer'] = $channels['Customer'] ?? \App\Support\Notifications\Preferences::ROLE_DEFAULTS['Customer'];
         $values['document_types'] = Options::documentTypeRows();
         $values['return_charges'] = collect(Options::charges())
             ->map(fn ($meta, $key) => ['key' => $key, 'label' => $meta[0], 'category' => $meta[1], 'cars_only' => $meta[2]])
@@ -129,22 +136,68 @@ class BusinessSettings extends Page implements HasForms
                             ->helperText('Type the full address and press Enter. Only these sites can send enquiries from a browser. Leave empty until the website is live.')
                             ->nestedRecursiveRules(['url', 'max:255']),
                     ]),
-                Forms\Components\Section::make('Company details')
-                    ->description('Printed on quotations, confirmations, invoices and receipts. The TRN is only printed while VAT is switched on.')
+                Forms\Components\Section::make('Website contact & social')
+                    ->description('Shown on redprimerentals.com: header, footer, contact page and the WhatsApp buttons.')
                     ->columns(2)
                     ->schema([
+                        Forms\Components\TextInput::make('website_phone')->label('Phone (calls)')->tel()->maxLength(30),
+                        Forms\Components\TextInput::make('website_whatsapp')->label('WhatsApp number')->tel()->maxLength(30)
+                            ->helperText('With country code, e.g. +971 55 793 9231.'),
+                        Forms\Components\TextInput::make('website_email')->label('Email')->email()->maxLength(120),
+                        Forms\Components\TextInput::make('website_map_url')->label('Google Maps link')->url()->maxLength(255),
+                        Forms\Components\Textarea::make('website_address')->label('Address on the website')->rows(2)
+                            ->helperText('Empty = the company address above is used.'),
+                        Forms\Components\TextInput::make('website_instagram')->label('Instagram')->url()->maxLength(255),
+                        Forms\Components\TextInput::make('website_facebook')->label('Facebook')->url()->maxLength(255),
+                        Forms\Components\TextInput::make('website_tiktok')->label('TikTok')->url()->maxLength(255),
+                        Forms\Components\TextInput::make('website_snapchat')->label('Snapchat')->url()->maxLength(255),
+                    ]),
+                Forms\Components\Section::make('Company profile')
+                    ->description('Printed on every PDF: quotations, confirmations, invoices, receipts and statements. The TRN is only printed while VAT is switched on.')
+                    ->columns(2)
+                    ->schema([
+                        Forms\Components\Placeholder::make('profile_missing')
+                            ->hiddenLabel()
+                            ->columnSpanFull()
+                            ->visible(fn (): bool => \App\Support\Documents\CompanyProfile::missing() !== [])
+                            ->content(fn (): \Illuminate\Support\HtmlString => new \Illuminate\Support\HtmlString('<span style="color:rgb(var(--warning-600));font-weight:600">Company profile incomplete:</span> '
+                                .e(implode(', ', \App\Support\Documents\CompanyProfile::missing())).'. PDFs still work, without these details.')),
                         Forms\Components\TextInput::make('company_name')->label('Trading name')->required()->maxLength(120),
                         Forms\Components\TextInput::make('company_legal_name')->label('Legal name (as on the trade licence)')->maxLength(160),
                         Forms\Components\TextInput::make('company_trade_licence')->label('Trade licence number')->maxLength(60),
                         Forms\Components\TextInput::make('company_trn')->label('VAT registration number (TRN)')->maxLength(30),
-                        Forms\Components\TextInput::make('company_phone')->label('Phone / WhatsApp')->tel()->maxLength(30),
+                        Forms\Components\TextInput::make('company_phone')->label('Phone')->tel()->maxLength(30),
+                        Forms\Components\TextInput::make('company_whatsapp')->label('WhatsApp')->tel()->maxLength(30),
                         Forms\Components\TextInput::make('company_email')->label('Email')->email()->maxLength(120),
-                        Forms\Components\Textarea::make('company_address')->label('Address')->rows(2),
-                        Forms\Components\Textarea::make('bank_details')->label('Bank details for payment')->rows(3),
+                        Forms\Components\TextInput::make('company_website')->label('Website')->maxLength(120)->placeholder('redprimerentals.com'),
+                        Forms\Components\Textarea::make('company_address')->label('Address')->rows(2)->columnSpanFull(),
+                        Forms\Components\FileUpload::make('company_logo')->label('Logo for white paper (PDFs)')
+                            ->helperText('PNG or JPG. Empty = the built-in RED PRIME logo.')
+                            ->image()->disk('uploads')->directory('company')->visibility('public')->maxSize(2048)
+                            ->acceptedFileTypes(['image/png', 'image/jpeg']),
+                        Forms\Components\FileUpload::make('company_logo_dark')->label('Logo for dark backgrounds')
+                            ->helperText('Optional. PNG or JPG.')
+                            ->image()->disk('uploads')->directory('company')->visibility('public')->maxSize(2048)
+                            ->acceptedFileTypes(['image/png', 'image/jpeg']),
+                        Forms\Components\FileUpload::make('company_stamp')->label('Stamp or signature (optional)')
+                            ->helperText('Printed small at the bottom of quotations. Kept private.')
+                            ->image()->disk('private')->directory('company')->maxSize(1024)
+                            ->acceptedFileTypes(['image/png', 'image/jpeg'])
+                            ->columnSpanFull(),
+                        Forms\Components\TextInput::make('bank_name')->label('Bank')->maxLength(120),
+                        Forms\Components\TextInput::make('bank_account_name')->label('Account name')->maxLength(160),
+                        Forms\Components\TextInput::make('bank_iban')->label('IBAN')->maxLength(40),
+                        Forms\Components\TextInput::make('bank_swift')->label('SWIFT / BIC')->maxLength(20),
+                        Forms\Components\Textarea::make('bank_details')->label('Other payment details')->rows(2)
+                            ->helperText('Free text, printed after the bank details (or alone if the fields above are empty).'),
                         Forms\Components\Textarea::make('policy_cancellation')->label('Cancellation and changes (printed on quotations and confirmations)')->rows(3)
                             ->helperText('Empty = not printed. Your own wording; the CRM does not assume a policy.'),
                         Forms\Components\Textarea::make('policy_late_return')->label('Late return (printed on quotations and confirmations)')->rows(3)
                             ->helperText('Empty = not printed.'),
+                        Forms\Components\Textarea::make('policy_fuel')->label('Fuel policy (printed on quotations)')->rows(2)
+                            ->helperText('Empty = not printed. For example how the car is handed over and returned.'),
+                        Forms\Components\Textarea::make('policy_fines')->label('Salik, fines and admin fee (printed on quotations)')->rows(2)
+                            ->helperText('Empty = not printed. Your own wording.'),
                     ]),
                 Forms\Components\Section::make('WhatsApp messages')
                     ->description($placeholders)
@@ -165,9 +218,13 @@ class BusinessSettings extends Page implements HasForms
                     ->columns(2)
                     ->schema([
                         Forms\Components\Toggle::make('pending_payment_holds')
-                            ->label('"Pending payment" bookings keep the car')
+                            ->label('"Waiting for payment" bookings keep the car')
                             ->helperText('Off = the dates stay open for others until the booking is confirmed.')
                             ->columnSpanFull(),
+                        Forms\Components\TextInput::make('website_booking_hold_hours')
+                            ->label('Website bookings: hours to pay')
+                            ->numeric()->integer()->minValue(0)->maxValue(720)->suffix('hours')
+                            ->helperText('A booking made on the website is "Waiting for payment". If no payment is recorded in this time, it is cancelled and the dates open again. 0 = never cancelled by itself.'),
                         Forms\Components\TextInput::make('booking_buffer_minutes')
                             ->label('Gap between bookings of the same car')
                             ->helperText('Time kept free for delivery, cleaning, etc. 0 = back-to-back allowed.')
@@ -289,20 +346,71 @@ class BusinessSettings extends Page implements HasForms
                             ->helperText('Added to new quotations; staff can edit them per quotation.')
                             ->rows(5)
                             ->columnSpanFull(),
-                        Forms\Components\TextInput::make('price_max_discount_percent')
-                            ->label('Most an agent can take off')
-                            ->numeric()->minValue(0)->maxValue(100)->suffix('%')
-                            ->helperText('Empty = no limit. Managers with "Pricing" rights are not limited. A reason is always asked.'),
-                        Forms\Components\Toggle::make('price_approval_required')
-                            ->label('Above the limit, wait for a manager\'s OK instead of refusing')
-                            ->helperText('Off (default): a bigger discount is refused. On: it is saved but can\'t be sent or confirmed until a manager approves it.')
-                            ->inline(false),
                         Forms\Components\Toggle::make('booking_requires_accepted_quote')
                             ->label('Bookings must come from an accepted quotation')
                             ->helperText('Off: staff can also book directly (walk-ins). On: a new confirmed booking needs an accepted quotation.')
                             ->inline(false),
                         $this->listField('quote_extras'),
                         $this->listField('quote_decline_reasons'),
+                    ]),
+                Forms\Components\Section::make('Discounts')
+                    ->description('How much each role can take off the price list (rental, extras and the total together). Above the limit the price waits for a manager\'s OK before it can be sent or confirmed. Super Admin is never limited.')
+                    ->columns(2)
+                    ->schema([
+                        Forms\Components\Repeater::make('discount_limits')
+                            ->label('Limit per role')
+                            ->schema([
+                                Forms\Components\Select::make('role')->options(array_combine(Access::ROLES, Access::ROLES))->required()->native(false)->distinct(),
+                                Forms\Components\TextInput::make('percent')->label('Most off')->numeric()->minValue(0)->maxValue(100)->suffix('%')
+                                    ->placeholder('No limit'),
+                            ])
+                            ->columns(2)
+                            ->defaultItems(0)
+                            ->addActionLabel('Add a role')
+                            ->helperText('Empty % = no limit for that role. A person with two roles gets the higher limit. Roles not listed use the single limit below.')
+                            ->columnSpanFull(),
+                        Forms\Components\TextInput::make('discount_reason_from_percent')
+                            ->label('A reason is needed above')
+                            ->numeric()->minValue(0)->maxValue(100)->suffix('%')
+                            ->helperText('Smaller discounts need no reason (they are still saved in the history). Empty = every change needs a reason. Price increases always need one.'),
+                        Forms\Components\Toggle::make('discount_stacks_with_rules')
+                            ->label('Allow a discount on top of a special rate')
+                            ->helperText('Off: when a season or special rate already applies, no extra discount can be given.')
+                            ->inline(false),
+                        Forms\Components\TextInput::make('price_max_discount_percent')
+                            ->label('Roles not listed above: most off')
+                            ->numeric()->minValue(0)->maxValue(100)->suffix('%')
+                            ->helperText('Empty = no limit. People with "Pricing" rights are not limited by this one.'),
+                        Forms\Components\Toggle::make('price_approval_required')
+                            ->label('Roles not listed above: wait for a manager instead of refusing')
+                            ->helperText('Off: a bigger discount is refused. On: it waits for a manager. (Roles listed above always wait.)')
+                            ->inline(false),
+                    ]),
+                Forms\Components\Section::make('Advance to confirm')
+                    ->description('The part of the price paid to confirm a booking. The security deposit is separate and never counts toward it. Staff can change the % on each quotation and booking.')
+                    ->columns(3)
+                    ->schema([
+                        ...collect(['car' => 'Car rental', 'yacht' => 'Yacht charter', 'trip' => 'Yacht trip', 'package' => 'Trip / package', 'transfer' => 'Limousine & transfer'])
+                            ->map(fn ($label, $key) => Forms\Components\TextInput::make('advance_percent.'.$key)->label($label)
+                                ->numeric()->minValue(0)->maxValue(100)->suffix('%')->placeholder('No advance'))
+                            ->values()->all(),
+                        Forms\Components\TextInput::make('advance_min_percent')
+                            ->label('Lowest advance staff can set')
+                            ->numeric()->minValue(0)->maxValue(100)->suffix('%')
+                            ->helperText('Lower needs "Approve prices" and a reason. Empty = no minimum.'),
+                        Forms\Components\Select::make('balance_due_rule')
+                            ->label('The balance is due')
+                            ->options(\App\Support\Pricing\Advance::DUE_RULES)
+                            ->native(false)->required()->live(),
+                        Forms\Components\TextInput::make('balance_due_hours')
+                            ->label('Hours before the start')
+                            ->numeric()->integer()->minValue(0)->maxValue(720)->suffix('hours')
+                            ->visible(fn (Get $get): bool => $get('balance_due_rule') === 'before_start'),
+                        Forms\Components\Toggle::make('confirm_on_advance')
+                            ->label('Confirm the booking once the advance is paid')
+                            ->helperText('On: a "Waiting for payment" booking becomes "Confirmed" by itself when the payments reach the advance. Off: staff confirm by hand.')
+                            ->inline(false)
+                            ->columnSpanFull(),
                     ]),
             ]);
     }
@@ -348,7 +456,7 @@ class BusinessSettings extends Page implements HasForms
                             ->columnSpanFull(),
                         Forms\Components\Toggle::make('doc_block_confirm')
                             ->label('Only confirm a booking once required documents are approved')
-                            ->helperText('Until then it can be created as Pending payment.')
+                            ->helperText('Until then it can be created as Waiting for payment.')
                             ->columnSpanFull(),
                         Forms\Components\TextInput::make('upload_link_hours')
                             ->label('Upload links work for')
@@ -392,6 +500,23 @@ class BusinessSettings extends Page implements HasForms
                     ->description('Rename or add categories. Ones the CRM uses itself (rentals, deposits, deposit refunds, extras…) come back if removed, so reports keep working.')
                     ->columns(2)
                     ->schema([$repeater('income'), $repeater('expense')]),
+                Forms\Components\Section::make('Fines, tolls and deposits')
+                    ->description('Fines and tolls are passed on to the customer who had the car: not revenue. Admin and service fees are revenue. Empty = no fee.')
+                    ->columns(3)
+                    ->schema([
+                        Forms\Components\Select::make('fine_admin_fee_mode')->label('Admin fee per fine')->native(false)->selectablePlaceholder(false)
+                            ->options(['fixed' => 'Fixed amount', 'percent' => '% of the fine'])->live(),
+                        Forms\Components\TextInput::make('fine_admin_fee_amount')->label(fn (Forms\Get $get) => $get('fine_admin_fee_mode') === 'percent' ? 'Percent' : 'Amount')
+                            ->numeric()->minValue(0)->placeholder('No admin fee')
+                            ->prefix(fn (Forms\Get $get) => $get('fine_admin_fee_mode') === 'percent' ? null : 'AED')->suffix(fn (Forms\Get $get) => $get('fine_admin_fee_mode') === 'percent' ? '%' : null),
+                        Forms\Components\TextInput::make('fine_admin_fee_min')->label('Minimum fee')->numeric()->minValue(0)->prefix('AED')->placeholder('None'),
+                        Forms\Components\TextInput::make('toll_fee_salik')->label('Service fee per Salik trip')->numeric()->minValue(0)->prefix('AED')->placeholder('None'),
+                        Forms\Components\TextInput::make('toll_fee_darb')->label('Service fee per Darb trip')->numeric()->minValue(0)->prefix('AED')->placeholder('None'),
+                        Forms\Components\TextInput::make('toll_fee_parking')->label('Service fee per parking charge')->numeric()->minValue(0)->prefix('AED')->placeholder('None'),
+                        Forms\Components\Toggle::make('toll_auto_charge')->label('Add matched tolls to the customer\'s booking straight away')->columnSpan(2),
+                        Forms\Components\TextInput::make('deposit_hold_days')->label('Hold deposits after the return for')->numeric()->minValue(1)->maxValue(90)->suffix('days')
+                            ->placeholder('No hold')->helperText('Fines and tolls arrive late. Empty = refund at the return as before.'),
+                    ]),
                 Forms\Components\Section::make('Expense controls')
                     ->schema([
                         Forms\Components\Toggle::make('expense_approval_required')
@@ -487,12 +612,44 @@ class BusinessSettings extends Page implements HasForms
                             ->label('Send expiry reminders (to the driver and the people who manage drivers)')
                             ->helperText('Sent once a day by the scheduled task on the server.'),
                     ]),
-                Forms\Components\Section::make('Notifications')
-                    ->description('Messages always appear under the bell in the CRM. Email needs email sending set up on the server.')
+                Forms\Components\Section::make('Driver phone')
+                    ->description('How drivers work with their jobs on the phone (4 Nov).')
                     ->columns(2)
                     ->schema([
-                        Forms\Components\Toggle::make('notify_drivers_by_email')->label('Also email drivers about new or changed jobs'),
-                        Forms\Components\Toggle::make('notify_staff_by_email')->label('Also email staff about handovers, collections and damage'),
+                        Forms\Components\Toggle::make('driver_can_decline')->label('Drivers can decline a job (with a reason)')
+                            ->helperText('It shows under "Needs a driver" on the dispatch board.'),
+                        Forms\Components\TextInput::make('job_accept_minutes')->label('Tell the office when a new job is not accepted within')
+                            ->numeric()->minValue(5)->maxValue(1440)->suffix('minutes')->placeholder('No reminder'),
+                        Forms\Components\Toggle::make('driver_updates_to_customer')->label('Tell the customer when the driver is on the way or running late'),
+                        Forms\Components\Select::make('handover_signature')->label('Customer signature at handover and collection')->native(false)->selectablePlaceholder(false)
+                            ->options(['off' => 'Off', 'optional' => 'Optional', 'required' => 'Required']),
+                        Forms\Components\CheckboxList::make('driver_languages')->label('Languages on the driver screens')
+                            ->options(['en' => 'English', 'ur' => 'Urdu', 'ar' => 'Arabic', 'hi' => 'Hindi (screens in English until translated)'])->columns(2)
+                            ->helperText('Each driver picks theirs under My profile.'),
+                        Forms\Components\Fieldset::make('Live location')->columns(3)->schema([
+                            Forms\Components\Toggle::make('driver_location_enabled')->label('Share driver location during jobs')->columnSpanFull()
+                                ->helperText('Only while a job is active (on the way, arrived, chauffeur ride, charter), with the job open on the phone. Tell the drivers in writing before you switch this on.'),
+                            Forms\Components\TextInput::make('location_interval_seconds')->label('Send every')->numeric()->minValue(15)->maxValue(600)->suffix('seconds'),
+                            Forms\Components\TextInput::make('location_retention_days')->label('Keep for')->numeric()->minValue(1)->maxValue(365)->suffix('days'),
+                        ]),
+                    ]),
+                Forms\Components\Section::make('Notifications')
+                    ->description('What each group gets by default. Everyone can change their own under "My notifications". Phone notifications need the app installed (Settings › Apps).')
+                    ->columns(3)
+                    ->schema([
+                        Forms\Components\CheckboxList::make('chan_staff')->label('Staff')->options(self::CHANNELS),
+                        Forms\Components\CheckboxList::make('chan_driver')->label('Drivers & crew')->options(self::CHANNELS),
+                        Forms\Components\CheckboxList::make('chan_customer')->label('Customers with an account')->options(self::CHANNELS),
+                        Forms\Components\Toggle::make('notify_drivers_by_email')->label('Also email drivers about every job')->columnSpan(1),
+                        Forms\Components\Toggle::make('notify_staff_by_email')->label('Also email staff about everything')->columnSpan(2),
+                        Forms\Components\TextInput::make('lead_accept_minutes')->label('Remind when a new lead is not accepted within')
+                            ->numeric()->minValue(5)->maxValue(1440)->suffix('minutes')->placeholder('No reminder'),
+                        Forms\Components\TextInput::make('job_soon_minutes')->label('Tell the driver a job starts in')
+                            ->numeric()->minValue(10)->maxValue(720)->suffix('minutes')->placeholder('No reminder'),
+                        Forms\Components\TextInput::make('balance_reminder_days')->label('Remind finance a balance is due in')
+                            ->numeric()->minValue(0)->maxValue(30)->suffix('days')->placeholder('No reminder'),
+                        Forms\Components\Toggle::make('quote_expiry_customer_reminder')->label('Remind the customer before a quotation expires'),
+                        Forms\Components\Toggle::make('late_return_customer_reminder')->label('Message the customer when a return is late'),
                     ]),
             ]);
     }
@@ -519,6 +676,17 @@ class BusinessSettings extends Page implements HasForms
                         Forms\Components\Toggle::make('customer_sees_payments')->label('Customers see their payments and balance'),
                         Forms\Components\Toggle::make('customer_can_upload_documents')->label('Customers can upload documents from their account'),
                     ]),
+                Forms\Components\Section::make('Customer portal accounts')
+                    ->description('A customer account is made automatically, and the customer gets an email to choose a password. No password is ever sent by email.')
+                    ->columns(3)
+                    ->schema([
+                        Forms\Components\Toggle::make('portal_on_lead')->label('When a lead with an email comes in'),
+                        Forms\Components\Toggle::make('portal_on_quote')->label('When a quotation is sent'),
+                        Forms\Components\Toggle::make('portal_on_booking')->label('When a booking is made'),
+                        Forms\Components\Toggle::make('portal_new_device_email')->label('Email the customer when they sign in on a new device')->columnSpanFull(),
+                        Forms\Components\TagsInput::make('disposable_email_domains')->label('Never make accounts for these email domains')
+                            ->helperText('Throw-away email services. Leads from them still come in; they just get no account.')->columnSpanFull(),
+                    ]),
                 Forms\Components\Section::make('Online payments')
                     ->description('Gateways (Stripe, Paymob, Tabby, Tamara, PayPal) are connected in Settings › Integrations. Money is recorded only when the provider confirms it.')
                     ->schema([
@@ -537,8 +705,20 @@ class BusinessSettings extends Page implements HasForms
                             ->placeholder('Keep forever')
                             ->helperText('Empty = keep everything. If set (90 days or more), older lines are removed each night.'),
                     ]),
-                Forms\Components\Section::make('Who can do what')
-                    ->description('Super Admin can always do everything. Admin always keeps access to these settings. Drivers only see their own jobs and profile; customers only their own account.')
+                // 5 Nov ("Make it simple", Part A): four roles, shown as a plain table. The ability matrix is
+                // for experts only and sits folded away under "Advanced".
+                Forms\Components\Section::make('What each role can do')
+                    ->description('Four roles: Admin, Agent, Accounts and Driver. Give each team member one role under Team & roles.')
+                    ->schema([
+                        Forms\Components\Placeholder::make('roles_table')->hiddenLabel()
+                            ->content(fn (): \Illuminate\Support\HtmlString => new \Illuminate\Support\HtmlString(view('filament.pages.partials.role-table', [
+                                'roles' => Access::ROLE_DESCRIPTIONS,
+                                'rows' => collect(Access::LABELS)->map(fn ($label, $ability) => ['label' => $label, 'roles' => array_values(array_intersect(Access::rolesFor($ability), Access::ROLES))])->values()->all(),
+                            ])->render())),
+                    ]),
+                Forms\Components\Section::make('Advanced: change what a role can do')
+                    ->description('For experts only. Leave as it is unless Crew Innovations asks you to change it. Admin always keeps these settings.')
+                    ->collapsible()->collapsed()
                     ->columns(2)
                     ->schema(collect(Access::LABELS)->map(fn ($label, $ability) => Forms\Components\CheckboxList::make('perm_'.self::permKey($ability))
                         ->label($label)
@@ -571,6 +751,29 @@ class BusinessSettings extends Page implements HasForms
         'hourly_increment_minutes', 'price_max_discount_percent', 'price_approval_required', 'booking_requires_accepted_quote', 'doc_block_confirm',
         'expense_approval_required', 'audit_retention_days', 'payment_link_days',
         'lead_assignment', 'lead_assignment_people', 'transfer_km_rounding',
+    ];
+
+    /** 4 Nov (sections 10, 11, 12): saved with their own clean-up in save(). */
+    public const CHANNELS = ['database' => 'In the CRM (bell)', 'push' => 'Phone notification', 'mail' => 'Email'];
+
+    protected const PHASE4_KEYS = ['fine_admin_fee_mode', 'fine_admin_fee_amount', 'fine_admin_fee_min', 'toll_auto_charge', 'deposit_hold_days'];
+
+    protected const PHASE3_KEYS = [
+        'driver_can_decline', 'job_accept_minutes', 'driver_updates_to_customer', 'handover_signature', 'driver_languages',
+        'driver_location_enabled', 'location_interval_seconds', 'location_retention_days',
+    ];
+
+    protected const PHASE2_KEYS = [
+        'lead_accept_minutes', 'job_soon_minutes', 'balance_reminder_days', 'quote_expiry_customer_reminder', 'late_return_customer_reminder',
+        'portal_on_lead', 'portal_on_quote', 'portal_on_booking', 'portal_new_device_email', 'disposable_email_domains',
+    ];
+
+    protected const PHASE1_KEYS = [
+        'policy_fuel', 'policy_fines',
+        'company_whatsapp', 'company_website', 'company_logo', 'company_logo_dark', 'company_stamp',
+        'bank_name', 'bank_account_name', 'bank_iban', 'bank_swift',
+        'discount_limits', 'discount_reason_from_percent', 'discount_stacks_with_rules',
+        'advance_percent', 'advance_min_percent', 'balance_due_rule', 'balance_due_hours', 'confirm_on_advance',
     ];
 
     public function save(): void
@@ -636,18 +839,27 @@ class BusinessSettings extends Page implements HasForms
             $perms[$ability] = array_values(array_intersect((array) ($data['perm_'.self::permKey($ability)] ?? []), Access::ROLES));
         }
         $perms['manage-team'] = array_values(array_unique([...$perms['manage-team'], 'Admin']));
-        $out['role_abilities'] = $perms;
+        // 5 Nov: stored only when it differs from the defaults, so later default changes still apply.
+        $defaults = collect(Access::ABILITIES)->map(fn ($r) => array_values(array_intersect($r, Access::ROLES)))->all();
+        $same = collect($perms)->every(fn ($r, $a) => collect($r)->sort()->values()->all() === collect($defaults[$a] ?? [])->sort()->values()->all());
+        $out['role_abilities_v2'] = $same ? null : $perms;
 
         foreach ([
             'company_name', 'company_trn', 'company_phone', 'company_email', 'company_address', 'bank_details',
             'company_legal_name', 'company_trade_licence', 'policy_cancellation', 'policy_late_return',
             'vat_enabled', 'vat_rate', 'vat_inclusive', 'quote_valid_days', 'quote_terms',
             'doc_block_handover', 'upload_link_hours',
-            'pending_payment_holds', 'booking_buffer_minutes', 'trip_default_minutes', 'car_default_hours', 'yacht_default_hours',
+            'pending_payment_holds', 'website_booking_hold_hours', 'booking_buffer_minutes', 'trip_default_minutes', 'car_default_hours', 'yacht_default_hours',
             'late_grace_minutes', 'late_charge_mode', 'late_charge_amount',
             ...array_keys(Rules::PRICING),
             'website_origins',
+            'website_phone', 'website_whatsapp', 'website_email', 'website_address', 'website_map_url',
+            'website_instagram', 'website_facebook', 'website_tiktok', 'website_snapchat',
             ...self::DRIVER_AND_ACCOUNT_KEYS,
+            ...self::PHASE1_KEYS,
+            ...self::PHASE2_KEYS,
+            ...self::PHASE3_KEYS,
+            ...self::PHASE4_KEYS,
         ] as $key) {
             if (! array_key_exists($key, $data)) {
                 continue; // field not shown on the page (old yacht settings): keep what is stored
@@ -660,6 +872,9 @@ class BusinessSettings extends Page implements HasForms
         }
         if (($out['late_charge_mode'] ?? null) !== 'per_hour') {
             $out['late_charge_amount'] = null;
+        }
+        if (array_key_exists('website_booking_hold_hours', $out)) {
+            $out['website_booking_hold_hours'] = max(0, (int) $out['website_booking_hold_hours']);
         }
         foreach (['pending_payment_holds', 'vat_enabled', 'vat_inclusive', 'doc_block_handover'] as $bool) {
             $out[$bool] = (bool) $out[$bool];
@@ -687,6 +902,91 @@ class BusinessSettings extends Page implements HasForms
         if (array_key_exists('payment_link_days', $out)) {
             $out['payment_link_days'] = filled($out['payment_link_days']) && (int) $out['payment_link_days'] > 0 ? (int) $out['payment_link_days'] : null;
         }
+        // 4 Nov: discounts and advance.
+        $pct = fn ($v) => $v === null || $v === '' ? null : max(0.0, min(100.0, (float) $v));
+        if (array_key_exists('discount_limits', $out)) {
+            $out['discount_limits'] = collect((array) $out['discount_limits'])
+                ->filter(fn ($r) => in_array($r['role'] ?? null, Access::ROLES, true))
+                ->map(fn ($r) => ['role' => $r['role'], 'percent' => $pct($r['percent'] ?? null)])
+                ->unique('role')->values()->all();
+            $out['discount_reason_from_percent'] = $pct($out['discount_reason_from_percent'] ?? null);
+            $out['discount_stacks_with_rules'] = (bool) ($out['discount_stacks_with_rules'] ?? false);
+        }
+        if (array_key_exists('advance_percent', $out)) {
+            $out['advance_percent'] = collect(['car', 'yacht', 'trip', 'package', 'transfer'])
+                ->mapWithKeys(fn ($k) => [$k => $pct(((array) $out['advance_percent'])[$k] ?? null)])->all();
+            $out['advance_min_percent'] = $pct($out['advance_min_percent'] ?? null);
+            $out['balance_due_rule'] = array_key_exists((string) ($out['balance_due_rule'] ?? ''), \App\Support\Pricing\Advance::DUE_RULES) ? $out['balance_due_rule'] : 'standard';
+            $out['balance_due_hours'] = max(0, (int) ($out['balance_due_hours'] ?? 48));
+            $out['confirm_on_advance'] = (bool) ($out['confirm_on_advance'] ?? false);
+        }
+        // 4 Nov (Phase 4): fines, tolls, deposits.
+        if (array_key_exists('fine_admin_fee_mode', $out)) {
+            $num = fn ($v) => $v === null || $v === '' || (float) $v <= 0 ? null : round((float) $v, 2);
+            $out['fine_admin_fee_mode'] = $out['fine_admin_fee_mode'] === 'percent' ? 'percent' : 'fixed';
+            $out['fine_admin_fee_amount'] = $num($out['fine_admin_fee_amount']);
+            $out['fine_admin_fee_min'] = $num($out['fine_admin_fee_min']);
+            $out['toll_auto_charge'] = (bool) $out['toll_auto_charge'];
+            $out['deposit_hold_days'] = filled($out['deposit_hold_days']) && (int) $out['deposit_hold_days'] > 0 ? (int) $out['deposit_hold_days'] : null;
+            $out['toll_service_fee'] = collect(['salik', 'darb', 'parking'])->mapWithKeys(fn ($t) => [$t => $num($data['toll_fee_'.$t] ?? null)])->filter()->all();
+        }
+        // 4 Nov (Phase 3): driver phone.
+        if (array_key_exists('driver_can_decline', $out)) {
+            foreach (['driver_can_decline', 'driver_updates_to_customer', 'driver_location_enabled'] as $k) {
+                $out[$k] = (bool) ($out[$k] ?? false);
+            }
+            $out['job_accept_minutes'] = filled($out['job_accept_minutes'] ?? null) && (int) $out['job_accept_minutes'] > 0 ? (int) $out['job_accept_minutes'] : null;
+            $out['handover_signature'] = in_array($out['handover_signature'] ?? null, ['off', 'optional', 'required'], true) ? $out['handover_signature'] : 'optional';
+            $out['driver_languages'] = array_values(array_intersect((array) ($out['driver_languages'] ?? []), ['en', 'ur', 'ar', 'hi'])) ?: ['en'];
+            $out['location_interval_seconds'] = max(15, min(600, (int) ($out['location_interval_seconds'] ?: 60)));
+            $out['location_retention_days'] = max(1, min(365, (int) ($out['location_retention_days'] ?: 30)));
+            if ($out['driver_location_enabled'] !== (bool) Setting::read('driver_location_enabled', false)) {
+                \App\Models\AuditLog::event('settings', 'Driver live location switched '.($out['driver_location_enabled'] ? 'ON' : 'off'));
+            }
+        }
+        // 4 Nov (Phase 2): notifications and portal accounts.
+        if (array_key_exists('chan_staff', $data)) {
+            $out['notification_channels'] = [
+                '*' => array_values(array_intersect((array) $data['chan_staff'], array_keys(self::CHANNELS))),
+                'Driver' => array_values(array_intersect((array) $data['chan_driver'], array_keys(self::CHANNELS))),
+                'Customer' => array_values(array_intersect((array) $data['chan_customer'], array_keys(self::CHANNELS))),
+            ];
+        }
+        $mins = fn ($v) => filled($v) && (int) $v > 0 ? (int) $v : null;
+        foreach (['lead_accept_minutes', 'job_soon_minutes'] as $k) {
+            if (array_key_exists($k, $out)) {
+                $out[$k] = $mins($out[$k]);
+            }
+        }
+        if (array_key_exists('followup_enabled', $out)) {
+            $out['followup_enabled'] = (bool) $out['followup_enabled'];
+        }
+        if (array_key_exists('followup_hours', $out)) {
+            $out['followup_hours'] = filled($out['followup_hours']) ? implode(', ', array_filter(array_map('intval', preg_split('/[\s,;]+/', (string) $out['followup_hours'])))) : null;
+        }
+        foreach (['followup_quiet_from', 'followup_quiet_to'] as $k) {
+            if (array_key_exists($k, $out)) {
+                $out[$k] = filled($out[$k]) ? min(23, max(0, (int) $out[$k])) : null;
+            }
+        }
+        if (array_key_exists('balance_reminder_days', $out)) {
+            $out['balance_reminder_days'] = filled($out['balance_reminder_days']) ? max(0, (int) $out['balance_reminder_days']) : null;
+        }
+        foreach (['quote_expiry_customer_reminder', 'late_return_customer_reminder', 'portal_on_lead', 'portal_on_quote', 'portal_on_booking', 'portal_new_device_email'] as $k) {
+            if (array_key_exists($k, $out)) {
+                $out[$k] = (bool) $out[$k];
+            }
+        }
+        if (array_key_exists('disposable_email_domains', $out)) {
+            $out['disposable_email_domains'] = collect((array) $out['disposable_email_domains'])
+                ->map(fn ($d) => ltrim(mb_strtolower(trim((string) $d)), '@'))->filter()->unique()->values()->all();
+        }
+        foreach (['company_logo', 'company_logo_dark', 'company_stamp'] as $file) {
+            if (array_key_exists($file, $out) && is_array($out[$file])) {
+                $out[$file] = collect($out[$file])->first(); // a single upload
+            }
+        }
+
         $max = $out['price_max_discount_percent'] ?? null;
         $out['price_max_discount_percent'] = $max === null || $max === '' ? null : (float) $max;
         $out['transfer_km_rounding'] = in_array((string) ($out['transfer_km_rounding'] ?? '0.1'), ['0.1', 'up_1', '0.01'], true) ? (string) $out['transfer_km_rounding'] : '0.1';
@@ -708,9 +1008,9 @@ class BusinessSettings extends Page implements HasForms
             'note' => $changed ? 'Business settings changed: '.Str::limit(implode(', ', $changed), 200) : 'Business settings saved (no changes)',
         ]);
 
-        if (in_array('role_abilities', $changed, true)) {
+        if (in_array('role_abilities_v2', $changed, true)) {
             AuditLog::event('permissions', 'Who-can-do-what changed in Business settings', [
-                'before' => $before['role_abilities'] ?? null, 'after' => $out['role_abilities'] ?? null,
+                'before' => $before['role_abilities_v2'] ?? null, 'after' => $out['role_abilities_v2'] ?? null,
             ]);
         }
 

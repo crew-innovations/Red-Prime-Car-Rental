@@ -1,0 +1,4 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex"><title>Unsubscribed · {{ $company }}</title>
+<style>body{margin:0;min-height:100vh;display:grid;place-items:center;background:#f7f4ef;color:#1c1917;font:15px/1.55 system-ui,sans-serif;padding:24px;text-align:center}.card{max-width:420px;background:#fff;border-radius:16px;padding:28px;box-shadow:0 10px 30px rgba(0,0,0,.08)}h1{font-size:20px;margin:14px 0 6px}p{color:#57534e}</style></head>
+<body><div class="card"><img src="{{ asset('images/logo-mark-light.png') }}" alt="" style="height:44px"><h1>You are unsubscribed</h1><p>You will no longer get announcements from {{ $company }}. Emails about your quotations, bookings and payments still come as usual.</p></div></body></html>

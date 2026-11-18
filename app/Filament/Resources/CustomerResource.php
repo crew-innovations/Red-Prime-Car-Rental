@@ -136,6 +136,16 @@ class CustomerResource extends Resource
                                     ->label('Language')
                                     ->options(self::LANGUAGES)
                                     ->native(false),
+                                // 4 Nov (14.3): consent for announcements, with its date and source.
+                                Forms\Components\Toggle::make('marketing_consent')
+                                    ->label('Agrees to marketing emails')
+                                    ->inline(false)
+                                    ->afterStateHydrated(fn (Forms\Components\Toggle $component, ?\App\Models\Customer $record) => $component->state((bool) $record?->marketing_consent))
+                                    ->helperText(fn (?\App\Models\Customer $record): ?string => match (true) {
+                                        (bool) $record?->unsubscribed_at => 'Unsubscribed '.$record->unsubscribed_at->format('d M Y'),
+                                        (bool) $record?->marketing_consent_at => 'Since '.$record->marketing_consent_at->format('d M Y').' ('.($record->marketing_consent_source ?? 'staff').')',
+                                        default => 'Only customers who agreed get announcements. Quotations and bookings are sent either way.',
+                                    }),
                                 Forms\Components\DatePicker::make('date_of_birth')
                                     ->native(false)
                                     ->displayFormat('d M Y')
@@ -334,6 +344,7 @@ class CustomerResource extends Resource
     {
         return [
             RelationManagers\LeadsRelationManager::class,
+            \App\Filament\RelationManagers\EmailsRelationManager::class,
             \App\Filament\Resources\BookingResource\RelationManagers\BookingsRelationManager::class,
             \App\Filament\Resources\QuotationResource\RelationManagers\QuotationsRelationManager::class,
             RelationManagers\DocumentsRelationManager::class,

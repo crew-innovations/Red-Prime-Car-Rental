@@ -58,7 +58,7 @@ class DriverJobs
             $wanted = $live && $p['driver'] && $p['needed'];
 
             if (! $wanted) {
-                if ($job && $job->isOpen()) {
+                if ($job && ($job->isOpen() || $job->status === 'declined')) {
                     $job->update(['status' => 'cancelled', 'status_at' => now()]);
                     Notify::driver($job->driver, 'Job cancelled: '.$booking->reference, $job->typeLabel().' on '.$job->scheduled_at->format('D d M, H:i').' is no longer needed.', null, 'gray');
                 }
@@ -98,6 +98,7 @@ class DriverJobs
                     'driver_id' => $p['driver'],
                     'status' => 'assigned',
                     'acknowledged_at' => null,
+                    'declined_at' => null, 'decline_reason' => null, 'started_at' => null, 'late_minutes' => null, 'late_reported_at' => null,
                     'assigned_by' => auth()->id(),
                     'assigned_at' => now(),
                     'status_at' => now(),
@@ -142,7 +143,7 @@ class DriverJobs
             ->union(collect((array) $booking->crew_ids)->mapWithKeys(fn ($id) => [(int) $id => 'crew'])) : collect();
 
         foreach ($jobs as $personId => $job) {
-            if (! $people->has($personId) && $job->isOpen()) {
+            if (! $people->has($personId) && ($job->isOpen() || $job->status === 'declined')) {
                 $job->update(['status' => 'cancelled', 'status_at' => now()]);
                 Notify::driver($job->driver, 'Charter cancelled for you: '.$booking->reference, $job->scheduled_at->format('D d M, H:i').' is no longer yours.', null, 'gray');
             }
@@ -188,7 +189,7 @@ class DriverJobs
         $where = $booking->pickup_location;
 
         foreach ($jobs as $job) {
-            if ((! $active || (int) $job->driver_id !== (int) $booking->driver_id) && $job->isOpen()) {
+            if ((! $active || (int) $job->driver_id !== (int) $booking->driver_id) && ($job->isOpen() || $job->status === 'declined')) {
                 $job->update(['status' => 'cancelled', 'status_at' => now()]);
                 Notify::driver($job->driver, 'Transfer cancelled for you: '.$booking->reference, $job->scheduled_at->format('D d M, H:i').' is no longer yours.', null, 'gray');
             }
