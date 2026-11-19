@@ -579,6 +579,14 @@ class BookingResource extends Resource
                     ->placeholder(fn (Get $get): string => ($c = $car($get)) && $c->extra_km_charge ? 'Car: '.$c->extra_km_charge : '—'),
                 Forms\Components\TextInput::make('sales_source')->label('Source')->maxLength(60)
                     ->datalist(fn (): array => \App\Support\Options::list('booking_sources')),
+                // 19 Nov (suggestions 4 and 8): emirate for the VAT report; booked through a marketplace.
+                Forms\Components\Select::make('tax_emirate')->label('Emirate (VAT)')->options(\App\Filament\Pages\MoneySettings::EMIRATES)->native(false)
+                    ->placeholder(fn (): string => 'Default: '.(\App\Filament\Pages\MoneySettings::EMIRATES[\App\Models\Setting::read('tax_emirate_default', 'dubai')] ?? 'Dubai')),
+                Forms\Components\Select::make('marketplace')->label('Booked through')->native(false)->placeholder('Directly with us')->live()
+                    ->options(fn (?Booking $record): array => collect((array) \App\Models\Setting::read('marketplaces', []))->push($record?->marketplace)->filter()->unique()->mapWithKeys(fn ($m) => [$m => $m])->all()),
+                Forms\Components\TextInput::make('marketplace_ref')->label('Their booking ref.')->maxLength(80)->visible(fn (Get $get): bool => filled($get('marketplace'))),
+                Forms\Components\TextInput::make('marketplace_commission')->label('Their commission')->numeric()->minValue(0)->prefix('AED')
+                    ->helperText('Shown as a cost in the booking profit.')->visible(fn (Get $get): bool => filled($get('marketplace'))),
             ]);
     }
 

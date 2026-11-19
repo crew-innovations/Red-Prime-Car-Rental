@@ -25,7 +25,9 @@ class BookingProfit
             ->whereNotIn('category', Transaction::NON_COST_CATEGORIES)->where('pass_through', false)->get();
         $counting = $costs->filter(fn (Transaction $t) => $t->counts());
         $supplierRows = $counting->filter(fn (Transaction $t) => $t->supplier_id);
-        $other = round($counting->reject(fn (Transaction $t) => $t->supplier_id)->sum('amount'), 2);
+        // 19 Nov (suggestion 8): a marketplace's commission is a cost of the booking.
+        $commission = round((float) $b->marketplace_commission, 2);
+        $other = round($counting->reject(fn (Transaction $t) => $t->supplier_id)->sum('amount') + $commission, 2);
         $waiting = round($costs->where('approval_status', 'pending')->sum('amount'), 2);
 
         $posted = SupplierCost::billPosted($b);
@@ -35,7 +37,7 @@ class BookingProfit
 
         $done = in_array($b->status, [BookingStatus::Completed, BookingStatus::Cancelled, BookingStatus::NoShow], true);
         $actualReady = $done && (! $b->supplier_id || ($posted && $supplierRows->isNotEmpty()) || ($b->supplier_cost !== null && (float) $b->supplier_cost === 0.0)) && $waiting <= 0;
-        $actualCost = round($counting->sum('amount'), 2);
+        $actualCost = round($counting->sum('amount') + $commission, 2);
         $actual = $actualReady ? round($revenue - $actualCost, 2) : null;
 
         $margin = fn (?float $p) => $p !== null && $revenue > 0 ? round($p / $revenue * 100, 1) : null;

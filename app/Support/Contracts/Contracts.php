@@ -80,6 +80,49 @@ class Contracts
         });
     }
 
+    /**
+     * 19 Nov (suggestion 6): a paper contract from before the CRM. Makes a completed booking (it holds no
+     * car) with the agreed total, km and payment, and a closed contract with the scanned copy.
+     */
+    public static function enterOld(array $d): RentalContract
+    {
+        $start = Carbon::parse($d['start_at']);
+        $end = Carbon::parse($d['end_at']);
+        if ($end->lte($start)) {
+            throw ValidationException::withMessages(['end_at' => 'The return must be after the pick-up.']);
+        }
+
+        return DB::transaction(function () use ($d, $start, $end) {
+            $booking = Booking::create([
+                'service_type' => ServiceType::Car,
+                'customer_id' => $d['customer_id'],
+                'bookable_id' => $d['car_id'],
+                'drive_mode' => $d['drive_mode'] ?? 'self_drive',
+                'status' => BookingStatus::Completed,
+                'start_at' => $start, 'end_at' => $end,
+                'delivered_at' => $start, 'returned_at' => $end,
+                'delivery_km' => $d['km_out'] ?? null, 'return_km' => $d['km_in'] ?? null,
+                'base_amount' => round((float) $d['total'], 2),
+                'security_deposit' => 0,
+                'adjustment_reason' => 'Old paper contract '.($d['paper_number'] ?? '').' entered by hand',
+                'notes' => $d['notes'] ?? null,
+            ]);
+            if (($paid = (float) ($d['paid'] ?? 0)) > 0) {
+                $t = $booking->recordPayment($paid, $d['method'] ?? 'cash', null, 'Paid on paper contract '.($d['paper_number'] ?? ''));
+                $t->forceFill(['date' => $end->toDateString()])->saveQuietly();
+                $booking->syncBalance();
+            }
+            $contract = self::make($booking->fresh(), ['notes' => 'Entered from a paper contract.']);
+            $contract->forceFill(['paper_number' => $d['paper_number'] ?? null, 'closed_at' => $end, 'closed_by' => auth()->id(), 'closing' => self::summary($contract)])->save();
+            foreach (\App\Support\PrivateFiles::freshUploads((array) ($d['scan'] ?? []), 'contract-files') as $path) {
+                $contract->addMediaFromDisk($path, 'private')->toMediaCollection('attachments');
+            }
+            AuditLog::note($contract, 'contract', 'Old paper contract '.($d['paper_number'] ?? '').' entered');
+
+            return $contract->fresh();
+        });
+    }
+
     /** The customer is the main driver; their details are copied onto the contract. */
     public static function syncMainDriver(RentalContract $contract): void
     {

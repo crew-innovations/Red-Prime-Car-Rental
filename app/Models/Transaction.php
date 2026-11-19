@@ -82,6 +82,7 @@ class Transaction extends Model implements HasMedia
             'approved_at' => 'datetime',
             'reversed_at' => 'datetime',
             'pass_through' => 'boolean',
+            'cheque_date' => 'date', // 19 Nov
         ];
     }
 
@@ -89,6 +90,10 @@ class Transaction extends Model implements HasMedia
     {
         static::creating(function (Transaction $t) {
             $t->user_id ??= auth()->id();
+            // 19 Nov: real money (not the system balance row) is put on the usual account for its method.
+            if (! $t->is_balance && ! $t->bank_account && $t->method) {
+                $t->bank_account = \App\Support\Accounts\MoneyAccounts::defaultFor($t->method);
+            }
 
             // Expenses from staff without finance rights wait for approval (Business settings).
             if ($t->type === TransactionType::Expense && $t->approval_status === null && auth()->check()

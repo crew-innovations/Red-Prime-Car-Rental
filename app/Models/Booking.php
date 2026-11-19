@@ -120,6 +120,7 @@ class Booking extends Model implements HasMedia
             'no_deposit_fee' => 'decimal:2',
             'km_limit_per_day' => 'integer',
             'extra_km_rate' => 'decimal:2',
+            'marketplace_commission' => 'decimal:2', // 19 Nov
         ];
     }
 

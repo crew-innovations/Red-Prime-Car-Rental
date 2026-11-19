@@ -71,7 +71,7 @@ class Menu
                 [R\FuelEntryResource::class, null, []],
                 [R\SupplierResource::class, null, []],
                 ['expenses', 'Expenses', []],
-                [P\AccountsOverview::class, 'Reports', [P\ProfitReports::class, P\DiscountReports::class, P\LeadReports::class]],
+                [P\AccountsOverview::class, 'Reports', [P\ProfitReports::class, P\RentalReports::class, P\DiscountReports::class, P\LeadReports::class]],
             ],
             default => [ // Admin
                 [P\Dashboard::class, 'Home', []],
@@ -82,7 +82,7 @@ class Menu
                 ['transfers', 'Limousine', [P\DispatchBoard::class, P\LiveDrivers::class, R\TransferServiceResource::class, R\VehicleCategoryResource::class, R\TransferRateResource::class, R\TransferFixedRouteResource::class, 'limo-leads']],
                 [P\Calendar::class, null, []],
                 [R\CarResource::class, 'Cars & Yachts', ['car-readiness', R\YachtResource::class, R\TripResource::class, R\PackageResource::class, R\SupplierResource::class]],
-                [P\AccountsOverview::class, 'Money', [R\TransactionResource::class, 'to-collect', R\InvoiceResource::class, 'deposits', R\TrafficFineResource::class, R\TollTripResource::class, R\TollAccountResource::class, P\StatementImport::class, R\FuelEntryResource::class, R\PaymentRequestResource::class, P\DiscountReports::class, P\ProfitReports::class]],
+                [P\AccountsOverview::class, 'Money', [R\TransactionResource::class, 'to-collect', R\InvoiceResource::class, 'deposits', R\TrafficFineResource::class, R\TollTripResource::class, R\TollAccountResource::class, P\StatementImport::class, R\FuelEntryResource::class, R\PaymentRequestResource::class, P\DiscountReports::class, P\ProfitReports::class, P\RentalReports::class]],
                 [P\Agents::class, null, []],
                 [P\SettingsHub::class, 'Settings', []],
             ],

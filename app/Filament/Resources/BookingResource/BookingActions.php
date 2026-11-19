@@ -512,13 +512,24 @@ class BookingActions
                     ->helperText('Balance due '.self::aed($record->balance)),
                 Forms\Components\Select::make('method')
                     ->label('Paid by')
-                    ->options(PaymentMethod::class)->native(false)->required(),
+                    ->options(PaymentMethod::class)->native(false)->required()->live()
+                    ->afterStateUpdated(fn (Set $set, $state) => $set('bank_account', \App\Support\Accounts\MoneyAccounts::defaultFor($state))),
+                // 19 Nov (suggestion 2): which account it went into; cheque details.
+                Forms\Components\Select::make('bank_account')->label('Into account')->native(false)
+                    ->options(fn () => \App\Support\Accounts\MoneyAccounts::options())
+                    ->default(fn () => \App\Support\Accounts\MoneyAccounts::defaultFor(PaymentMethod::Card))
+                    ->visible(fn () => \App\Support\Accounts\MoneyAccounts::options() !== []),
+                Forms\Components\Grid::make(2)->visible(fn (Get $get): bool => $get('method') === PaymentMethod::Cheque->value)->schema([
+                    Forms\Components\TextInput::make('cheque_number')->label('Cheque number')->maxLength(40)->required(fn (Get $get): bool => $get('method') === PaymentMethod::Cheque->value),
+                    Forms\Components\DatePicker::make('cheque_date')->label('Cheque date')->native(false),
+                ]),
                 Forms\Components\TextInput::make('reference')
                     ->placeholder('Receipt / bank ref')
                     ->maxLength(100),
             ])
             ->action(function (Booking $record, array $data): void {
-                $record->recordPayment((float) $data['amount'], $data['method'], null, null, $data['reference'] ?? null);
+                $t = $record->recordPayment((float) $data['amount'], $data['method'], null, null, $data['reference'] ?? null);
+                $t->forceFill(array_filter(['bank_account' => $data['bank_account'] ?? null, 'cheque_number' => $data['cheque_number'] ?? null, 'cheque_date' => $data['cheque_date'] ?? null]))->saveQuietly();
                 $record->refresh();
 
                 Notification::make()
@@ -785,6 +796,10 @@ class BookingActions
         }
         if ($msg = Availability::notReady($record->bookable)) {
             $blockers[] = $msg;
+        }
+        // 19 Nov: a car with expired registration or insurance does not go out (Contract settings can switch this off).
+        if ($record->bookable instanceof Car && \App\Models\Setting::read('block_expired_car_papers', true) && ($expired = $record->bookable->expiredPapers())) {
+            $blockers[] = $record->bookable->name.': '.implode(', ', $expired).'.';
         }
         if ($out = Availability::stillOut($record)) {
             $blockers[] = 'Still out with another customer on '.$out->reference.' (due back '.$out->end_at->format('d M H:i').'). Receive it first.';

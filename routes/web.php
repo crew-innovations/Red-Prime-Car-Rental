@@ -74,6 +74,7 @@ Route::post('/quote/{token}/decline', [QuotationPublicController::class, 'declin
 
 // 18 Nov: the customer reads and signs the rental contract from a link (no login, single use, expires).
 Route::get('/sign/{token}', [\App\Http\Controllers\ContractSignController::class, 'show'])->middleware('throttle:30,1')->where('token', '[A-Za-z0-9]{40,64}')->name('contracts.sign');
+Route::post('/sign/{token}/code', [\App\Http\Controllers\ContractSignController::class, 'code'])->middleware('throttle:5,10')->where('token', '[A-Za-z0-9]{40,64}')->name('contracts.sign.code');
 Route::post('/sign/{token}', [\App\Http\Controllers\ContractSignController::class, 'store'])->middleware('throttle:10,1')->where('token', '[A-Za-z0-9]{40,64}')->name('contracts.sign.store');
 // Rental contract PDF (latest version) for staff and the customer's own account.
 Route::get('/documents/contract/{contract}', [\App\Http\Controllers\DocumentPdfController::class, 'contract'])->middleware('throttle:60,1')->whereNumber('contract')->name('pdf.contract');
@@ -96,6 +97,8 @@ Route::post('/quote/{token}/pay', [QuotationPublicController::class, 'pay'])->mi
 Route::prefix('documents')->middleware('throttle:60,1')->group(function () {
     Route::get('/quotation/{quotation}', [\App\Http\Controllers\DocumentPdfController::class, 'quotation'])->whereNumber('quotation')->name('pdf.quotation');
     Route::get('/booking/{booking}/confirmation', [\App\Http\Controllers\DocumentPdfController::class, 'confirmation'])->whereNumber('booking')->name('pdf.confirmation');
+    Route::get('/booking/{booking}/borrow', [\App\Http\Controllers\DocumentPdfController::class, 'borrow'])->whereNumber('booking')->name('pdf.borrow'); // 19 Nov
+    Route::get('/booking/{booking}/deposit', [\App\Http\Controllers\DocumentPdfController::class, 'deposit'])->whereNumber('booking')->name('pdf.deposit'); // 19 Nov
     Route::get('/booking/{booking}/statement', [\App\Http\Controllers\DocumentPdfController::class, 'statement'])->whereNumber('booking')->name('pdf.statement');
     Route::get('/invoice/{invoice}', [\App\Http\Controllers\DocumentPdfController::class, 'invoice'])->whereNumber('invoice')->name('pdf.invoice');
     Route::get('/receipt/{transaction}', [\App\Http\Controllers\DocumentPdfController::class, 'receipt'])->whereNumber('transaction')->name('pdf.receipt');

@@ -43,6 +43,7 @@
 @section('meta')
     <tr><td class="k">{!! $t('contract_no') !!}</td><td class="r"><strong>{{ $c->number }}</strong></td></tr>
     <tr><td class="k">Booking</td><td class="r">{{ $b?->reference }}</td></tr>
+    @if ($c->paper_number)<tr><td class="k">Paper contract</td><td class="r">{{ $c->paper_number }}</td></tr>@endif
     <tr><td class="k">{!! $t('date') !!}</td><td class="r">{{ $c->created_at?->format('d M Y') }}</td></tr>
     <tr><td class="k">{!! $t('version') !!}</td><td class="r">v{{ $version }}</td></tr>
     <tr><td class="k">{!! $t('status') !!}</td><td class="r"><span class="pill pill-{{ $statusPill }}">{{ $c->statusLabel() }}</span></td></tr>

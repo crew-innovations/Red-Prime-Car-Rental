@@ -183,6 +183,16 @@ class EditBooking extends EditRecord
                     ->icon('heroicon-o-document-currency-dollar')
                     ->visible(fn (): bool => \App\Models\Invoice::where('booking_id', $this->getRecord()->id)->where('type', 'invoice')->where('status', 'issued')->exists())
                     ->url(fn (): ?string => ($i = \App\Models\Invoice::where('booking_id', $this->getRecord()->id)->where('type', 'invoice')->where('status', 'issued')->latest('id')->first()) ? route('pdf.invoice', $i) : null, shouldOpenInNewTab: true),
+                Actions\Action::make('borrowPdf') // 19 Nov (suggestion 7)
+                    ->label('Borrow agreement with the supplier (PDF)')
+                    ->icon('heroicon-o-building-storefront')
+                    ->visible(fn (): bool => (bool) $this->getRecord()->supplier_id)
+                    ->url(fn (): string => route('pdf.borrow', $this->getRecord()), shouldOpenInNewTab: true),
+                Actions\Action::make('depositPdf') // 19 Nov (suggestion 3)
+                    ->label('Deposit statement (PDF)')
+                    ->icon('heroicon-o-shield-check')
+                    ->visible(fn (): bool => $this->getRecord()->depositSettlements()->exists())
+                    ->url(fn (): string => route('pdf.deposit', $this->getRecord()), shouldOpenInNewTab: true),
                 Actions\Action::make('statementPdf')
                     ->label(fn (): string => $this->getRecord()->isCar() ? 'Return & damage statement (PDF)' : 'End of service statement (PDF)')
                     ->icon('heroicon-o-clipboard-document-check')

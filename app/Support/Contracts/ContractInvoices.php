@@ -102,6 +102,10 @@ class ContractInvoices
                 'created_by' => auth()->id(),
             ]);
 
+            // 19 Nov (suggestion 9): the customer gets the invoice on WhatsApp when a template is set up.
+            DB::afterCommit(fn () => rescue(fn () => \App\Support\Chat\WhatsAppNotify::send($b->customer?->whatsapp ?: $b->customer?->phone, 'invoice',
+                [strtok((string) $b->customer?->name, ' '), $invoice->number.' · AED '.number_format((float) $invoice->total, 2), route('pdf.invoice', $invoice)]), report: false));
+
             $next = $end->copy()->addDay();
             $c->forceFill(['next_invoice_on' => $next->gt($b->end_at->copy()->startOfDay()) ? null
                 : (Setting::read('contract_invoice_mode', 'advance') === 'arrears' ? self::periodEnd($next, $b) : $next)])->saveQuietly();

@@ -67,6 +67,26 @@ class DocumentPdfController extends Controller
         return Pdf::response('pdf.contract', ['c' => $contract, 'b' => $contract->booking, 'version' => max(1, (int) $contract->version)], 'Contract '.$contract->number.'.pdf', $request->boolean('download'));
     }
 
+    /** 19 Nov (suggestion 3): the latest deposit settlement of a booking. */
+    public function deposit(Request $request, Booking $booking)
+    {
+        $this->allowBooking($request, $booking);
+        $s = $booking->depositSettlements()->latest('id')->first();
+        abort_unless($s, 404);
+
+        return Pdf::response('pdf.deposit', ['s' => $s, 'b' => $booking], 'Deposit statement '.$booking->reference.'.pdf', $request->boolean('download'));
+    }
+
+    /** 19 Nov (suggestion 7): borrow agreement for a car hired from a supplier (staff only). */
+    public function borrow(Request $request, Booking $booking)
+    {
+        $this->staffOnly();
+        $this->allowBooking($request, $booking);
+        abort_unless($booking->supplier_id, 404);
+
+        return Pdf::response('pdf.borrow', ['b' => $booking], 'Borrow agreement '.$booking->reference.'.pdf', $request->boolean('download'));
+    }
+
     public function statement(Request $request, Booking $booking)
     {
         $this->allowBooking($request, $booking);

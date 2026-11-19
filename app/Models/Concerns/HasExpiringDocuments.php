@@ -25,6 +25,10 @@ trait HasExpiringDocuments
             foreach (static::expiringDocuments() as $column) {
                 $q->orWhere($column, '<=', $limit);
             }
+            // 19 Nov: cars also when the service is due by km (within 1,000 km).
+            if ($q->getModel() instanceof \App\Models\Car) {
+                $q->orWhere(fn (Builder $k) => $k->whereNotNull('next_service_km')->whereRaw('next_service_km <= COALESCE(mileage, 0) + 1000'));
+            }
         });
     }
 

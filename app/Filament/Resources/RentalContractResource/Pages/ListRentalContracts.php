@@ -24,6 +24,47 @@ class ListRentalContracts extends ListRecords
     protected function getHeaderActions(): array
     {
         return [
+            // 19 Nov (suggestion 6): paper contracts from before the CRM.
+            Actions\Action::make('oldContract')
+                ->label('Enter old contract')
+                ->icon('heroicon-o-archive-box-arrow-down')
+                ->color('gray')
+                ->authorize('change-booking-status')
+                ->modalWidth('3xl')
+                ->modalDescription('A paper contract from before the CRM. It is saved as a completed rental and a closed contract, with the scan attached. It does not hold the car.')
+                ->form([
+                    Forms\Components\Grid::make(2)->schema([
+                        Forms\Components\Select::make('customer_id')->label('Customer')->required()->searchable()
+                            ->getSearchResultsUsing(fn (string $search): array => \App\Models\Customer::query()->where(fn ($q) => $q->where('name', 'like', "%{$search}%")->orWhere('phone', 'like', "%{$search}%"))->limit(30)->pluck('name', 'id')->all())
+                            ->getOptionLabelUsing(fn ($value): ?string => \App\Models\Customer::find($value)?->name)
+                            ->createOptionForm(fn (): array => \App\Filament\Concerns\CustomerDetails::schema())
+                            ->createOptionUsing(fn (array $data): int => \App\Filament\Concerns\CustomerDetails::create($data)->getKey()),
+                        Forms\Components\Select::make('car_id')->label('Car')->required()->searchable()
+                            ->options(fn () => \App\Models\Car::withTrashed()->orderBy('name')->get()->mapWithKeys(fn ($c) => [$c->id => $c->name.($c->registration_number ? ' · '.$c->registration_number : '')])->all()),
+                        Forms\Components\TextInput::make('paper_number')->label('Number on the paper contract')->required()->maxLength(60),
+                        Forms\Components\Select::make('drive_mode')->label('Rental type')->options(['self_drive' => 'Self-drive', 'with_driver' => 'With driver'])->default('self_drive')->native(false)->selectablePlaceholder(false),
+                        Forms\Components\DateTimePicker::make('start_at')->label('Pick-up')->native(false)->seconds(false)->required()->maxDate(now()),
+                        Forms\Components\DateTimePicker::make('end_at')->label('Return')->native(false)->seconds(false)->required()->maxDate(now()),
+                        Forms\Components\TextInput::make('km_out')->label('Odometer out')->numeric()->suffix('km'),
+                        Forms\Components\TextInput::make('km_in')->label('Odometer in')->numeric()->suffix('km'),
+                        Forms\Components\TextInput::make('total')->label('Total on the contract')->numeric()->minValue(0)->prefix('AED')->required(),
+                        Forms\Components\TextInput::make('paid')->label('Paid')->numeric()->minValue(0)->prefix('AED'),
+                        Forms\Components\Select::make('method')->label('Paid by')->options(\App\Enums\PaymentMethod::class)->native(false),
+                    ]),
+                    Forms\Components\FileUpload::make('scan')->label('Scan / photo of the paper contract')->disk('private')->directory('contract-files')->visibility('private')
+                        ->acceptedFileTypes(['image/*', 'application/pdf'])->multiple()->maxFiles(10)->maxSize(10240),
+                    Forms\Components\Textarea::make('notes')->rows(2)->maxLength(1000),
+                ])
+                ->action(function (array $data) {
+                    try {
+                        $c = Contracts::enterOld($data);
+                    } catch (ValidationException $e) {
+                        Notification::make()->danger()->title(collect($e->errors())->flatten()->first())->send();
+
+                        return;
+                    }
+                    $this->redirect(RentalContractResource::getUrl('view', ['record' => $c]));
+                }),
             Actions\Action::make('newContract')
                 ->label('New contract')
                 ->icon('heroicon-o-plus')

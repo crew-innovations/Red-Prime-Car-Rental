@@ -89,6 +89,22 @@ class ContractActions
                             ->url(fn ($state): ?string => Phone::whatsappUrl($contract()->customer?->whatsapp ?: $contract()->customer?->phone,
                                 'Hello '.strtok((string) $contract()->customer?->name, ' ').'! Please read and sign your RED PRIME rental agreement '.$contract()->number.' here: '.$state), true)),
                 ]),
+            // 19 Nov (suggestion 9): send the signing link by itself on WhatsApp (approved template).
+            Action::make('sendSignLink')
+                ->label('Send signing link on WhatsApp')
+                ->icon('heroicon-o-chat-bubble-left-right')
+                ->color('gray')
+                ->authorize('manage-contracts')
+                ->visible(fn (): bool => ! $contract()->signed_at && $contract()->isEditable() && \App\Support\Chat\WhatsAppNotify::ready('contract'))
+                ->requiresConfirmation()
+                ->modalDescription(fn (): string => 'Sends the contract link to '.($contract()->customer?->whatsapp ?: $contract()->customer?->phone).' from your WhatsApp Business number.')
+                ->action(function () use ($contract) {
+                    $c = $contract();
+                    $ok = \App\Support\Chat\WhatsAppNotify::send($c->customer?->whatsapp ?: $c->customer?->phone, 'contract', [strtok((string) $c->customer?->name, ' '), $c->number, Contracts::signLink($c)]);
+                    $ok ? \App\Models\AuditLog::note($c, 'contract', 'Signing link sent on WhatsApp') : null;
+                    Notification::make()->{$ok ? 'success' : 'danger'}()->title($ok ? 'Sent on WhatsApp' : 'WhatsApp did not accept it')
+                        ->body($ok ? null : 'See Settings › Integrations › log. Use "Send signing link" to send it from your phone instead.')->send();
+                }),
             Action::make('addDriver')
                 ->label('Add driver')
                 ->icon('heroicon-o-user-plus')
@@ -176,14 +192,17 @@ class ContractActions
                 ->form([
                     Forms\Components\ToggleButtons::make('stage')->label('When')->inline()->required()->default('delivery')
                         ->options(['delivery' => 'Car going out (OUT)', 'collection' => 'Car coming back (IN)', 'other' => 'During the rental']),
-                    Forms\Components\TextInput::make('area')->label('Where on the car')->maxLength(60)->datalist(['Front bumper', 'Rear bumper', 'Bonnet', 'Roof', 'Windscreen', 'Left side', 'Right side', 'Wheels / rims', 'Interior', 'Mirrors']),
+                    // 19 Nov (suggestion 5): tap the areas on the car diagram.
+                    Forms\Components\ViewField::make('zones')->label('Where on the car')->view('filament.forms.car-diagram')->default([]),
                     Forms\Components\Textarea::make('description')->label('What')->required()->rows(3)->maxLength(1000),
                     Forms\Components\FileUpload::make('photos')->label('Photos')->disk('private')->directory('damage')->visibility('private')->image()->multiple()->maxFiles(10)->maxSize(10240),
                 ])
                 ->action(function (array $data) use ($contract) {
                     $b = $contract()->booking;
-                    $r = DamageReport::create(['booking_id' => $b->id, 'reported_by' => auth()->id(), 'stage' => $data['stage'], 'area' => $data['area'] ?? null,
-                        'description' => $data['description'], 'status' => 'open', 'kind' => 'damage']);
+                    $areas = \App\Support\Contracts\CarZones::labels((array) ($data['zones'] ?? []));
+                    $r = DamageReport::create(['booking_id' => $b->id, 'reported_by' => auth()->id(), 'stage' => $data['stage'],
+                        'area' => $areas ? mb_substr(implode(', ', $areas), 0, 60) : null,
+                        'description' => ($areas && count($areas) > 1 ? 'Areas: '.implode(', ', $areas).'. ' : '').$data['description'], 'status' => 'open', 'kind' => 'damage']);
                     foreach (\App\Support\PrivateFiles::freshUploads((array) ($data['photos'] ?? []), 'damage') as $path) {
                         $r->addMediaFromDisk($path, 'private')->toMediaCollection('photos');
                     }

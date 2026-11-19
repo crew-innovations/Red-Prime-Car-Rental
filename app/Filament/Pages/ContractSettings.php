@@ -41,6 +41,7 @@ class ContractSettings extends Page implements HasForms
         'confirm_requires_details', 'confirm_required_fields', 'driver_min_age', 'licence_min_years',
         'contract_number_prefix', 'contract_required_for_handover', 'contract_sign_link_hours', 'additional_driver_charge',
         'contract_terms_en', 'contract_terms_ar', 'contract_invoice_mode', 'contract_invoice_due_days', 'contract_renewal_days',
+        'contract_sign_otp', 'borrow_terms', 'block_expired_car_papers',
     ];
 
     public static function canAccess(): bool
@@ -89,11 +90,18 @@ class ContractSettings extends Page implements HasForms
                     Forms\Components\TextInput::make('contract_sign_link_hours')->label('Signing links work for')->numeric()->minValue(1)->maxValue(720)->suffix('hours')->required(),
                     Forms\Components\TextInput::make('additional_driver_charge')->label('Additional driver charge')->numeric()->minValue(0)->prefix('AED')->placeholder('Typed per contract')
                         ->helperText('Filled in when a driver is added; can be changed there.'),
+                    Forms\Components\Select::make('contract_sign_otp')->label('Signing by link')->native(false)->selectablePlaceholder(false)
+                        ->options(['off' => 'Name and signature', 'email' => 'Also a code sent to the customer\'s email'])
+                        ->helperText('With the code, a customer without an email signs with name and signature only.'),
+                    Forms\Components\Toggle::make('block_expired_car_papers')->label('A car with expired registration or insurance is not handed over')->inline(false)
+                        ->helperText('A manager can still hand over anyway; it is recorded.'),
                     Forms\Components\Toggle::make('contract_required_for_handover')->label('Hand over the car only with a signed contract')->inline(false)->columnSpanFull()
                         ->helperText('Switch on once the contract terms below are in.'),
                     Forms\Components\Textarea::make('contract_terms_en')->label('Contract terms (English)')->rows(14)->columnSpanFull()
                         ->helperText('RED PRIME\'s own terms. Printed on every contract; a signed contract keeps the terms as they were when signed.'),
                     Forms\Components\Textarea::make('contract_terms_ar')->label('Contract terms (Arabic)')->rows(14)->columnSpanFull()->extraInputAttributes(['dir' => 'rtl']),
+                    Forms\Components\Textarea::make('borrow_terms')->label('Terms on borrow agreements with suppliers')->rows(5)->columnSpanFull()
+                        ->helperText('Printed on "Borrow agreement with the supplier" (bookings of cars hired from a supplier).'),
                 ]),
             Forms\Components\Section::make('Monthly contracts')
                 ->columns(3)
@@ -132,6 +140,9 @@ class ContractSettings extends Page implements HasForms
             'contract_invoice_mode' => ($d['contract_invoice_mode'] ?? 'advance') === 'arrears' ? 'arrears' : 'advance',
             'contract_invoice_due_days' => max(0, (int) ($d['contract_invoice_due_days'] ?? 7)),
             'contract_renewal_days' => max(0, (int) ($d['contract_renewal_days'] ?? 7)),
+            'contract_sign_otp' => ($d['contract_sign_otp'] ?? 'off') === 'email' ? 'email' : 'off',
+            'borrow_terms' => filled($d['borrow_terms'] ?? null) ? trim($d['borrow_terms']) : null,
+            'block_expired_car_papers' => (bool) ($d['block_expired_car_papers'] ?? false),
         ];
         $before = Setting::values();
         Setting::write($out);

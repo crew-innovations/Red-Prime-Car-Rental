@@ -117,6 +117,9 @@
                 @if ($b->quotation && $b->quotation->sent_at)
                     <a class="rp-acc-link" href="{{ route('pdf.quotation', $b->quotation) }}" target="_blank" rel="noopener">Quotation {{ $b->quotation->number }} (PDF)</a>
                 @endif
+                @if ($b->depositSettlements()->exists())
+                    <a class="rp-acc-link" href="{{ route('pdf.deposit', $b) }}" target="_blank" rel="noopener">Deposit statement (PDF)</a>
+                @endif
                 @if ($b->returned_at)
                     <a class="rp-acc-link" href="{{ route('pdf.statement', $b) }}" target="_blank" rel="noopener">{{ $b->isCar() ? 'Return statement' : 'End of service statement' }} (PDF)</a>
                 @endif

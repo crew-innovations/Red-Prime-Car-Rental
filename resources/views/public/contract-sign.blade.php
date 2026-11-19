@@ -54,6 +54,14 @@
             <canvas id="pad" style="width:100%;height:180px;border:1px dashed #a1a1aa;border-radius:12px;background:#fff;touch-action:none"></canvas>
             <div style="display:flex;justify-content:space-between;margin-top:6px"><span class="muted">Sign with your finger or mouse</span><button type="button" class="btn btn-ghost" id="clear" style="padding:6px 12px">Clear</button></div>
             <input type="hidden" name="signature" id="signature">
+            @if (\App\Http\Controllers\ContractSignController::needsCode($c))
+                <label for="code">Code from your email</label>
+                <div style="display:flex;gap:8px">
+                    <input id="code" name="code" inputmode="numeric" maxlength="6" autocomplete="one-time-code" style="flex:1;font:15px Poppins,sans-serif;padding:12px;border:1px solid var(--line);border-radius:12px">
+                    <button class="btn btn-ghost" type="submit" formaction="{{ route('contracts.sign.code', $token) }}" formnovalidate>{{ session('code_sent') ? 'Send again' : 'Email me a code' }}</button>
+                </div>
+                @if (session('code_sent'))<p class="muted" style="margin:6px 0 0">We emailed a 6-digit code to {{ \Illuminate\Support\Str::mask((string) $c->customer?->email, '*', 2, max(1, strpos((string) $c->customer?->email, '@') - 2)) }}.</p>@endif
+            @endif
             <label style="display:flex;gap:10px;align-items:flex-start;font-weight:500"><input type="checkbox" name="agree" value="1" required style="margin-top:4px"> I have read the rental agreement and the terms and agree to them.</label>
             <button class="btn btn-primary" style="width:100%;margin-top:14px" type="submit">Sign the agreement</button>
         </form>
@@ -73,6 +81,7 @@
                 ['mouseup', 'mouseleave', 'touchend'].forEach(t => c.addEventListener(t, end));
                 document.getElementById('clear').onclick = () => { x.fillStyle = '#fff'; x.fillRect(0, 0, c.width, c.height); empty = true; };
                 document.getElementById('sign-form').addEventListener('submit', e => {
+                    if (e.submitter && e.submitter.hasAttribute('formnovalidate')) return; // asking for the email code
                     if (empty) { e.preventDefault(); alert('Please sign in the box.'); return; }
                     document.getElementById('signature').value = c.toDataURL('image/png');
                 });

@@ -50,3 +50,6 @@ Schedule::call(fn () => \App\Support\Fuel\Fuel::remindPrices())->name('fuel-pric
 
 // 18 Nov: rental contracts (monthly invoices, ending reminders, auto-renew).
 $job('crm:contract-tasks')->dailyAt('07:10')->withoutOverlapping();
+
+// 19 Nov: car registration, insurance and service reminders (also on the dashboard).
+$job('crm:fleet-reminders')->dailyAt('08:05')->withoutOverlapping();

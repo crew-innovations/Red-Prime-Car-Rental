@@ -55,6 +55,10 @@ class Social
             'config' => [
                 'whatsapp_phone_number_id' => ['label' => 'WhatsApp phone number ID', 'help' => 'Only for WhatsApp: WhatsApp Manager › API setup.'],
                 'graph_version' => ['label' => 'Graph API version', 'help' => 'e.g. v21.0', 'default' => 'v21.0'],
+                // 19 Nov (suggestion 9): approved WhatsApp templates for messages the CRM sends by itself.
+                'wa_template_contract' => ['label' => 'WhatsApp template: contract to sign', 'help' => 'Approved template name. Body with 3 values: {{1}} name, {{2}} contract number, {{3}} link.'],
+                'wa_template_invoice' => ['label' => 'WhatsApp template: invoice', 'help' => 'Approved template name. Body with 3 values: {{1}} name, {{2}} invoice number and amount, {{3}} link.'],
+                'wa_template_language' => ['label' => 'WhatsApp template language', 'help' => 'The language code the templates were approved in, e.g. en or en_US.', 'default' => 'en'],
             ],
             'secrets' => [
                 'app_secret' => ['label' => 'App secret', 'help' => 'Meta app › App settings › Basic. Used to check every message that arrives.'],

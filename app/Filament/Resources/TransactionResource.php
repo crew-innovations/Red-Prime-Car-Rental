@@ -106,7 +106,16 @@ class TransactionResource extends Resource
                     Forms\Components\Select::make('method')
                         ->label('Payment method')
                         ->options(PaymentMethod::class)
+                        ->live()
                         ->native(false),
+                    // 19 Nov (suggestion 2)
+                    Forms\Components\Select::make('bank_account')->label('Account')->native(false)
+                        ->options(fn () => \App\Support\Accounts\MoneyAccounts::options())
+                        ->visible(fn () => \App\Support\Accounts\MoneyAccounts::options() !== []),
+                    Forms\Components\TextInput::make('cheque_number')->label('Cheque number')->maxLength(40)
+                        ->visible(fn (Get $get): bool => $get('method') === PaymentMethod::Cheque->value),
+                    Forms\Components\DatePicker::make('cheque_date')->label('Cheque date')->native(false)
+                        ->visible(fn (Get $get): bool => $get('method') === PaymentMethod::Cheque->value),
                     Forms\Components\TextInput::make('description')
                         ->placeholder(fn (Get $get): string => $isIncome($get) ? 'e.g. Urus rental 12-15 Oct' : 'e.g. Oil change, ENOC fuel')
                         ->maxLength(255)

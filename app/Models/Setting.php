@@ -142,7 +142,14 @@ class Setting extends Model
         'additional_driver_charge' => null,  // per driver per contract; empty = typed per contract
         'contract_invoice_mode' => 'advance', // C-10: monthly contracts invoiced at the start (advance) or end (arrears) of each period
         'contract_invoice_due_days' => 7,
-        'contract_renewal_days' => 7,        // remind this many days before a contract ends
+        'contract_renewal_days' => 7,
+        // 19 Nov (suggestions 1–10, Bilal: "do 1-10")
+        'block_expired_car_papers' => true,  // a car with expired registration / insurance is not handed over (manager override as usual)
+        'bank_accounts' => [],               // [{key, name, bank, iban, kind: bank|cash}] money is received into / paid from
+        'tax_emirate_default' => 'dubai',    // emirate of supply for the VAT report (bookings can change it)
+        'marketplaces' => ['OneClickDrive', 'Yango Drive', 'Rentop', 'Cardoo', 'Getaround'],
+        'borrow_terms' => null,              // suggestion 7: terms printed on borrow agreements with suppliers
+        'contract_sign_otp' => 'off',        // off / email: the customer types a code sent by email before signing by link        // remind this many days before a contract ends
         'transfer_km_rounding' => '0.1',     // Bilal, 29 Oct: road distance billed to 0.1 km
         'lead_assignment' => 'broadcast',    // 5 Nov: broadcast (every agent, first to accept) / manual / round_robin / by_service
         'leads_repeat_to_owner' => true,     // 5 Nov: a lead from a customer who has an agent goes straight to that agent

@@ -22,6 +22,8 @@ class RentalContract extends Model implements HasMedia
 
     protected $guarded = ['id'];
 
+    protected $hidden = ['sign_otp_hash', 'sign_token'];
+
     public const TYPES = ['individual' => 'Individual', 'company' => 'Company', 'monthly' => 'Monthly / long term'];
 
     public const STATUSES = ['draft' => 'Draft', 'open' => 'Open', 'closed' => 'Closed', 'cancelled' => 'Cancelled'];
@@ -39,6 +41,7 @@ class RentalContract extends Model implements HasMedia
             'sign_token_expires_at' => 'datetime',
             'closed_at' => 'datetime',
             'closing' => 'array',
+            'sign_otp_expires_at' => 'datetime',
         ];
     }
 

@@ -1,5 +1,22 @@
 # Development log — RED PRIME RENTALS CRM
 
+## 2026-11-19 · Suggestions 1–10 (Bilal: "do both 1-10")
+
+Migration `2026_11_19_000001_contract_extras` (additive, nullable columns on transactions, bookings, rental_contracts).
+
+1. Car papers and service: service due by km (1,000 km before) joins registration / insurance / service date; a car with expired registration or insurance is not handed over (setting, manager override); daily `crm:fleet-reminders` 08:05.
+2. Payment methods Cheque and Card machine (POS); bank and cash accounts (Settings › Bank, cash and marketplaces), picked when recording money (default per method); cheque number and date.
+3. Deposit statement PDF after settling the deposit (booking Documents and the customer account).
+4. Money › Rental reports: out & in, car use, unpaid car rentals, VAT by emirate (emirate per booking, default in settings), cash & bank with cheques.
+5. Damage diagram: tap the areas on a car top view when adding a damage report.
+6. Enter old paper contracts (completed rental + closed contract + scan; holds no car). Admin only.
+7. Borrow agreement PDF for cars hired from a supplier (terms in Contract settings).
+8. Marketplace on the booking (name, reference, commission); the commission is a cost in the booking profit. List in settings.
+9. WhatsApp templates sent by the CRM (contract signing link, monthly invoices) through the Meta integration, once the number, token and approved template names are saved.
+10. Optional email code before signing by link (Contract settings).
+
+Tests: `tests/Feature/ContractExtrasTest.php` 10 tests pass. Full suite on SQLite 302 tests, no test fails that passed before.
+
 ## 2026-11-18 · Rental contracts and the meeting of 18 Nov
 
 Meeting minutes of 18 Nov (Hani Ahmed, Hifza Anwaar) and Bilal: "update everything which mentioned and add contract features as well same as on fleet". Change request (contract A7 / A10 cover bookings, not contracts). Plan: `PLAN-2026-11-RENTAL-CONTRACTS.md`.

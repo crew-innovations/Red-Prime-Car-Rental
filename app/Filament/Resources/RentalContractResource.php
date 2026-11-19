@@ -198,6 +198,7 @@ class RentalContractResource extends Resource
                         ->state(fn (RentalContract $r): string => $r->signed_at
                             ? '<span style="color:rgb(var(--success-600));font-weight:600">'.e($r->signed_by_name).'</span> · '.$r->signed_at->format('d M Y H:i').' ('.e($r->signed_via).')'
                             : '<span style="color:rgb(var(--warning-600));font-weight:600">Not signed yet</span>'),
+                    Infolists\Components\TextEntry::make('paper_number')->label('Paper contract no.')->visible(fn (RentalContract $r): bool => filled($r->paper_number)),
                     Infolists\Components\TextEntry::make('lpo_number')->label('LPO')->visible(fn (RentalContract $r): bool => filled($r->lpo_number)),
                     Infolists\Components\TextEntry::make('billing_period')->label('Invoices')->formatStateUsing(fn ($state) => $state === 'monthly' ? 'One per month'.'' : 'One for the rental')
                         ->suffix(fn (RentalContract $r): string => $r->auto_renew ? ' · renews automatically' : ''),

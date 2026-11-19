@@ -17,7 +17,8 @@ use Spatie\MediaLibrary\MediaCollections\Models\Media;
 
 class Car extends Model implements HasMedia
 {
-    use Audited, HasExpiringDocuments, InteractsWithMedia, PublishesToWebsite, SoftDeletes, \App\Models\Concerns\WarnsAboutBookings;
+    use Audited, InteractsWithMedia, PublishesToWebsite, SoftDeletes, \App\Models\Concerns\WarnsAboutBookings;
+    use HasExpiringDocuments { documentAlerts as traitDocumentAlerts; }
 
     public const CATEGORY = Category::CARS;
 
@@ -63,6 +64,31 @@ class Car extends Model implements HasMedia
             'Insurance' => 'insurance_expiry',
             'Service' => 'next_service_date',
         ];
+    }
+
+    /** 19 Nov: also the service by km (next service km vs the odometer), warned 1,000 km before. */
+    public function documentAlerts(): array
+    {
+        $alerts = $this->traitDocumentAlerts();
+        if ($this->next_service_km && $this->mileage !== null) {
+            $left = (int) $this->next_service_km - (int) $this->mileage;
+            if ($left <= 0) {
+                $alerts['Service km'] = 'Service overdue by '.number_format(abs($left)).' km';
+            } elseif ($left <= 1000) {
+                $alerts['Service km'] = 'Service due in '.number_format($left).' km';
+            }
+        }
+
+        return $alerts;
+    }
+
+    /** Registration or insurance already expired: the car must not go out (19 Nov). */
+    public function expiredPapers(?\Illuminate\Support\Carbon $on = null): array
+    {
+        $on ??= today();
+
+        return collect(['Registration' => $this->registration_expiry, 'Insurance' => $this->insurance_expiry])
+            ->filter(fn ($d) => $d && $d->lt($on))->map(fn ($d, $label) => $label.' expired '.$d->format('d M Y'))->values()->all();
     }
 
     /** 4 Nov (Phase 4): traffic fines and toll trips of this car. */
