@@ -26,10 +26,18 @@ class SiteController extends Controller
     {
         $seo += ['title' => null, 'description' => __('site.seo.default_description'), 'image' => null, 'jsonld' => [], 'noindex' => false];
 
-        return response()->view('site.'.$view, $data + ['seo' => $seo])
-            ->header('Cache-Control', 'public, max-age=300')
+        $response = response()->view('site.'.$view, $data + ['seo' => $seo])
             ->header('X-Content-Type-Options', 'nosniff')
             ->header('Referrer-Policy', 'strict-origin-when-cross-origin');
+
+        // 19 Nov (Bilal: new cars showed on the type pages but not on "All cars"): pages were kept by the
+        // browser for 5 minutes, so a page seen before showed the old fleet. Now the browser asks every time
+        // and gets a short "not changed" answer when nothing changed, so CRM changes show straight away.
+        $response->setEtag(md5((string) $response->getContent()));
+        $response->headers->set('Cache-Control', 'public, no-cache');
+        $response->isNotModified(request());
+
+        return $response;
     }
 
     public function home()
