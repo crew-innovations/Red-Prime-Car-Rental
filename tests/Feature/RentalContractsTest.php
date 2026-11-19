@@ -137,17 +137,21 @@ class RentalContractsTest extends TestCase
     public function test_a_car_booking_is_confirmed_only_with_complete_details_and_documents(): void
     {
         $thin = $this->customer();
+        // 19 Nov (Bilal, item 7): making the booking is never refused; it is saved as Waiting for payment.
+        $b = $this->booking($this->car, '2026-11-20 10:00', '2026-11-22 10:00', ['customer_id' => $thin->id]);
+        $this->assertSame(BookingStatus::PendingPayment, $b->fresh()->status, 'saved, waiting for payment');
+        $this->assertStringContainsString('Driving licence number', (string) Booking::$savedNotice);
+        $this->assertStringContainsString('Emirates ID or passport', (string) Booking::$savedNotice);
+        Booking::$savedNotice = null;
+
+        // Confirming it later still needs the details (Contract settings).
         try {
-            $this->booking($this->car, '2026-11-20 10:00', '2026-11-22 10:00', ['customer_id' => $thin->id]);
+            $b->update(['status' => BookingStatus::Confirmed]);
             $this->fail('should be refused');
         } catch (ValidationException $e) {
-            $msg = collect($e->errors())->flatten()->first();
-            $this->assertStringContainsString('Driving licence number', $msg);
-            $this->assertStringContainsString('Emirates ID or passport', $msg);
+            $this->assertStringContainsString('Driving licence number', collect($e->errors())->flatten()->first());
         }
-
-        $b = $this->booking($this->car, '2026-11-20 10:00', '2026-11-22 10:00', ['customer_id' => $thin->id, 'status' => BookingStatus::PendingPayment]);
-        $this->assertSame(BookingStatus::PendingPayment, $b->status, 'it can wait as Waiting for payment');
+        $b = $b->fresh();
 
         $thin->update(['nationality' => 'India', 'residency' => 'resident', 'id_number' => '784-1990-1234567-1', 'licence_number' => 'D12345', 'licence_expires_on' => '2029-01-01']);
         // Documents per resident / GCC / tourist (Business settings › Documents).

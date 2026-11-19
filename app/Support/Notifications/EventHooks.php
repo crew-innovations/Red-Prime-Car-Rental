@@ -146,7 +146,7 @@ class EventHooks
         if ($d->wasChanged('status') && $d->status === DocumentStatus::Approved && $d->customer
             && \App\Support\CustomerArea::documentsGateOn()) {
             $list = \App\Support\CustomerArea::requiredDocumentsFor($d->customer);
-            if ($list !== [] && collect($list)->every(fn (array $row) => $row[2])) {
+            if ($list !== [] && collect($list)->every(fn (array $row) => $row[2]) && \App\Support\CustomerArea::profileStillNeededFor($d->customer) === []) {
                 Notify::customer($d->customer, 'Your documents are approved', 'Thank you. Your account is ready: you can see your bookings, payments and messages.',
                     url('/account'), 'document_approved', $d, 'documents_complete:customer:'.$d->customer_id.':'.$d->id, 'success');
             }

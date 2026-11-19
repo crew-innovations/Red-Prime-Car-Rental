@@ -1,5 +1,17 @@
 <x-filament-panels::page>
     <div class="rp-acc">
+        @php($profile = $this->profileGate())
+        @if ($profile !== [])
+            {{-- 19 Nov (item 7): missing details first. --}}
+            <div class="rp-acc-card" style="border-left:4px solid #d7141a">
+                <div class="rp-acc-label">Your details</div>
+                <p class="rp-acc-muted" style="margin:.25rem 0 .75rem">We need a few details for your booking: {{ implode(', ', $profile) }}.</p>
+                <form wire:submit="saveDetails">
+                    {{ $this->detailsForm }}
+                    <div style="margin-top:1rem"><x-filament::button type="submit">Save my details</x-filament::button></div>
+                </form>
+            </div>
+        @endif
         @php($gate = $this->gate())
         @if ($gate !== [])
             {{-- 19 Nov: documents first, then the rest of the account. --}}

@@ -246,8 +246,24 @@ class Setting extends Model
 
     public static function write(array $values): void
     {
+        $changed = [];
         foreach ($values as $key => $value) {
-            static::updateOrCreate(['key' => $key], ['value' => $value]);
+            $row = static::firstOrNew(['key' => $key]);
+            $before = $row->exists ? $row->value : null;
+            $row->value = $value;
+            if (! $row->exists || $row->isDirty('value')) {
+                $changed[$key] = [$before, $value];
+            }
+            $row->save();
+        }
+        // 19 Nov (audit log): settings changed by a person are recorded (secrets are masked by AuditLog).
+        if ($changed && auth()->check()) {
+            rescue(fn () => AuditLog::create([
+                'event' => 'settings',
+                'note' => mb_substr('Settings changed: '.implode(', ', array_map(fn ($k) => str_replace('_', ' ', $k), array_keys($changed))), 0, 255),
+                'old_values' => array_map(fn ($c) => $c[0], $changed),
+                'new_values' => array_map(fn ($c) => $c[1], $changed),
+            ]), report: false);
         }
         Cache::forget('crm.settings');
         static::$memo = null;

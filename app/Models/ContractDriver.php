@@ -8,6 +8,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 /** A driver named on a rental contract: the main driver (the customer) or an additional driver. */
 class ContractDriver extends Model
 {
+    use \App\Models\Concerns\Audited; // 19 Nov: in the audit log
+
     protected $guarded = ['id'];
 
     protected function casts(): array

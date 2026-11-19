@@ -43,6 +43,11 @@ class ListBookings extends ListRecords
         $own = fn () => \App\Support\Access::scopeOwn(Booking::query(), 'booking');
 
         return $this->simpleTabs([
+            // 19 Nov (item 7): a booking just made always shows here, whatever its dates or status.
+            'new' => Tab::make('Just added')
+                ->icon('heroicon-o-sparkles')
+                ->badge(fn () => $own()->where('created_at', '>=', today())->count() ?: null)
+                ->modifyQueryUsing(fn (Builder $query) => $query->where('created_at', '>=', now()->subDays(7))->reorder('created_at', 'desc')),
             'upcoming' => Tab::make('Upcoming')
                 ->icon('heroicon-o-calendar')
                 ->modifyQueryUsing(fn (Builder $query) => $query->whereIn('status', [BookingStatus::Confirmed, BookingStatus::PendingPayment])->where('end_at', '>=', now()->startOfDay())),
@@ -79,6 +84,6 @@ class ListBookings extends ListRecords
             'cancelled' => Tab::make('Cancelled')
                 ->modifyQueryUsing(fn (Builder $query) => $query->whereIn('status', [BookingStatus::Cancelled, BookingStatus::NoShow])),
             'all' => Tab::make('All'),
-        ], ['today', 'upcoming', 'out', 'waiting', 'all'], ['late']);
+        ], ['today', 'new', 'upcoming', 'out', 'waiting', 'all'], ['late']);
     }
 }

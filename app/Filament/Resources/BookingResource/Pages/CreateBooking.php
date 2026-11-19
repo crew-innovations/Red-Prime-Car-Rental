@@ -10,8 +10,13 @@ use App\Models\Car;
 use App\Models\Customer;
 use App\Models\Lead;
 use App\Models\Yacht;
+use Filament\Notifications\Notification;
 use Filament\Resources\Pages\CreateRecord;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
+use Livewire\Attributes\Locked;
 use Livewire\Attributes\Url;
 
 class CreateBooking extends CreateRecord
@@ -47,6 +52,78 @@ class CreateBooking extends CreateRecord
 
     #[Url]
     public ?string $item = null;
+
+    /**
+     * 19 Nov (Bilal, item 7): one id per opened form. A second click or a repeated request with the same
+     * id never makes a second booking: it opens the one already saved.
+     */
+    #[Locked]
+    public string $saveToken = '';
+
+    public function mount(): void
+    {
+        $this->saveToken = (string) Str::uuid();
+        parent::mount();
+    }
+
+    /**
+     * Saving, made reliable (19 Nov, item 7):
+     * - repeated clicks / requests do not make duplicates (lock on the form id);
+     * - a problem found while saving (car already booked, driver busy…) is shown as a message and the
+     *   form jumps to the field, instead of nothing visible happening on the last step;
+     * - an unexpected error is reported to the log and shown as a clear message; nothing half-saved stays.
+     */
+    public function create(bool $another = false): void
+    {
+        $key = 'booking-create:'.auth()->id().':'.($this->saveToken ?: Str::uuid());
+        if ($done = Cache::get($key.':done')) {
+            $this->redirect($this->getResource()::getUrl('edit', ['record' => $done]));
+
+            return;
+        }
+        $lock = Cache::lock($key, 60);
+        if (! $lock->get()) {
+            Notification::make()->info()->title('Saving… please wait')->body('This booking is already being saved.')->send();
+
+            return;
+        }
+        Booking::$savedNotice = null;
+        try {
+            parent::create($another);
+            if ($this->record?->exists) {
+                Cache::put($key.':done', $this->record->getKey(), now()->addHours(6));
+            }
+        } catch (ValidationException $e) {
+            $this->dispatch('form-validation-error', livewireId: $this->getId());
+            Notification::make()->danger()->title('The booking was not saved')
+                ->body(collect($e->errors())->flatten()->unique()->take(4)->implode(' '))
+                ->persistent()->send();
+
+            throw $e;
+        } catch (\Throwable $e) {
+            report($e);
+            $ref = strtoupper(Str::random(6));
+            \Illuminate\Support\Facades\Log::error('Booking create failed ['.$ref.']: '.$e->getMessage(), ['user' => auth()->id()]);
+            Notification::make()->danger()->title('The booking was not saved')
+                ->body('Something went wrong on our side and nothing was saved. Please try again. If it happens again, tell the admin (code '.$ref.').')
+                ->persistent()->send();
+        } finally {
+            $lock->release();
+        }
+    }
+
+    protected function getCreatedNotification(): ?Notification
+    {
+        $b = $this->getRecord();
+        $n = Notification::make()->success()->title('Booking '.($b->reference ?? '').' saved')
+            ->body(($b->customer?->name ? $b->customer->name.' · ' : '').$b->status?->getLabel());
+        if (Booking::$savedNotice) {
+            $n = Notification::make()->warning()->title('Booking '.($b->reference ?? '').' saved')->body(Booking::$savedNotice)->persistent();
+            Booking::$savedNotice = null;
+        }
+
+        return $n;
+    }
 
     protected function afterFill(): void
     {
@@ -150,6 +227,11 @@ class CreateBooking extends CreateRecord
 
     protected function getRedirectUrl(): string
     {
-        return $this->getResource()::getUrl('edit', ['record' => $this->getRecord()]);
+        // 19 Nov: a booking passed to another agent is not visible to an agent: back to the list, not a "not found" page.
+        $visible = BookingResource::getEloquentQuery()->whereKey($this->getRecord()->getKey())->exists();
+
+        return $visible
+            ? $this->getResource()::getUrl('edit', ['record' => $this->getRecord()])
+            : BookingResource::getUrl('index', ['activeTab' => 'all']);
     }
 }

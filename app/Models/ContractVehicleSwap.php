@@ -8,6 +8,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 /** A car replaced during a rental contract (breakdown, accident, upgrade…). */
 class ContractVehicleSwap extends Model
 {
+    use \App\Models\Concerns\Audited; // 19 Nov: in the audit log
+
     protected $guarded = ['id'];
 
     protected function casts(): array

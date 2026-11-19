@@ -57,6 +57,8 @@ class AppServiceProvider extends ServiceProvider
             'transfer_fixed_route' => \App\Models\TransferFixedRoute::class,
             'integration' => \App\Models\Integration::class,
             'rental_contract' => \App\Models\RentalContract::class, // 18 Nov
+            'contract_driver' => \App\Models\ContractDriver::class, // 19 Nov (audit log)
+            'contract_vehicle_swap' => \App\Models\ContractVehicleSwap::class,
             // 4 Nov, Phase 2
             'mail_account' => \App\Models\MailAccount::class,
             'email_template' => \App\Models\EmailTemplate::class,

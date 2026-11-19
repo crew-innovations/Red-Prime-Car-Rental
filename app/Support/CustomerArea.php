@@ -116,14 +116,58 @@ class CustomerArea
         return Booking::checklistFor($id, $types->filter()->unique()->values()->all());
     }
 
-    /** True when the customer may use the whole account (gate off, or every required document approved). */
+    /** True when the customer may use the whole account (gate off, or details complete and every required document approved). */
     public static function unlocked(): bool
     {
         if (! self::documentsGateOn()) {
             return true;
         }
 
-        return collect(self::requiredDocuments())->every(fn (array $row) => $row[2]);
+        return self::profileStillNeeded() === [] && collect(self::requiredDocuments())->every(fn (array $row) => $row[2]);
+    }
+
+    /**
+     * 19 Nov (item 7): profile details still missing, field => label. The same details staff need before
+     * confirming a car booking (Contract settings › required details), asked only while the customer has an
+     * open booking or quotation; licence details only when one of them is self-drive.
+     */
+    public static function profileStillNeeded(): array
+    {
+        $customer = self::customer();
+
+        return $customer ? self::profileStillNeededFor($customer) : [];
+    }
+
+    public static function profileStillNeededFor(Customer $customer): array
+    {
+        if (! \App\Support\Contracts\ConfirmCheck::enabled()) {
+            return []; // "details needed before confirming" is switched off in Contract settings
+        }
+        $open = Booking::query()->where('customer_id', $customer->id)
+            ->whereIn('status', [BookingStatus::PendingPayment, BookingStatus::Confirmed, BookingStatus::InProgress])->get(['service_type', 'drive_mode']);
+        $quotes = Quotation::query()->where('customer_id', $customer->id)
+            ->whereIn('status', [QuotationStatus::Sent, QuotationStatus::Negotiation, QuotationStatus::Accepted])->get(['service_type', 'drive_mode']);
+        $all = $open->concat($quotes);
+        if ($all->isEmpty()) {
+            return [];
+        }
+        $val = fn ($v) => $v instanceof \BackedEnum ? $v->value : $v;
+        $selfDrive = $all->contains(fn ($r) => $val($r->service_type) === 'car' && $val($r->drive_mode) !== \App\Enums\DriveMode::WithDriver->value);
+
+        $out = [];
+        foreach ((array) Setting::read('confirm_required_fields', []) as $field) {
+            if (! $selfDrive && in_array($field, ['licence_number', 'licence_expires_on'], true)) {
+                continue;
+            }
+            $ok = $field === 'id_or_passport'
+                ? filled($customer->id_number) || filled($customer->passport_number)
+                : filled($customer->{$field} ?? null);
+            if (! $ok) {
+                $out[$field] = \App\Support\Contracts\ConfirmCheck::FIELD_LABELS[$field] ?? str_replace('_', ' ', $field);
+            }
+        }
+
+        return $out;
     }
 
     /** Required types not approved yet, type => label (for the upload form and the email). */

@@ -1,5 +1,19 @@
 # Development log — RED PRIME RENTALS CRM
 
+## 2026-11-19 (3) · Audit log fixed, booking creation made reliable, profile completion in the portal
+
+Bilal, 19 Nov, items 6 and 7. Bug fixes (M2) and change request (portal profile step). No migration.
+
+- **Audit log server error** (`HistoryResource`, new `App\Support\Audit\AuditView`): the list loaded every line's record in one go; one line whose record type no longer exists (old alias or removed class) is a fatal error in that loading, so the whole screen failed. Records are now loaded line by line and safely; unknown or removed records show as "(removed)". The record's own History tab uses the same code.
+- **Audit log screen**: columns When / Who (name + role) / Action / Module + record (link) / Details; "Open" shows every field before → after, IP, device and the other lines saved by the same click. Filters above the list: who (agents and staff), module, action, date (today, yesterday, 7 / 30 days, dates), role, result, record type, record number. Search: name, email, record number, words in the details, IP. Tabs: Changes, Deletions, Sign-ins, Money, Settings & roles, Refused / failed. Today at a glance (actions and the busiest people, sign-ins, deletions and failed sign-ins in 7 days). Still Admin only (`view-history`), still append-only (lines cannot be changed or deleted from the app).
+- **More recorded**: every settings change made by a person (`Setting::write`, secrets masked); contract drivers and car swaps (morph aliases `contract_driver`, `contract_vehicle_swap`).
+- **Booking creation** (`CreateBooking::create`): one id per opened form: a second click or repeated request never makes a second booking (lock + "already saved" opens it). A problem found while saving (car already booked, driver busy, price waiting for approval…) shows as a message and the form jumps to the field; before, on the last step nothing visible happened. Unexpected errors are logged with a code and shown; nothing half-saved. Success message names the booking. An agent who passes the booking to another agent goes back to the list instead of a "not found" page. Bookings list: new tab "Just added" (last 7 days, newest first).
+- **Incomplete customers never block staff**: a new car booking asked as Confirmed for a customer whose details / documents are incomplete is saved as Waiting for payment with a message saying what is missing (before: refused). Confirming an existing booking still follows Contract settings (Admin can confirm with a reason). Quotations were never blocked.
+- **Portal profile completion**: "Complete your account" also asks for missing details (the same "details needed before confirming" list in Contract settings; licence only for self-drive), filled in by the customer; only missing details are saved. The account opens when details are complete and documents approved.
+- **Website wording**: documents are uploaded in the customer's account (no separate link) — EN and AR.
+
+Tests: `AuditLogScreenTest` (3), `BookingCreateReliabilityTest` (6).
+
 ## 2026-11-19 (2) · Contracts tab, documents first, fines & tolls, document reading on this computer
 
 Bilal, 19 Nov: "Add independent rental contract creation inside the Contracts tab… documents before portal access… toll & fine management… OCR within this system… do not change, remove or break anything". Change request. No migration: no database change.

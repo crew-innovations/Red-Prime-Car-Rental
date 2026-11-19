@@ -126,4 +126,11 @@ class CreateRentalContract extends CreateBooking
     {
         return 'Contract '.($this->contract?->number ?? '').' made';
     }
+
+    protected function getCreatedNotification(): ?\Filament\Notifications\Notification
+    {
+        $n = parent::getCreatedNotification();
+
+        return $n?->title($this->getCreatedNotificationTitle().' · booking '.($this->getRecord()->reference ?? ''));
+    }
 }

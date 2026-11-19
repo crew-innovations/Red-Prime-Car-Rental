@@ -16,6 +16,8 @@ abstract class TestCase extends BaseTestCase
     protected function setUp(): void
     {
         parent::setUp();
+        // Settings are kept in memory between tests (static); start each test from the database.
+        (fn () => static::$memo = null)->bindTo(null, \App\Models\Setting::class)();
         if (! $this->confirmNeedsDetails && \Illuminate\Support\Facades\Schema::hasTable('settings')) {
             \App\Models\Setting::write(['confirm_requires_details' => false]);
         }

@@ -34,6 +34,9 @@ class Documents extends Page implements HasForms
 
     public ?array $upload = [];
 
+    /** 19 Nov (item 7): missing profile details, completed here before the account opens. */
+    public ?array $details = [];
+
     public static function canAccess(): bool
     {
         return Access::isCustomer();
@@ -52,7 +55,7 @@ class Documents extends Page implements HasForms
         return CustomerArea::documentsGateOn() ? $types + CustomerArea::documentsStillNeeded() : $types;
     }
 
-    /** 19 Nov: what is still needed before the rest of the account opens (empty = nothing). */
+    /** 19 Nov: required documents while the account is not open yet (empty = nothing to show). */
     public function gate(): array
     {
         if (! CustomerArea::documentsGateOn() || CustomerArea::unlocked()) {
@@ -62,9 +65,76 @@ class Documents extends Page implements HasForms
         return CustomerArea::requiredDocuments();
     }
 
+    /** 19 Nov (item 7): details still missing while the account is not open yet. */
+    public function profileGate(): array
+    {
+        return CustomerArea::documentsGateOn() ? CustomerArea::profileStillNeeded() : [];
+    }
+
+    public function getTitle(): string
+    {
+        return CustomerArea::documentsGateOn() && ! CustomerArea::unlocked() ? 'Complete your account' : 'My documents';
+    }
+
+    protected function getForms(): array
+    {
+        return ['form', 'detailsForm'];
+    }
+
     public function mount(): void
     {
         $this->form->fill();
+        $this->detailsForm->fill();
+    }
+
+    public function detailsForm(Form $form): Form
+    {
+        $need = fn (string $f) => fn (): bool => array_key_exists($f, $this->profileGate());
+
+        return $form->statePath('details')->columns(2)->schema([
+            Forms\Components\TextInput::make('name')->label('Full name (as on your ID)')->maxLength(255)->required()->visible($need('name')),
+            Forms\Components\TextInput::make('phone')->label('Mobile number')->tel()->maxLength(30)->required()->visible($need('phone')),
+            Forms\Components\TextInput::make('email')->email()->maxLength(255)->required()->visible($need('email')),
+            Forms\Components\Select::make('nationality')->options(array_combine(\App\Filament\Resources\CustomerResource::NATIONALITIES, \App\Filament\Resources\CustomerResource::NATIONALITIES))
+                ->searchable()->required()->visible($need('nationality')),
+            Forms\Components\Select::make('residency')->label('You are')->native(false)->required()->visible($need('residency'))
+                ->options(\App\Filament\Concerns\CustomerDetails::RESIDENCY),
+            Forms\Components\DatePicker::make('date_of_birth')->label('Date of birth')->native(false)->displayFormat('d M Y')->maxDate(today())->required()->visible($need('date_of_birth')),
+            Forms\Components\TextInput::make('address')->maxLength(255)->required()->visible($need('address'))->columnSpanFull(),
+            Forms\Components\TextInput::make('id_number')->label('Emirates ID number')->maxLength(40)->visible($need('id_or_passport'))
+                ->requiredWithout('passport_number')->helperText('Or your passport number.'),
+            Forms\Components\TextInput::make('passport_number')->label('Passport number')->maxLength(40)->visible($need('id_or_passport'))
+                ->requiredWithout('id_number'),
+            Forms\Components\TextInput::make('licence_number')->label('Driving licence number')->maxLength(40)->required()->visible($need('licence_number')),
+            Forms\Components\DatePicker::make('licence_expires_on')->label('Driving licence expiry')->native(false)->displayFormat('d M Y')->minDate(today())->required()->visible($need('licence_expires_on')),
+        ]);
+    }
+
+    public function saveDetails(): void
+    {
+        $need = $this->profileGate();
+        abort_if($need === [], 403);
+        $data = $this->detailsForm->getState();
+        $allowed = array_keys($need);
+        if (in_array('id_or_passport', $allowed, true)) {
+            $allowed = [...$allowed, 'id_number', 'passport_number'];
+        }
+        $customer = CustomerArea::customer();
+        // Only the missing details are filled; nothing already on file is changed from here.
+        $fill = collect($data)->only($allowed)->filter(fn ($v, $k) => filled($v) && blank($customer->{$k}))->all();
+        if ($fill) {
+            $customer->update($fill); // in the audit log with the customer's name
+        }
+        request()->attributes->remove('rp.required_docs');
+        if (CustomerArea::unlocked()) {
+            Notification::make()->success()->title('Thank you, your account is ready')->send();
+            $this->redirect(Home::getUrl(panel: 'account'));
+
+            return;
+        }
+        Notification::make()->success()->title('Thank you, your details are saved')
+            ->body(CustomerArea::profileStillNeeded() ? 'Please complete the rest.' : 'Now please upload the documents below.')->send();
+        $this->detailsForm->fill();
     }
 
     public function form(Form $form): Form

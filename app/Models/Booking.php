@@ -55,6 +55,9 @@ class Booking extends Model implements HasMedia
     /** 18 Nov: Admin confirmed although details or documents are missing (the "Confirm" button records why). */
     public static bool $confirmOverride = false;
 
+    /** 19 Nov: a note for the person saving (e.g. "saved as Waiting for payment because…"), read once by the screen. */
+    public static ?string $savedNotice = null;
+
     protected function casts(): array
     {
         return [
@@ -222,9 +225,16 @@ class Booking extends Model implements HasMedia
             }
 
             // 18 Nov (meeting item 8): confirmed only with the customer's details and documents complete.
+            // 19 Nov (Bilal, item 7): making a booking is never blocked by an incomplete customer: a new
+            // booking is saved as Waiting for payment and staff are told what is missing to confirm it.
             if (\App\Support\Contracts\ConfirmCheck::enabled() && ! static::$confirmOverride && \App\Support\Contracts\ConfirmCheck::isConfirming($booking)
                 && ($missing = \App\Support\Contracts\ConfirmCheck::missing($booking))) {
-                throw ValidationException::withMessages(['data.status' => 'Before it can be confirmed, complete: '.implode(', ', $missing).'. Save it as Waiting for payment until then.']);
+                if (! $booking->exists) {
+                    $booking->status = BookingStatus::PendingPayment;
+                    static::$savedNotice = 'Saved as Waiting for payment. To confirm it, complete: '.implode(', ', $missing).'.';
+                } else {
+                    throw ValidationException::withMessages(['data.status' => 'Before it can be confirmed, complete: '.implode(', ', $missing).'. Save it as Waiting for payment until then.']);
+                }
             }
 
             $booking->guardAvailability();
