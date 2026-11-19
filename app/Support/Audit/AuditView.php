@@ -183,9 +183,13 @@ class AuditView
             return null;
         }
         try {
-            return $resource::hasPage('view') && ! $resource::hasPage('edit')
-                ? $resource::getUrl('view', ['record' => $item])
-                : $resource::getUrl('edit', ['record' => $item]);
+            // Not every list has an edit page (Invoices has only its list): linking to a missing page was the
+            // live "Route [...invoices.edit] not defined" error that stopped the Audit log.
+            return match (true) {
+                $resource::hasPage('edit') => $resource::getUrl('edit', ['record' => $item]),
+                $resource::hasPage('view') => $resource::getUrl('view', ['record' => $item]),
+                default => null,
+            };
         } catch (\Throwable) {
             return null;
         }

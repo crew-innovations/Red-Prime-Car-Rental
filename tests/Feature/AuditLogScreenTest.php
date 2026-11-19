@@ -28,6 +28,12 @@ class AuditLogScreenTest extends TestCase
             AuditLog::create(['event' => 'deleted', 'auditable_type' => 'old_alias', 'auditable_id' => 4]),
         ];
 
+        // The live error (17–19 Nov): a line about an invoice linked to an invoice edit page that does not exist.
+        $b = $this->booking($this->car(), '2026-12-20 10:00', '2026-12-22 10:00', ['customer_id' => $this->customer()->id]);
+        $invoice = \App\Models\Invoice::issueFor($b->fresh());
+        $this->assertTrue(AuditLog::where('auditable_type', 'invoice')->where('auditable_id', $invoice->id)->exists());
+        $this->assertNull(\App\Support\Audit\AuditView::recordUrl(AuditLog::where('auditable_type', 'invoice')->first()));
+
         $this->get('/crm/history')->assertOk();
         Livewire::test(\App\Filament\Resources\HistoryResource\Widgets\AuditOverview::class)->assertSee('Actions today');
         Livewire::test(ListHistory::class)->assertCanSeeTableRecords($odd)->assertSee('(removed)');
