@@ -209,6 +209,49 @@ class ContractActions
                     Contracts::savePdf($contract(), 'Damage noted ('.(['delivery' => 'OUT', 'collection' => 'IN'][$data['stage']] ?? 'during rental').')');
                     Notification::make()->success()->title('Damage report saved')->body('Admin reviews it under Damage reports; a charge is added only after review.')->send();
                 })->after($after),
+            // 19 Nov: enter a traffic fine from the contract; it is matched to the car and time like any fine.
+            Action::make('addFine')
+                ->label('Add traffic fine')
+                ->icon('heroicon-o-receipt-percent')
+                ->color('gray')
+                ->authorize('manage-fines')
+                ->visible(fn (): bool => in_array($contract()->status, ['open', 'closed'], true))
+                ->modalWidth('2xl')
+                ->form(fn (): array => [
+                    Forms\Components\Grid::make(2)->schema([
+                        Forms\Components\Select::make('authority')->options(array_combine(\App\Models\TrafficFine::AUTHORITIES, \App\Models\TrafficFine::AUTHORITIES))->required()->native(false),
+                        Forms\Components\TextInput::make('ticket_no')->label('Ticket / fine number')->required()->maxLength(80),
+                        Forms\Components\DateTimePicker::make('offence_at')->label('Date and time of the offence')->seconds(false)->required()
+                            ->default(fn () => $contract()->booking?->start_at),
+                        Forms\Components\Select::make('car_id')->label('Car')->required()->native(false)
+                            ->options(fn (): array => self::contractCars($contract()))
+                            ->default(fn () => $contract()->booking?->bookable_id),
+                        Forms\Components\TextInput::make('amount')->numeric()->minValue(1)->prefix('AED')->required(),
+                        Forms\Components\TextInput::make('black_points')->numeric()->minValue(0)->maxValue(24),
+                        Forms\Components\TextInput::make('offence')->maxLength(255),
+                        Forms\Components\TextInput::make('location')->maxLength(255),
+                        Forms\Components\FileUpload::make('path')->label('Fine notice (PDF or photo)')->disk('private')->directory('fines')->visibility('private')
+                            ->acceptedFileTypes(['application/pdf', 'image/*'])->maxSize(8192)->columnSpanFull(),
+                    ]),
+                ])
+                ->action(function (array $data) use ($contract) {
+                    $c = $contract();
+                    if (\App\Models\TrafficFine::where('authority', $data['authority'])->where('ticket_no', $data['ticket_no'])->exists()) {
+                        Notification::make()->danger()->title('This fine is already entered')->body($data['authority'].' · '.$data['ticket_no'])->send();
+
+                        return;
+                    }
+                    $car = \App\Models\Car::find($data['car_id']);
+                    $path = ! empty($data['path']) ? (\App\Support\PrivateFiles::freshUploads([(string) $data['path']], 'fines')[0] ?? null) : null;
+                    $fine = \App\Models\TrafficFine::create(collect($data)->only(['authority', 'ticket_no', 'offence_at', 'car_id', 'amount', 'black_points', 'offence', 'location'])->all()
+                        + ['path' => $path, 'plate' => $car?->registration_number, 'status' => \App\Enums\FineStatus::New, 'created_by' => auth()->id()]);
+                    $fine = \App\Support\Fines\Fines::match($fine);
+                    $same = (int) $fine->booking_id === (int) $c->booking_id;
+                    Notification::make()->{$same ? 'success' : 'warning'}()
+                        ->title($same ? 'Fine saved on this contract' : 'Fine saved, but it is not on this contract')
+                        ->body($same ? 'Charge it to the customer from Traffic fines when ready.' : $fine->match_note)
+                        ->persistent(! $same)->send();
+                })->after($after),
             Action::make('attach')
                 ->label('Add attachment')
                 ->icon('heroicon-o-paper-clip')
@@ -393,5 +436,14 @@ class ContractActions
             .$row('Deposit held', $aed($s['deposit_held']).($s['deposit_refundable_on'] ? ' · refundable from '.\Illuminate\Support\Carbon::parse($s['deposit_refundable_on'])->format('d M Y') : ''));
 
         return $html.'</table>';
+    }
+
+    /** The car on the contract and any car it replaced (swaps). */
+    public static function contractCars(\App\Models\RentalContract $c): array
+    {
+        $ids = collect([$c->booking?->bookable_id])->merge($c->swaps()->pluck('from_car_id'))->merge($c->swaps()->pluck('to_car_id'))->filter()->unique();
+
+        return \App\Models\Car::withTrashed()->whereIn('id', $ids)->get()
+            ->mapWithKeys(fn ($car) => [$car->id => $car->name.($car->registration_number ? ' · '.$car->registration_number : '')])->all();
     }
 }

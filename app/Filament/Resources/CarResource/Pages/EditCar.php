@@ -18,6 +18,12 @@ class EditCar extends EditRecord
         return [
             \App\Filament\Support\ReadinessUi::markReady(Actions\Action::class)
                 ->after(fn () => $this->refreshFormData(['status', 'readiness', 'readiness_note'])),
+            Actions\Action::make('newContract') // 19 Nov: rental contract for this car
+                ->label('New contract')
+                ->icon('heroicon-o-document-plus')
+                ->color('gray')
+                ->visible(fn (): bool => \App\Filament\Resources\RentalContractResource::canCreate() && ! $this->getRecord()->trashed())
+                ->url(fn (): string => \App\Filament\Resources\RentalContractResource::getUrl('create', ['item' => $this->getRecord()->getKey()])),
             Actions\DeleteAction::make(),
             Actions\RestoreAction::make(),
             Actions\ForceDeleteAction::make(),

@@ -69,6 +69,69 @@ class CustomerArea
                 ->orWhere(fn (Builder $q) => $q->where('type', TransactionType::Expense)->where('category', 'deposit_refund')));
     }
 
+    /* ---------- 19 Nov: documents first (Bilal: "redirect to the document upload screen; access only after
+       all required documents are uploaded and approved; no separate upload link") ---------- */
+
+    /** On in Business settings › Customer accounts (on by default; the required types come from Business settings › Documents). */
+    public static function documentsGateOn(): bool
+    {
+        return (bool) Setting::read('account_documents_gate', true);
+    }
+
+    /**
+     * Document types the customer needs for their open bookings and quotations (the same rules staff see
+     * on the booking), as type => [label, status text, ok]. Empty when nothing is required.
+     */
+    public static function requiredDocuments(): array
+    {
+        $id = self::customerId();
+        $cache = request()->attributes->get('rp.required_docs');
+        if (is_array($cache) && ($cache['id'] ?? null) === $id) {
+            return $cache['list'];
+        }
+        $list = self::requiredDocumentsFor(self::customer());
+        request()->attributes->set('rp.required_docs', ['id' => $id, 'list' => $list]);
+
+        return $list;
+    }
+
+    /** The same list for any customer (staff side, e.g. to tell the customer their account is ready). */
+    public static function requiredDocumentsFor(Customer $customer): array
+    {
+        $id = $customer->getKey();
+        $types = Booking::query()->where('customer_id', $id)
+            ->whereIn('status', [BookingStatus::PendingPayment, BookingStatus::Confirmed, BookingStatus::InProgress])
+            ->with('customer')->get()
+            ->flatMap(fn (Booking $b) => $b->requiredDocumentTypes());
+        $rules = (array) Setting::read('doc_requirements', []);
+        Quotation::query()->where('customer_id', $id)
+            ->whereIn('status', [QuotationStatus::Sent, QuotationStatus::Negotiation, QuotationStatus::Accepted])
+            ->get()
+            ->each(function (Quotation $q) use (&$types, $rules, $customer) {
+                foreach (Booking::documentKindsFor($q->service_type, $q->drive_mode, $customer, $q->crew_mode) as $kind) {
+                    $types = $types->merge((array) ($rules[$kind] ?? []));
+                }
+            });
+
+        return Booking::checklistFor($id, $types->filter()->unique()->values()->all());
+    }
+
+    /** True when the customer may use the whole account (gate off, or every required document approved). */
+    public static function unlocked(): bool
+    {
+        if (! self::documentsGateOn()) {
+            return true;
+        }
+
+        return collect(self::requiredDocuments())->every(fn (array $row) => $row[2]);
+    }
+
+    /** Required types not approved yet, type => label (for the upload form and the email). */
+    public static function documentsStillNeeded(): array
+    {
+        return collect(self::requiredDocuments())->reject(fn (array $row) => $row[2])->map(fn (array $row) => $row[0])->all();
+    }
+
     public static function allows(string $setting): bool
     {
         return (bool) Setting::read($setting, true);

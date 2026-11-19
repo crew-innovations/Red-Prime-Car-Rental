@@ -20,7 +20,7 @@ class Home extends Dashboard
 
     public static function canAccess(): bool
     {
-        return Access::isCustomer();
+        return Access::isCustomer() && CustomerArea::unlocked();
     }
 
     public function getWidgets(): array

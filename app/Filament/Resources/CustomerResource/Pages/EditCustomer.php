@@ -96,6 +96,12 @@ class EditCustomer extends EditRecord
                 ->label('New enquiry')
                 ->icon('heroicon-o-plus')
                 ->url(LeadResource::getUrl('create', ['customer' => $customer->getKey()])),
+            Actions\Action::make('newContract') // 19 Nov: rental contract straight from the customer
+                ->label('New contract')
+                ->icon('heroicon-o-document-plus')
+                ->color('gray')
+                ->visible(fn (): bool => \App\Filament\Resources\RentalContractResource::canCreate() && ! $customer->trashed() && ! $customer->isBlacklisted())
+                ->url(fn (): string => \App\Filament\Resources\RentalContractResource::getUrl('create', ['customer' => $customer->getKey()])),
             Actions\ActionGroup::make([
                 \App\Filament\Support\AccountActions::sendLink(
                     fn () => $this->customerLogin(create: true),

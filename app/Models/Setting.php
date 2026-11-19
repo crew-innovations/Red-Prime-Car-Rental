@@ -170,6 +170,7 @@ class Setting extends Model
         'role_abilities_v2' => null,
         'customer_accounts_enabled' => true,
         'customer_can_upload_documents' => true,
+        'account_documents_gate' => true, // 19 Nov: required documents first, then the rest of the account
         'customer_sees_payments' => true,
         'customer_sees_quotations' => true,
         'invite_link_hours' => 72,

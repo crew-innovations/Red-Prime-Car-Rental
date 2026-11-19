@@ -1157,3 +1157,7 @@ a.rp-home-tile:hover { border-color: rgba(var(--primary-500), .55); transform: t
 .rp-chat-links { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem; padding: .1rem 1rem .55rem; font-size: .8rem; color: rgb(var(--gray-400)); }
 .rp-chat-chip { padding: .28rem .7rem; border-radius: 999px; border: 1px solid rgba(212,166,42,.6); color: #d4a62a; background: transparent; font: inherit; font-weight: 600; cursor: pointer; }
 .rp-chat-chip:hover, .rp-chat-chip:focus-visible { background: #d4a62a; color: #14110d; }
+
+/* 19 Nov: progress of "Read the documents" on this computer (public/js/rp-ocr.js). */
+.rp-ocr-box { display: none; position: fixed; left: 1rem; bottom: 1rem; z-index: 60; max-width: 22rem; padding: .7rem 1rem; border-radius: .75rem;
+    background: #18181b; color: #fff; font-size: .85rem; box-shadow: 0 10px 25px rgba(0,0,0,.3); border-left: 4px solid #d4a62a; }

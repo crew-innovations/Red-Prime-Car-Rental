@@ -22,7 +22,7 @@ class Quotations extends Page
 
     public static function canAccess(): bool
     {
-        return Access::isCustomer() && CustomerArea::allows('customer_sees_quotations');
+        return Access::isCustomer() && CustomerArea::unlocked() && CustomerArea::allows('customer_sees_quotations');
     }
 
     public function quotations()

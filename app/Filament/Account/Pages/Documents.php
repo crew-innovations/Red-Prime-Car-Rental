@@ -41,7 +41,25 @@ class Documents extends Page implements HasForms
 
     public static function canUpload(): bool
     {
-        return CustomerArea::allows('customer_can_upload_documents') && Options::requestableDocumentTypes() !== [];
+        return self::uploadTypes() !== [];
+    }
+
+    /** Types the customer can upload: the usual list, plus (19 Nov) any document their bookings still need. */
+    public static function uploadTypes(): array
+    {
+        $types = CustomerArea::allows('customer_can_upload_documents') ? Options::requestableDocumentTypes() : [];
+
+        return CustomerArea::documentsGateOn() ? $types + CustomerArea::documentsStillNeeded() : $types;
+    }
+
+    /** 19 Nov: what is still needed before the rest of the account opens (empty = nothing). */
+    public function gate(): array
+    {
+        if (! CustomerArea::documentsGateOn() || CustomerArea::unlocked()) {
+            return [];
+        }
+
+        return CustomerArea::requiredDocuments();
     }
 
     public function mount(): void
@@ -54,7 +72,7 @@ class Documents extends Page implements HasForms
         return $form->statePath('upload')->schema([
             Forms\Components\Select::make('type')
                 ->label('Document')
-                ->options(fn (): array => Options::requestableDocumentTypes())
+                ->options(fn (): array => self::uploadTypes())
                 ->native(false)
                 ->required(),
             Forms\Components\FileUpload::make('path')
@@ -73,7 +91,7 @@ class Documents extends Page implements HasForms
     {
         abort_unless(self::canUpload(), 403);
         $data = $this->form->getState();
-        abort_unless(array_key_exists($data['type'], Options::requestableDocumentTypes()), 422);
+        abort_unless(array_key_exists($data['type'], self::uploadTypes()), 422);
         // Only a file just uploaded into this customer's own folder is accepted.
         abort_unless(\App\Support\PrivateFiles::freshUploads([(string) $data['path']], 'customers/'.CustomerArea::customerId()) !== [], 422);
 
@@ -90,7 +108,11 @@ class Documents extends Page implements HasForms
         Notify::staff('review-documents', 'New document from '.$customer->name, Options::documentLabel($doc->type).' uploaded from their account.',
             \App\Filament\Resources\DocumentResource::getUrl('index', ['activeTab' => 'review'], panel: 'admin'), $customer->assignee, 'info', event: 'document_uploaded');
 
-        Notification::make()->title('Thank you, we received your document')->body('Our team will check it.')->success()->send();
+        request()->attributes->remove('rp.required_docs');
+        $left = CustomerArea::documentsGateOn() ? collect(CustomerArea::requiredDocuments())->filter(fn ($row) => ! $row[2] && $row[1] !== \App\Enums\DocumentStatus::Received->getLabel())->count() : 0;
+        Notification::make()->title('Thank you, we received your document')
+            ->body($left ? 'Our team will check it. Please upload the other documents too.' : 'Our team will check it. You will get a message when your account is ready.')
+            ->success()->send();
         $this->form->fill();
     }
 

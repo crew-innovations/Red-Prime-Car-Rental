@@ -415,7 +415,12 @@ class QuotationResource extends Resource
                     }
                     Notification::make()
                         ->title('Accepted. Customer profile linked.')
-                        ->body($result['documents_url'] ? 'Documents asked for. Send the customer this upload link: '.$result['documents_url'] : ($result['missing'] ? 'Documents still needed.' : 'All documents are in.'))
+                        ->body(match (true) {
+                            $result['documents_url'] === url('/account/documents') => 'Documents still needed: the customer is asked for them when they log in to their account.',
+                            (bool) $result['documents_url'] => 'Documents asked for. Send the customer this upload link: '.$result['documents_url'],
+                            (bool) $result['missing'] => 'Documents still needed.',
+                            default => 'All documents are in.',
+                        })
                         ->success()->persistent()->send();
                 }),
             $class::make('reject')

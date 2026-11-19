@@ -45,6 +45,18 @@ class Customer extends Model
         return $this->hasMany(RentalContract::class);
     }
 
+    /** 19 Nov: traffic fines matched to this customer. */
+    public function fines(): HasMany
+    {
+        return $this->hasMany(TrafficFine::class);
+    }
+
+    /** 19 Nov: Salik / Darb / parking on this customer's bookings. */
+    public function tollTrips(): \Illuminate\Database\Eloquent\Relations\HasManyThrough
+    {
+        return $this->hasManyThrough(TollTrip::class, Booking::class, 'customer_id', 'booking_id');
+    }
+
     /** Age in whole years on a date (null without a date of birth). */
     public function ageOn($date = null): ?int
     {

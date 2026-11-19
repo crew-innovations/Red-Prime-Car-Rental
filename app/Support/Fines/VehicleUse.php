@@ -21,6 +21,16 @@ class VehicleUse
     /** @return array{kind: string, booking: ?Booking, driver_id: ?int, note: string} */
     public static function at(Car $car, Carbon $at): array
     {
+        // 19 Nov: a car replaced during a rental contract was with that customer until the swap.
+        $swap = \App\Models\ContractVehicleSwap::query()->where('from_car_id', $car->id)->where('swapped_at', '>=', $at)
+            ->whereHas('contract.booking', fn ($q) => $q->whereRaw('COALESCE(delivered_at, start_at) <= ?', [$at]))
+            ->with('contract.booking')->orderBy('swapped_at')->first();
+        if ($swap && ($sb = $swap->contract?->booking) && ! \App\Models\ContractVehicleSwap::query()->where('rental_contract_id', $swap->rental_contract_id)
+            ->where('to_car_id', $car->id)->where('swapped_at', '>', $at)->exists()) {
+            return ['kind' => $sb->drive_mode === DriveMode::WithDriver ? 'driver' : 'customer', 'booking' => $sb, 'driver_id' => $sb->drive_mode === DriveMode::WithDriver ? $sb->driver_id : null,
+                'note' => 'With the customer on '.$sb->reference.' until the car was replaced ('.$swap->swapped_at->format('d M H:i').').'];
+        }
+
         $b = Booking::query()->where('bookable_type', $car->getMorphClass())->where('bookable_id', $car->id)
             ->whereIn('status', [BookingStatus::InProgress, BookingStatus::Completed])
             ->whereRaw('COALESCE(delivered_at, start_at) <= ?', [$at])
@@ -28,6 +38,12 @@ class VehicleUse
                 ->orWhere(fn ($w) => $w->whereNull('returned_at')->where('status', BookingStatus::InProgress))
                 ->orWhere(fn ($w) => $w->whereNull('returned_at')->where('end_at', '>=', $at)))
             ->orderByDesc('start_at')->first();
+
+        // 19 Nov: this car only joined that rental at the swap; before it, it was not with this customer.
+        if ($b && \App\Models\ContractVehicleSwap::query()->where('to_car_id', $car->id)->where('swapped_at', '>', $at)
+            ->whereHas('contract', fn ($q) => $q->where('booking_id', $b->id))->exists()) {
+            $b = null;
+        }
 
         if ($b) {
             if ($b->drive_mode === DriveMode::WithDriver) {

@@ -23,7 +23,7 @@ class Payments extends Page
 
     public static function canAccess(): bool
     {
-        return Access::isCustomer() && CustomerArea::allows('customer_sees_payments');
+        return Access::isCustomer() && CustomerArea::unlocked() && CustomerArea::allows('customer_sees_payments');
     }
 
     public function payments()

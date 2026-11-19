@@ -79,6 +79,7 @@ class AccountPanelProvider extends PanelProvider
             ])
             ->authMiddleware([
                 Authenticate::class,
+                \App\Http\Middleware\CustomerDocumentsFirst::class, // 19 Nov: documents before the rest of the account
             ]);
     }
 }

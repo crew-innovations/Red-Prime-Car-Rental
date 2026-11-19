@@ -22,7 +22,7 @@ class RentalReports extends Page
 
     protected static string $view = 'filament.pages.rental-reports';
 
-    public const VIEWS = ['moves' => 'Out & in', 'use' => 'Car use', 'unpaid' => 'Unpaid', 'vat' => 'VAT by emirate', 'cash' => 'Cash & bank'];
+    public const VIEWS = ['moves' => 'Out & in', 'use' => 'Car use', 'unpaid' => 'Unpaid', 'vat' => 'VAT by emirate', 'cash' => 'Cash & bank', 'fines' => 'Fines & tolls'];
 
     #[Url]
     public ?string $from = null;
@@ -32,6 +32,10 @@ class RentalReports extends Page
 
     #[Url]
     public string $tab = 'moves';
+
+    /** 19 Nov: fines & tolls per car or per customer. */
+    #[Url]
+    public string $by = 'car';
 
     public static function canAccess(): bool
     {

@@ -1,5 +1,21 @@
 <x-filament-panels::page>
     <div class="rp-acc">
+        @php($gate = $this->gate())
+        @if ($gate !== [])
+            {{-- 19 Nov: documents first, then the rest of the account. --}}
+            <div class="rp-acc-card" style="border-left:4px solid #d4a62a">
+                <div class="rp-acc-label">Before you can use your account</div>
+                <p class="rp-acc-muted" style="margin:.25rem 0 .75rem">Please upload these documents. When our team has approved them, your bookings, payments and messages open here.</p>
+                <table class="rp-acc-table">
+                    @foreach ($gate as [$label, $text, $ok])
+                        <tr>
+                            <td>{{ $label }}</td>
+                            <td class="r"><x-filament::badge :color="$ok ? 'success' : ($text === 'Missing' ? 'danger' : 'warning')">{{ $ok ? 'Approved' : ($text === \App\Enums\DocumentStatus::Received->getLabel() ? 'Being checked' : $text) }}</x-filament::badge></td>
+                        </tr>
+                    @endforeach
+                </table>
+            </div>
+        @endif
         <div class="rp-acc-card">
             <div class="rp-acc-label">Your documents</div>
             <table class="rp-acc-table">

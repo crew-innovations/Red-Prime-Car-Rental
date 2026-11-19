@@ -59,7 +59,12 @@ class QuotationDecision
 
             // Documents still needed for this service.
             $missing = collect($q->documentChecklist())->reject(fn ($row) => $row[2])->keys()->all();
-            if ($missing && (bool) Setting::read('customer_can_upload_documents', true)) {
+            // 19 Nov: a customer with an account uploads in "My documents" (documents first); no separate link.
+            $account = $missing && \App\Support\CustomerArea::documentsGateOn() && (bool) Setting::read('customer_accounts_enabled', true)
+                && \App\Models\User::query()->where('customer_id', $customerId ?: $q->customer_id)->where('is_active', true)->where('login_enabled', true)->exists();
+            if ($account) {
+                $documentsUrl = url('/account/documents');
+            } elseif ($missing && (bool) Setting::read('customer_can_upload_documents', true)) {
                 $request = DocumentRequest::issue($q->customer, $missing, (int) Setting::read('upload_link_hours', 72));
                 $documentsUrl = $request->url();
                 $q->forceFill(['document_request_id' => $request->id])->saveQuietly();

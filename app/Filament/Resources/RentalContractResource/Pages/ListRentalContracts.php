@@ -65,11 +65,12 @@ class ListRentalContracts extends ListRecords
                     }
                     $this->redirect(RentalContractResource::getUrl('view', ['record' => $c]));
                 }),
-            Actions\Action::make('newContract')
-                ->label('New contract')
-                ->icon('heroicon-o-plus')
+            Actions\Action::make('fromBooking')
+                ->label('From a booking')
+                ->icon('heroicon-o-link')
+                ->color('gray')
                 ->authorize('manage-contracts')
-                ->modalDescription('Contracts are made from a car booking. Pick the booking; make a new booking first if there is none.')
+                ->modalDescription('Make the contract for a car booking that already exists.')
                 ->form([
                     Forms\Components\Select::make('booking_id')->label('Car booking')->required()->searchable()
                         ->options(fn () => RentalContractResource::bookingsWithoutContract())
@@ -85,6 +86,8 @@ class ListRentalContracts extends ListRecords
                     }
                     $this->redirect(RentalContractResource::getUrl('view', ['record' => $c]));
                 }),
+            // 19 Nov: a new contract on its own screen (customer, car, dates, price, drivers); the booking is made with it.
+            Actions\CreateAction::make()->label('New contract')->icon('heroicon-o-plus'),
         ];
     }
 

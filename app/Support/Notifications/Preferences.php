@@ -36,7 +36,7 @@ class Preferences
 
     /** Events a person can switch in their settings (only the ones that can reach them). */
     public const AUDIENCE_EVENTS = [
-        'customer' => ['quote_accepted', 'quote_expiring', 'booking_confirmed', 'advance_reached', 'payment_received', 'balance_due', 'handed_over', 'returned', 'late_return', 'deposit_refunded', 'document_rejected', 'message', 'driver_update', 'fine_charged'],
+        'customer' => ['quote_accepted', 'quote_expiring', 'booking_confirmed', 'advance_reached', 'payment_received', 'balance_due', 'handed_over', 'returned', 'late_return', 'deposit_refunded', 'document_rejected', 'document_approved', 'message', 'driver_update', 'fine_charged'],
         'driver' => ['job_changed', 'job_soon', 'document_rejected', 'message', 'other'],
     ];
 
@@ -69,6 +69,7 @@ class Preferences
         'late_return' => 'Late return',
         'deposit_refunded' => 'Deposit refunded',
         'document_rejected' => 'A document to send again',
+        'document_approved' => 'Your documents are approved',
         'message' => 'New message from us',
         'driver_update' => 'Your driver is on the way / running late',
         'fine_charged' => 'A traffic fine or tolls on your rental',

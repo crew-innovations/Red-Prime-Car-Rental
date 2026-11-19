@@ -46,7 +46,8 @@ class RentalContractResource extends Resource
 
     public static function canCreate(): bool
     {
-        return false; // made from a booking ("Make rental contract", or "New contract" on the list)
+        // 19 Nov: "New contract" makes the car booking behind it on the same screen.
+        return Access::allows('manage-contracts') && Access::allows('manage-bookings') && ! Access::isDriverOnly();
     }
 
     public static function canEdit($record): bool
@@ -187,6 +188,13 @@ class RentalContractResource extends Resource
                             ->state(fn (RentalContract $r): string => $r->booking->damageReports()->latest()->get()
                                 ->map(fn ($d) => '<div><b>'.e(['delivery' => 'OUT', 'collection' => 'IN'][$d->stage] ?? 'During').'</b> · '.e(collect([$d->area, $d->description])->filter()->implode(': ')).' <span style="opacity:.7">· '.e($d->statusLabel()).' · '.$d->created_at->format('d M Y').'</span></div>')->implode('')),
                     ]),
+                // 19 Nov: traffic fines and tolls on this rental (matched by car and time, swaps included).
+                Infolists\Components\Section::make('Fines and tolls')->icon('heroicon-o-receipt-percent')->collapsible()
+                    ->visible(fn (RentalContract $r): bool => $r->booking && Access::allows('manage-fines'))
+                    ->schema([
+                        Infolists\Components\TextEntry::make('fines_list')->hiddenLabel()->html()
+                            ->state(fn (RentalContract $r): string => \App\Support\Fines\RentalCharges::html($r->booking)),
+                    ]),
             ]),
             Infolists\Components\Group::make()->columnSpan(['lg' => 1])->schema([
                 Infolists\Components\Section::make('Contract')->icon('heroicon-o-document-text')->schema([
@@ -227,6 +235,7 @@ class RentalContractResource extends Resource
     {
         return [
             'index' => Pages\ListRentalContracts::route('/'),
+            'create' => Pages\CreateRentalContract::route('/create'),
             'view' => Pages\ViewRentalContract::route('/{record}'),
         ];
     }

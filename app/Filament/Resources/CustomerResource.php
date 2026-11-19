@@ -351,6 +351,8 @@ class CustomerResource extends Resource
             \App\Filament\Resources\QuotationResource\RelationManagers\QuotationsRelationManager::class,
             RelationManagers\DocumentsRelationManager::class,
             RelationManagers\DocumentRequestsRelationManager::class,
+            RelationManagers\FinesRelationManager::class, // 19 Nov
+            \App\Filament\RelationManagers\TollsRelationManager::class, // 19 Nov
             \App\Filament\Resources\TransactionResource\RelationManagers\TransactionsRelationManager::class,
             \App\Filament\RelationManagers\HistoryRelationManager::class,
         ];

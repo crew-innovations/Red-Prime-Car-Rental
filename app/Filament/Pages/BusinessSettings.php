@@ -679,6 +679,9 @@ class BusinessSettings extends Page implements HasForms
                         Forms\Components\Toggle::make('customer_sees_quotations')->label('Customers see their quotations'),
                         Forms\Components\Toggle::make('customer_sees_payments')->label('Customers see their payments and balance'),
                         Forms\Components\Toggle::make('customer_can_upload_documents')->label('Customers can upload documents from their account'),
+                        Forms\Components\Toggle::make('account_documents_gate')->label('Documents first')
+                            ->helperText('When a customer logs in and documents needed for their bookings or quotations (Documents section) are missing or not approved yet, they see only "My documents" until our team approves them.')
+                            ->columnSpanFull(),
                     ]),
                 Forms\Components\Section::make('Customer portal accounts')
                     ->description('A customer account is made automatically, and the customer gets an email to choose a password. No password is ever sent by email.')
@@ -744,7 +747,7 @@ class BusinessSettings extends Page implements HasForms
     }
 
     public const DRIVER_AND_ACCOUNT_KEYS = [
-        'agent_own_records_only', 'customer_accounts_enabled', 'customer_can_upload_documents', 'customer_sees_payments', 'customer_sees_quotations', 'invite_link_hours',
+        'agent_own_records_only', 'customer_accounts_enabled', 'customer_can_upload_documents', 'account_documents_gate', 'customer_sees_payments', 'customer_sees_quotations', 'invite_link_hours',
         'driver_login_enabled', 'driver_self_service', 'driver_editable_fields', 'driver_sees_customer_phone', 'driver_sees_instructions', 'driver_steps',
         'driver_can_handover', 'handover_requires_approval', 'driver_can_return', 'driver_can_report_damage',
         'handover_require_km', 'handover_require_fuel', 'handover_min_photos', 'return_require_km', 'return_require_fuel', 'return_min_photos',

@@ -29,7 +29,7 @@ class Messages extends Page
 
     public static function canAccess(): bool
     {
-        return Access::isCustomer();
+        return Access::isCustomer() && CustomerArea::unlocked();
     }
 
     public static function getNavigationBadge(): ?string

@@ -21,10 +21,16 @@ class Mrz
 
         foreach ($lines as $i => $line) {
             if (strlen($line) >= 43 && isset($lines[$i + 1]) && strlen($lines[$i + 1]) >= 43 && $line[0] === 'P') {
-                return self::td3(str_pad($line, 44, '<'), str_pad($lines[$i + 1], 44, '<'));
+                $l1 = self::names44(substr(str_pad($line, 44, '<'), 0, 44));
+                $l2 = self::fix(substr(str_pad($lines[$i + 1], 44, '<'), 0, 44), [[9, 9], [13, 19], [21, 27], [42, 43]], [[10, 12]]);
+
+                return self::td3($l1, $l2);
             }
             if (strlen($line) >= 29 && isset($lines[$i + 2]) && in_array($line[0], ['I', 'A', 'C'], true)) {
-                return self::td1(str_pad($line, 30, '<'), str_pad($lines[$i + 1], 30, '<'), str_pad($lines[$i + 2], 30, '<'));
+                $l1 = self::fix(substr(str_pad($line, 30, '<'), 0, 30), [[14, 14]], [[2, 4]]);
+                $l2 = self::fix(substr(str_pad($lines[$i + 1], 30, '<'), 0, 30), [[0, 6], [8, 14], [29, 29]], [[15, 17]]);
+
+                return self::td1($l1, $l2, self::names44(substr(str_pad($lines[$i + 2], 30, '<'), 0, 30)));
             }
         }
 
@@ -70,6 +76,31 @@ class Mrz
             'given_names' => $given,
             'valid' => $valid,
         ];
+    }
+
+    /**
+     * 19 Nov: common text-reading slips, fixed by position (the layout is fixed): letters in number
+     * fields (O→0, I→1…) and numbers in letter fields (0→O…). The check digits still decide.
+     */
+    protected static function fix(string $line, array $digits, array $letters): string
+    {
+        $toDigit = ['O' => '0', 'Q' => '0', 'D' => '0', 'I' => '1', 'L' => '1', 'Z' => '2', 'S' => '5', 'G' => '6', 'B' => '8'];
+        $toLetter = ['0' => 'O', '1' => 'I', '2' => 'Z', '5' => 'S', '6' => 'G', '8' => 'B'];
+        foreach ([[$digits, $toDigit], [$letters, $toLetter]] as [$ranges, $map]) {
+            foreach ($ranges as [$from, $to]) {
+                for ($p = $from; $p <= $to && $p < strlen($line); $p++) {
+                    $line[$p] = $map[$line[$p]] ?? $line[$p];
+                }
+            }
+        }
+
+        return $line;
+    }
+
+    /** The filler at the end of a names line is often read as "LLLL": turn it back into "<". */
+    protected static function names44(string $line): string
+    {
+        return preg_replace_callback('/<[<L]*$/', fn ($m) => str_repeat('<', strlen($m[0])), $line);
     }
 
     /** ICAO 9303 check digit (weights 7, 3, 1). */

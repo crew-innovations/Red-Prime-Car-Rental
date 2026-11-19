@@ -99,6 +99,43 @@
                 @if ($rows)<tfoot><tr><td>Total</td><td class="r">{{ collect($rows)->sum('count') }}</td><td class="r">{{ $aed(collect($rows)->sum('net')) }}</td><td class="r">{{ $aed(collect($rows)->sum('vat')) }}</td></tr></tfoot>@endif
             </table>
             <p style="font-size:.8rem;opacity:.7;padding:.75rem 1rem">From invoices and credit notes issued in the period. The emirate is the booking's (Rental agreement section), else the default in Settings › Bank, cash and marketplaces. Check with your accountant before filing.</p>
+        @elseif ($tab === 'fines')
+            {{-- 19 Nov: fines and tolls per car / per customer, by the date of the offence or the pass. --}}
+            @php($rows = \App\Support\Fines\RentalCharges::report($by === 'customer' ? 'customer' : 'car', $r->from, $r->until))
+            <div style="padding:.75rem 1rem">
+                <x-filament::tabs>
+                    <x-filament::tabs.item :active="$by !== 'customer'" wire:click="$set('by', 'car')">Per car</x-filament::tabs.item>
+                    <x-filament::tabs.item :active="$by === 'customer'" wire:click="$set('by', 'customer')">Per customer</x-filament::tabs.item>
+                </x-filament::tabs>
+            </div>
+            <table class="rp-rep-table">
+                <thead><tr><th>{{ $by === 'customer' ? 'Customer' : 'Car' }}</th><th class="r">Fines</th><th class="r">Amount (with fees)</th><th class="r">Passed to customer</th><th class="r">Collected</th><th class="r">Still to sort</th><th class="r">Company cost</th><th class="r">Not paid to authority</th><th class="r">Tolls</th><th class="r">Toll amount</th><th class="r">Tolls charged</th><th class="r">Tolls to sort</th></tr></thead>
+                <tbody>
+                @forelse ($rows as $row)
+                    <tr>
+                        <td>@if ($row['url']) <a href="{{ $row['url'] }}">{{ $row['name'] }}</a> @else {{ $row['name'] }} @endif</td>
+                        <td class="r">{{ $row['fines'] }}</td>
+                        <td class="r">{{ $aed($row['fines_amount']) }}</td>
+                        <td class="r">{{ $aed($row['fines_passed_on']) }}</td>
+                        <td class="r">{{ $aed($row['fines_collected']) }}</td>
+                        <td class="r">{{ $aed($row['fines_open']) }}</td>
+                        <td class="r">{{ $aed($row['fines_company']) }}</td>
+                        <td class="r">{{ $aed($row['fines_unpaid_authority']) }}</td>
+                        <td class="r">{{ $row['tolls'] }}</td>
+                        <td class="r">{{ $aed($row['tolls_amount']) }}</td>
+                        <td class="r">{{ $aed($row['tolls_charged']) }}</td>
+                        <td class="r">{{ $aed($row['tolls_open']) }}</td>
+                    </tr>
+                @empty
+                    <tr><td colspan="12" style="opacity:.7">No fines or tolls in this period.</td></tr>
+                @endforelse
+                </tbody>
+                @if ($rows)<tfoot><tr><td>Total</td>
+                    @foreach (['fines', 'fines_amount', 'fines_passed_on', 'fines_collected', 'fines_open', 'fines_company', 'fines_unpaid_authority', 'tolls', 'tolls_amount', 'tolls_charged', 'tolls_open'] as $k)
+                        <td class="r">{{ in_array($k, ['fines', 'tolls'], true) ? collect($rows)->sum($k) : $aed(collect($rows)->sum($k)) }}</td>
+                    @endforeach
+                </tr></tfoot>@endif
+            </table>
         @else
             @php($rows = $r->cash())
             <table class="rp-rep-table">

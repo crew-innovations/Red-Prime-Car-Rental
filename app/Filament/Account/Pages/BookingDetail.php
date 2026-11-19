@@ -25,7 +25,7 @@ class BookingDetail extends Page
 
     public static function canAccess(): bool
     {
-        return Access::isCustomer();
+        return Access::isCustomer() && CustomerArea::unlocked();
     }
 
     public function mount(int|string $booking): void

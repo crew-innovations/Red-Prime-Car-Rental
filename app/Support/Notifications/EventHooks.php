@@ -142,6 +142,17 @@ class EventHooks
     /** A customer document was rejected / a new upload asked for (CustomerDocument::saved). */
     public static function document(CustomerDocument $d): void
     {
+        // 19 Nov: the last required document approved → the customer's account opens; tell them.
+        if ($d->wasChanged('status') && $d->status === DocumentStatus::Approved && $d->customer
+            && \App\Support\CustomerArea::documentsGateOn()) {
+            $list = \App\Support\CustomerArea::requiredDocumentsFor($d->customer);
+            if ($list !== [] && collect($list)->every(fn (array $row) => $row[2])) {
+                Notify::customer($d->customer, 'Your documents are approved', 'Thank you. Your account is ready: you can see your bookings, payments and messages.',
+                    url('/account'), 'document_approved', $d, 'documents_complete:customer:'.$d->customer_id.':'.$d->id, 'success');
+            }
+
+            return;
+        }
         if (! $d->wasChanged('status') || ! in_array($d->status, [DocumentStatus::Rejected, DocumentStatus::Replacement], true)) {
             return;
         }

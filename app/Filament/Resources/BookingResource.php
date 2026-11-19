@@ -229,7 +229,7 @@ class BookingResource extends Resource
 
                 Forms\Components\ToggleButtons::make('service_type')
                     ->label('Service')
-                    ->options(fn (?Booking $record): array => ServiceType::pickerOptions($record?->service_type))
+                    ->options(fn (?Booking $record, $livewire): array => $livewire instanceof \App\Filament\Resources\RentalContractResource\Pages\CreateRentalContract ? [ServiceType::Car->value => ServiceType::Car->getLabel()] : ServiceType::pickerOptions($record?->service_type))
                     ->icons(ServiceType::pickerIcons())
                     ->default(ServiceType::Car->value)
                     ->inline()

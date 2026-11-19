@@ -46,6 +46,7 @@ class Events
         'damage' => ['Damage reported', 'Operations'],
         'document_uploaded' => ['Customer document uploaded', 'Documents'],
         'document_rejected' => ['Document rejected / expiring', 'Documents'],
+        'document_approved' => ['Customer documents approved (account ready)', 'Documents'],
         'message' => ['New message', 'Messages'],
         'other' => ['Other CRM notices', 'Other'],
     ];

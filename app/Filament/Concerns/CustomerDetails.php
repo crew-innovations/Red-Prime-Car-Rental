@@ -9,6 +9,7 @@ use App\Models\Customer;
 use App\Models\CustomerDocument;
 use App\Support\Access;
 use App\Support\Ocr\DocumentReader;
+use App\Support\Ocr\LocalOcr;
 use Filament\Forms;
 use Filament\Forms\Get;
 use Filament\Forms\Set;
@@ -90,7 +91,7 @@ class CustomerDetails
                     $date('trade_licence_expires_on', 'Trade licence expiry')->visible($company)->columnSpan(2),
                 ]),
             Forms\Components\Section::make('Documents')
-                ->description(fn (): string => 'Photos or PDFs. Front and back can go in the same field.'.(DocumentReader::ready() ? ' Then press "Read the documents" to fill the fields above.' : ''))
+                ->description('Photos or PDFs. Front and back can go in the same field. Then press "Read the documents" to fill the empty fields above.')
                 ->columns(2)
                 ->schema([
                     ...collect(self::uploads())->map(fn ($meta, $key) => Forms\Components\FileUpload::make('upload_'.$key)
@@ -111,9 +112,22 @@ class CustomerDetails
                             ->label('Read the documents (OCR)')
                             ->icon('heroicon-o-sparkles')
                             ->color('gray')
-                            ->action(fn (Get $get, Set $set) => self::fillFromDocuments($get, $set)),
+                            ->tooltip(fn (): string => DocumentReader::ready() ? 'Uses the document reader set up in Integrations.' : 'Read on this computer: nothing is sent outside the CRM.')
+                            ->action(fn (Get $get, Set $set, $livewire, $component) => DocumentReader::ready()
+                                ? self::fillFromDocuments($get, $set)
+                                : LocalOcr::start($livewire, $component->getContainer()->getStatePath().'.ocr_text', self::uploadedFiles($get))),
                     ])->columnSpanFull(),
                     Forms\Components\Hidden::make('ocr_result'),
+                    // 19 Nov: the text read on this computer comes back here and is matched to the fields.
+                    Forms\Components\Hidden::make('ocr_text')->dehydrated(false)
+                        ->afterStateUpdated(function (?string $state, Get $get, Set $set) {
+                            if (blank($state)) {
+                                return;
+                            }
+                            $docs = LocalOcr::texts($state);
+                            $set('ocr_text', null);
+                            self::applyFound($get, $set, \App\Support\Ocr\TextParser::customer($docs), $docs === [] ? 'No text could be read. Try a sharper photo.' : null);
+                        }),
                 ]),
         ];
     }
@@ -216,30 +230,42 @@ class CustomerDetails
         }
     }
 
-    /** "Read the documents": fill empty fields from the uploads, tell what was filled and what differs. */
-    public static function fillFromDocuments(Get $get, Set $set, string $prefix = ''): void
+    /** Uploaded and stored files of the document fields, with their upload key. */
+    public static function uploadedFiles(Get $get, string $prefix = ''): array
     {
         $files = [];
         foreach (array_keys(self::UPLOADS) as $type) {
             foreach ((array) ($get($prefix.'upload_'.$type) ?? []) as $file) {
                 $path = match (true) {
                     is_object($file) && method_exists($file, 'getRealPath') => $file->getRealPath(),
-                    is_string($file) && $file !== '' => Storage::disk('private')->path($file),
+                    is_string($file) && $file !== '' && Storage::disk('private')->exists($file) => Storage::disk('private')->path($file),
                     default => null,
                 };
                 if ($path) {
-                    $files[] = ['path' => $path, 'mime' => is_object($file) && method_exists($file, 'getMimeType') ? $file->getMimeType() : null, 'type' => self::UPLOADS[$type][0]];
+                    $files[] = ['path' => $path, 'mime' => is_object($file) && method_exists($file, 'getMimeType') ? $file->getMimeType() : null, 'type' => self::UPLOADS[$type][0], 'key' => $type];
                 }
             }
         }
+
+        return $files;
+    }
+
+    /** "Read the documents" with the document reader set up in Integrations (AI provider). */
+    public static function fillFromDocuments(Get $get, Set $set, string $prefix = ''): void
+    {
         try {
-            $found = DocumentReader::readCustomer($files);
+            $found = DocumentReader::readCustomer(self::uploadedFiles($get, $prefix));
         } catch (\Throwable $e) {
             Notification::make()->warning()->title('Could not read the documents')->body($e->getMessage())->send();
 
             return;
         }
+        self::applyFound($get, $set, $found, null, $prefix);
+    }
 
+    /** Fill empty fields from what was found; tell what was filled and what differs. */
+    public static function applyFound(Get $get, Set $set, array $found, ?string $problem = null, string $prefix = ''): void
+    {
         $filled = [];
         $differs = [];
         foreach (DocumentReader::CUSTOMER_FIELDS as $field) {
@@ -259,8 +285,8 @@ class CustomerDetails
         }
         $set($prefix.'ocr_result', json_encode($found));
 
-        Notification::make()->success()->title($filled ? 'Filled in: '.implode(', ', $filled) : 'Nothing new to fill in')
-            ->body(($differs ? 'Different from what is typed (not changed): '.implode('; ', $differs).'. ' : '').'Check every field before saving.')
+        Notification::make()->{$filled ? 'success' : 'warning'}()->title($filled ? 'Filled in: '.implode(', ', $filled) : 'Nothing new to fill in')
+            ->body(($problem ? $problem.' ' : '').($differs ? 'Different from what is typed (not changed): '.implode('; ', $differs).'. ' : '').'Check every field before saving.')
             ->persistent()->send();
     }
 }

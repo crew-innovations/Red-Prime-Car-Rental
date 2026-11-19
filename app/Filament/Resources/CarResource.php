@@ -645,6 +645,7 @@ class CarResource extends Resource
             \App\Filament\Resources\BookingResource\RelationManagers\BookingsRelationManager::class,
             RelationManagers\MaintenancesRelationManager::class,
             RelationManagers\FinesRelationManager::class, // 4 Nov (Phase 4)
+            \App\Filament\RelationManagers\TollsRelationManager::class, // 19 Nov
             RelationManagers\FuelEntriesRelationManager::class, // 5 Nov (S5)
             \App\Filament\Resources\TransactionResource\RelationManagers\TransactionsRelationManager::class,
             \App\Filament\RelationManagers\HistoryRelationManager::class,
