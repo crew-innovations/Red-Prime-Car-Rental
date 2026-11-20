@@ -63,7 +63,8 @@ class CreateQuotation extends CreateRecord
 
         if ($lead) {
             $data['lead_id'] = $lead->id;
-            $data['customer_id'] = $lead->customer_id;
+            // 20 Nov (item 13): the lead's customer is filled in; never asked again.
+            $data['customer_id'] = $lead->customer_id ?? $lead->matchingCustomer()?->id;
             $data['guests'] = $lead->guests;
             if ($lead->interested_in_type === $service) {
                 $data['bookable_id'] = $lead->interested_in_id;
@@ -111,6 +112,18 @@ class CreateQuotation extends CreateRecord
                 $this->data[$key] = $value;
             }
         }
+    }
+
+    /** 20 Nov (item 13): a quote from a lead is saved against that lead's customer (made from the lead if needed). */
+    protected function mutateFormDataBeforeCreate(array $data): array
+    {
+        if (blank($data['customer_id'] ?? null) && ($lead = Lead::find($data['lead_id'] ?? null))) {
+            $data['customer_id'] = $lead->ensureCustomer()->id;
+        } elseif (filled($data['customer_id'] ?? null) && ($lead = Lead::find($data['lead_id'] ?? null)) && ! $lead->customer_id) {
+            $lead->forceFill(['customer_id' => $data['customer_id']])->saveQuietly();
+        }
+
+        return parent::mutateFormDataBeforeCreate($data);
     }
 
     /** Creating and sending are one step: the quote opens with the send window ready. */

@@ -18,19 +18,14 @@ class CreateLead extends CreateRecord
     protected function afterFill(): void
     {
         if ($customer = Customer::find($this->customer)) {
-            $this->data['name'] = $customer->name;
-            $this->data['phone'] = $customer->phone;
-            $this->data['whatsapp'] = $customer->whatsapp;
-            $this->data['email'] = $customer->email;
-            $this->data['lead_source_id'] = $this->data['lead_source_id'] ?? null;
+            $this->data['customer_id'] = $customer->id; // 20 Nov: picked in the customer field
+            $this->data['lead_source_id'] = $this->data['lead_source_id'] ?? $customer->lead_source_id;
         }
     }
 
     protected function mutateFormDataBeforeCreate(array $data): array
     {
-        if ($customer = Customer::find($this->customer)) {
-            $data['customer_id'] = $customer->id;
-        }
+        $data = LeadResource::withCustomer($data);
         // 5 Nov (S3): only Admin gives leads to someone else; an agent's new lead is their own.
         if (! \App\Support\Access::allows('assign-leads')) {
             $data['assigned_to'] = auth()->id();

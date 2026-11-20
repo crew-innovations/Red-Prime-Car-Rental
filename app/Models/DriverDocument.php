@@ -166,7 +166,7 @@ class DriverDocument extends Model
     /** Short-lived signed link (private-file route checks who is asking). */
     public function viewUrl(): ?string
     {
-        return $this->path ? Storage::disk('private')->temporaryUrl($this->path, now()->addMinutes(10)) : null;
+        return $this->path ? Storage::disk('private')->temporaryUrl($this->path, now()->addHours(2)) : null; // 20 Nov: 2 h, pages stay open; login + permission are still checked
     }
 
     /** Last 4 characters only, for lists. */

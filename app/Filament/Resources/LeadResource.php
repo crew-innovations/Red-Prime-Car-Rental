@@ -67,8 +67,43 @@ class LeadResource extends Resource
                 Forms\Components\Group::make()
                     ->columnSpan(['lg' => 2])
                     ->schema([
+                        // 20 Nov (Bilal, item 11): adding a lead uses the same customer form as New Booking: pick the
+                        // customer on file, or fill in their details here (saved as a customer profile, a prospect
+                        // until the lead is won). Website / social leads without a profile keep their contact
+                        // fields below until "Create customer profile" (same form) is used.
+                        Forms\Components\Section::make('Customer')
+                            ->icon('heroicon-o-user')
+                            ->visible(fn (string $operation, ?Lead $record): bool => $operation === 'create' || (bool) $record?->customer_id)
+                            ->schema([
+                                Forms\Components\Select::make('customer_id')
+                                    ->label('Customer')
+                                    ->relationship('customer', 'name')
+                                    ->getOptionLabelFromRecordUsing(fn (Model $record): string => $record->name.($record->phone ? ' · '.$record->phone : ''))
+                                    ->searchable(['name', 'phone', 'whatsapp', 'email', 'company_name'])
+                                    ->placeholder('New customer: fill in the form below')
+                                    ->helperText('Already a customer? Pick them. Otherwise fill in their details below (the same form as New Booking).')
+                                    ->tap(fn (Forms\Components\Select $select) => \App\Filament\Concerns\CustomerDetails::picker($select))
+                                    ->live(),
+                                Forms\Components\Group::make(fn (): array => \App\Filament\Concerns\CustomerDetails::schema())
+                                    ->statePath('customer')
+                                    ->visible(fn (Get $get, string $operation): bool => $operation === 'create' && blank($get('customer_id'))),
+                                Forms\Components\Select::make('lead_source_id')
+                                    ->label('Source')
+                                    ->relationship('leadSource', 'name', fn (Builder $query) => $query->where('is_active', true)->orderBy('sort_order'))
+                                    ->searchable()
+                                    ->preload()
+                                    ->required(),
+                                Forms\Components\Toggle::make('more_options')
+                                    ->label('More options: budget, follow-up')
+                                    ->dehydrated(false)
+                                    ->live()
+                                    ->visibleOn('create'),
+                            ]),
+
                         Forms\Components\Section::make('Contact')
                             ->icon('heroicon-o-user')
+                            ->description('From the website or social media, no customer profile yet. Use "Create customer profile" (same form as New Booking) to make one.')
+                            ->visible(fn (string $operation, ?Lead $record): bool => $operation !== 'create' && ! $record?->customer_id)
                             ->columns(2)
                             ->schema([
                                 Forms\Components\TextInput::make('name')
@@ -337,6 +372,32 @@ class LeadResource extends Resource
     }
 
     /** Warns while typing if the phone/email already belongs to a customer or another open lead. */
+    /**
+     * 20 Nov (item 11): the lead's customer: the one picked, or a new profile from the customer form
+     * (a prospect until the lead is won). The lead keeps a copy of the contact details for lists and
+     * messages, taken from the customer so both stay the same.
+     */
+    public static function withCustomer(array $data): array
+    {
+        $customer = filled($data['customer_id'] ?? null) ? \App\Models\Customer::find($data['customer_id']) : null;
+        $form = (array) ($data['customer'] ?? []);
+        unset($data['customer']);
+        if (! $customer && filled($form['name'] ?? null)) {
+            $customer = \App\Filament\Concerns\CustomerDetails::create($form);
+            $customer->forceFill(['status' => 'prospect', 'lead_source_id' => $customer->lead_source_id ?? ($data['lead_source_id'] ?? null)])->saveQuietly();
+        }
+        if ($customer) {
+            $data['customer_id'] = $customer->id;
+            $data['name'] = $customer->name;
+            $data['phone'] = $customer->phone;
+            $data['whatsapp'] = $customer->whatsapp;
+            $data['email'] = $customer->email;
+            $data['company_name'] = $customer->company_name;
+        }
+
+        return $data;
+    }
+
     protected static function existingContactHint(?string $value, ?Lead $record): ?string
     {
         if (blank($value) || strlen($value) < 6) {

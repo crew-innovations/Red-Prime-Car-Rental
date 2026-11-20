@@ -1,5 +1,14 @@
 # Development log — RED PRIME RENTALS CRM
 
+## 2026-11-20 (2) · Document links fixed, Add lead with the customer form, help on every page, quote from a lead
+
+Bilal's items 10–13 (change requests; items 10 and 13 are fixes of M2 work, 11 and 12 extend the M1/M2 screens).
+- **10. "403 Invalid signature" on documents.** Every private file link failed on the live server (fresh ones too): Laravel checks the signature against the raw query string, and the LiteSpeed server changes it. New `App\Http\Middleware\ValidRelativeSignature` checks the signature over the path and expiry only (current and previous app keys), says "This link has expired" for old links, and logs "Signed link refused" with details if one is still refused. Used for `/crm/private-file/…`, the account invite and unsubscribe links. Document links now last 2 hours (was 10 minutes). Agents with "manage-drivers" may open driver documents (`PrivateFiles::agentAllows`). Files stay private: the user check is unchanged.
+- **11. Add lead = the New Booking customer form.** Pick a customer on file, or fill in the full customer form; a new profile is made as a prospect and linked (`LeadResource::withCustomer`). Leads from the website / social media without a profile keep the old contact fields and "Create customer profile".
+- **12. Help on every page.** `App\Support\HelpGuides`: one guide per module (35, plus the customer account), each with what it is for, where, who can use it, step-by-step how-tos, buttons / tabs / fields, what happens next and tips. The "Help" button (gold "?") on every page opens its guide in a side panel, with the page's own "how to" first (`Help::guide`). Help centre with search at `/crm/help` (user menu › Help guides). Customer account pages have their own help. Home has the button at the top right (no title bar there). Screenshots are not in the guides yet. **When a page changes, update its guide** (test `HelpGuidesTest` fails if a page has no guide).
+- **13. Create quotation from a lead.** The lead's customer (or the customer on file with the same phone / email) is picked by itself; a lead without a profile shows its details and the profile is made on save (`Lead::ensureCustomer`), and the lead, customer and quote stay linked.
+- **Tests:** `HelpGuidesTest` (5), new tests in `DriverWorkflowTest`, `CustomerFormEverywhereTest` (2). Full suite compared with the baseline: see the release note.
+
 ## 2026-11-20 · Driver documents and job assignment, one customer form everywhere
 
 Bilal, 20 Nov, items 8 and 9. Change request. Migration `2026_11_20_000001_driver_document_review` (additive: `driver_documents.status` default approved, `reviewed_by`, `reviewed_at`, `review_note`).

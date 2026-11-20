@@ -69,7 +69,10 @@ class PrivateFiles
         if ($doc) {
             return $own('customer', \App\Models\Customer::withTrashed())->whereKey($doc->customer_id)->exists();
         }
-        if (DriverDocument::where('path', $path)->exists() || str_starts_with($path, 'fuel/')) {
+        if (DriverDocument::where('path', $path)->exists()) {
+            return \App\Support\Access::allows('manage-drivers'); // 20 Nov (item 10): agents given driver management can open them
+        }
+        if (str_starts_with($path, 'fuel/')) {
             return false;
         }
         // 18 Nov: rental contract PDFs of their own bookings

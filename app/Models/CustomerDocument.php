@@ -52,7 +52,7 @@ class CustomerDocument extends Model
     /** Short-lived link that only works for logged-in staff. */
     public function viewUrl(): ?string
     {
-        return $this->path ? Storage::disk('private')->temporaryUrl($this->path, now()->addMinutes(10)) : null;
+        return $this->path ? Storage::disk('private')->temporaryUrl($this->path, now()->addHours(2)) : null; // 20 Nov: 2 h, pages stay open; login + permission are still checked
     }
 
     public function isValidOn($date): bool

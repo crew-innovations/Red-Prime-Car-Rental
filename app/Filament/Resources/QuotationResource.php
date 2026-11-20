@@ -97,9 +97,18 @@ class QuotationResource extends Resource
                                 ->preload()
                                 ->required(fn (Get $get): bool => blank($get('lead_id')))
                                 ->placeholder(fn (Get $get): string => filled($get('lead_id')) ? 'From the lead (profile created when converted)' : 'Select an option')
+                                // 20 Nov (item 13): from a lead without a profile the lead's details are shown instead of an empty picker.
+                                ->hidden(fn (Get $get, string $operation): bool => $operation === 'create' && filled($get('lead_id')) && blank($get('customer_id')))
                                 // 20 Nov (Bilal, item 9): the same customer form as New Booking (add new / open details).
                                 ->tap(fn (Forms\Components\Select $select) => \App\Filament\Concerns\CustomerDetails::picker($select))
                                 ->live()
+                                ->columnSpanFull(),
+                            Forms\Components\Placeholder::make('lead_customer')
+                                ->label('Customer')
+                                ->visible(fn (Get $get, string $operation): bool => $operation === 'create' && filled($get('lead_id')) && blank($get('customer_id')))
+                                ->content(fn (Get $get): ?HtmlString => ($l = \App\Models\Lead::find($get('lead_id')))
+                                    ? new HtmlString('<b>'.e($l->name).'</b>'.e(collect([$l->phone, $l->email, $l->company_name])->filter()->map(fn ($v) => ' · '.$v)->implode('')).'<br><span style="opacity:.7">From the lead. A customer profile is made from these details when you save.</span>')
+                                    : null)
                                 ->columnSpanFull(),
                             Forms\Components\Hidden::make('lead_id'),
                             Forms\Components\ToggleButtons::make('service_type')

@@ -214,6 +214,35 @@ class Lead extends Model
         });
     }
 
+    /**
+     * 20 Nov (item 13): the lead's customer for a quotation: its own, the one on file with the same
+     * phone / email, or a new profile from the lead's details (a prospect until the lead is won).
+     */
+    public function ensureCustomer(): Customer
+    {
+        return DB::transaction(function () {
+            $customer = $this->customer ?? $this->matchingCustomer();
+            if (! $customer) {
+                $customer = Customer::create([
+                    'name' => $this->name,
+                    'phone' => $this->phone,
+                    'whatsapp' => $this->whatsapp ?: $this->phone,
+                    'email' => $this->email,
+                    'lead_source_id' => $this->lead_source_id,
+                    'assigned_to' => $this->assigned_to,
+                    'company_name' => $this->company_name,
+                    'type' => $this->pipeline === Pipeline::B2b ? CustomerType::Corporate : CustomerType::Individual,
+                ]);
+                $customer->forceFill(['status' => 'prospect'])->saveQuietly();
+            }
+            if ((int) $this->customer_id !== (int) $customer->id) {
+                $this->forceFill(['customer_id' => $customer->id])->saveQuietly();
+            }
+
+            return $customer;
+        });
+    }
+
     /** The customer already on file with this lead's phone, WhatsApp or email (no duplicates). */
     public function matchingCustomer(): ?Customer
     {

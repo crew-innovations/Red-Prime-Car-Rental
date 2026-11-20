@@ -34,7 +34,7 @@ Route::get('/crm/private-file/{path}', function (Request $request, string $path)
     abort_unless($disk->exists($path), 404);
 
     return $disk->response($path, null, ['Cache-Control' => 'private, max-age=300', 'X-Content-Type-Options' => 'nosniff']);
-})->where('path', '.*')->middleware('signed:relative')->name('private-file');
+})->where('path', '.*')->middleware(\App\Http\Middleware\ValidRelativeSignature::class)->name('private-file'); // 20 Nov: see the middleware
 
 // Staff-only preview of a Yacht Trip / Package as the website receives it (published or not).
 Route::get('/crm/preview/{type}/{id}', function (Request $request, string $type, int $id) {
@@ -107,8 +107,8 @@ Route::prefix('documents')->middleware('throttle:60,1')->group(function () {
 Route::get('/quote/{token}/pdf', [\App\Http\Controllers\DocumentPdfController::class, 'publicQuotation'])->middleware('throttle:30,1')->name('quotations.public.pdf');
 
 // "Choose your password" link for driver and customer logins (signed, expires, single use).
-Route::get('/invite/{user}', [\App\Http\Controllers\AccountInviteController::class, 'show'])->middleware(['signed:relative', 'throttle:30,1'])->whereNumber('user')->name('account.invite');
-Route::post('/invite/{user}', [\App\Http\Controllers\AccountInviteController::class, 'store'])->middleware(['signed:relative', 'throttle:10,1'])->whereNumber('user')->name('account.invite.store');
+Route::get('/invite/{user}', [\App\Http\Controllers\AccountInviteController::class, 'show'])->middleware([\App\Http\Middleware\ValidRelativeSignature::class, 'throttle:30,1'])->whereNumber('user')->name('account.invite');
+Route::post('/invite/{user}', [\App\Http\Controllers\AccountInviteController::class, 'store'])->middleware([\App\Http\Middleware\ValidRelativeSignature::class, 'throttle:10,1'])->whereNumber('user')->name('account.invite.store');
 
 // Installable apps and push notifications (4 Nov 2026, brief 9 / 16).
 Route::get('/manifest/{app}.webmanifest', [\App\Http\Controllers\Pwa\AppController::class, 'manifest'])->whereIn('app', \App\Support\Push\Apps::KEYS)->name('pwa.manifest');
@@ -134,7 +134,7 @@ Route::get('/unsubscribe/{customer}', function (\Illuminate\Http\Request $reques
     }
 
     return response()->view('emails.unsubscribed', ['company' => \App\Support\Mail\Branding::name()]);
-})->middleware(['signed:relative', 'throttle:20,1'])->whereNumber('customer')->name('email.unsubscribe');
+})->middleware([\App\Http\Middleware\ValidRelativeSignature::class, 'throttle:20,1'])->whereNumber('customer')->name('email.unsubscribe');
 
 // Driver phone (4 Nov, 15): steps / late / decline with the phone's action id, and live location (setting).
 Route::middleware(['auth', 'throttle:60,1'])->group(function () {

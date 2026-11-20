@@ -69,6 +69,9 @@ class AdminPanelProvider extends PanelProvider
             ->userMenuItems([
                 \Filament\Navigation\MenuItem::make()->label('My notifications')->icon('heroicon-o-bell-alert')
                     ->url(fn (): string => \App\Filament\Pages\MyNotifications::getUrl()),
+                // 20 Nov (item 12): every help guide in one place.
+                \Filament\Navigation\MenuItem::make()->label('Help guides')->icon('heroicon-o-question-mark-circle')
+                    ->url(fn (): string => \App\Filament\Pages\HelpCentre::getUrl()),
             ])
             ->sidebarWidth('16.5rem')
             ->defaultAvatarProvider(\App\Support\InitialsAvatar::class)
@@ -93,6 +96,8 @@ class AdminPanelProvider extends PanelProvider
                 .'<span class="rp-tab-more-show">More views ▾</span><span class="rp-tab-more-hide">Fewer views ▴</span></button>'))
             // 6 Nov (S4 / C.2): "?" with three lines of help on the main pages (lang/en/help.php).
             ->renderHook(PanelsRenderHook::PAGE_HEADER_ACTIONS_BEFORE, fn (): HtmlString => \App\Support\Help::button())
+            // 20 Nov (item 12): Home has no page title bar, so its "Help" sits at the top right.
+            ->renderHook(PanelsRenderHook::PAGE_START, fn (): HtmlString => new HtmlString('<div class="rp-help-bar">'.\App\Support\Help::button().'</div>'), scopes: \App\Filament\Pages\Dashboard::class)
             // Installed app and push notifications (4 Nov, brief 9 / 16).
             ->renderHook(PanelsRenderHook::HEAD_END, fn (): HtmlString => \App\Support\Push\PanelHooks::head())
             ->renderHook(PanelsRenderHook::BODY_END, fn (): HtmlString => \App\Support\Push\PanelHooks::body())

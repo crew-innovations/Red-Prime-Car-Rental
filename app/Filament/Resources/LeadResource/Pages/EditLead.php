@@ -47,6 +47,12 @@ class EditLead extends EditRecord
         return LeadResource::waitingForAgent($this->getRecord()) ? [$this->getCancelFormAction()->label('Back')] : $this->guardedFormActions();
     }
 
+    /** 20 Nov (item 11): a lead with a customer keeps the customer's contact details. */
+    protected function mutateFormDataBeforeSave(array $data): array
+    {
+        return filled($data['customer_id'] ?? null) ? LeadResource::withCustomer($data) : $data;
+    }
+
     protected function getHeaderActions(): array
     {
         return $this->withNextStep($this->pageActions()); // 6 Nov (S4): one big next step, the rest under "More"

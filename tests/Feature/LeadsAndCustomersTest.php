@@ -34,7 +34,8 @@ class LeadsAndCustomersTest extends TestCase
     {
         $this->seed(\Database\Seeders\LeadSourceSeeder::class);
         Livewire::test(CreateLead::class)
-            ->fillForm(['lead_source_id' => \App\Models\LeadSource::value('id'), 'name' => 'Omar Khalid', 'phone' => '050 111 2233', 'service_type' => ServiceType::Yacht->value, 'pipeline' => Pipeline::Yacht->value, 'stage' => 'new'])
+            // 20 Nov (item 11): the contact details are entered in the customer form (same as New Booking).
+            ->fillForm(['lead_source_id' => \App\Models\LeadSource::value('id'), 'customer' => ['type' => 'individual', 'name' => 'Omar Khalid', 'phone' => '050 111 2233'], 'service_type' => ServiceType::Yacht->value, 'pipeline' => Pipeline::Yacht->value, 'stage' => 'new'])
             ->call('create')
             ->assertHasNoFormErrors();
 

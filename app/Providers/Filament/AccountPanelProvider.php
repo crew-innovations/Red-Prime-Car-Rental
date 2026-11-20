@@ -61,6 +61,8 @@ class AccountPanelProvider extends PanelProvider
                 fn (): HtmlString => new HtmlString('<link rel="stylesheet" href="'.asset('css/crm.css').'?v='.@filemtime(public_path('css/crm.css')).'">'),
             )
             // Installed app and push notifications (4 Nov, brief 9 / 16).
+            // 20 Nov (item 12): "Help" on every page of the customer account.
+            ->renderHook(PanelsRenderHook::PAGE_HEADER_ACTIONS_BEFORE, fn (): HtmlString => \App\Support\Help::button())
             ->renderHook(PanelsRenderHook::HEAD_END, fn (): HtmlString => \App\Support\Push\PanelHooks::head())
             ->renderHook(PanelsRenderHook::BODY_END, fn (): HtmlString => \App\Support\Push\PanelHooks::body())
             // The bell for customers too (4 Nov, 9.1).

@@ -437,4 +437,34 @@ class DriverWorkflowTest extends TestCase
         $rm->callTableAction('create', data: ['type' => 'passport', 'number' => 'P123', 'expires_on' => '2031-01-01', 'path' => \Illuminate\Http\UploadedFile::fake()->image('p.jpg')])->assertHasNoTableActionErrors();
         $this->assertSame([], DriverPapers::problems($driver->fresh()));
     }
+
+    public function test_document_links_open_for_the_office_and_the_driver_even_when_the_server_adds_to_the_link(): void
+    {
+        // The real private disk (a fake disk would not use the CRM's signed links).
+        $driver = $this->driver();
+        $this->beforeApplicationDestroyed(fn () => Storage::disk('private')->deleteDirectory('drivers/'.$driver->id));
+        Storage::disk('private')->put('drivers/'.$driver->id.'/licence.jpg', UploadedFile::fake()->image('l.jpg')->getContent());
+        $doc = $driver->driverDocuments()->create(['type' => 'licence', 'path' => 'drivers/'.$driver->id.'/licence.jpg', 'status' => 'pending', 'uploaded_by' => $driver->id]);
+        $url = $doc->viewUrl();
+        $this->assertStringStartsWith('/crm/private-file/drivers/', $url);
+
+        // The office (Manager) opens it, also when the server adds something to the link (live LiteSpeed).
+        $this->get($url)->assertOk();
+        $this->get($url.'&_lsc=1')->assertOk();
+        $this->get(str_replace('licence.jpg', 'other.jpg', $url))->assertForbidden(); // signature covers the path
+
+        // The driver opens their own; another driver cannot.
+        $this->flushSession();
+        $this->actingAs($driver);
+        $this->get($url)->assertOk();
+        $this->flushSession();
+        $this->actingAs($this->driver('Aaron'));
+        $this->get($url)->assertForbidden();
+
+        // An expired link says so.
+        $this->flushSession();
+        $this->actingAs($this->office);
+        Carbon::setTestNow(now()->addHours(3));
+        $this->get($url)->assertForbidden()->assertSee('expired');
+    }
 }

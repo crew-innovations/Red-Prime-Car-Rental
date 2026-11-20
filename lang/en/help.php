@@ -8,7 +8,7 @@ return [
     'pages' => [
         'pages.dashboard' => ['What needs you today.', 'Numbers in red need action now; tap one to open the list.', 'Use the buttons at the top to add a lead, quote or booking.'],
         'resources.leads.index' => ['New enquiries go to every agent: the first to accept owns the customer.', '"Waiting for an agent" shows leads nobody has taken yet.', 'Open a lead to call, WhatsApp, quote or book.'],
-        'resources.leads.create' => ['Name, phone and what they want are enough.', 'Turn on "More options" for WhatsApp, email and budget.', 'You become the owner of a lead you add.'],
+        'resources.leads.create' => ['Pick the customer if they are on file; otherwise fill in the customer form (same as New Booking).', 'Then the source and what they want; "More options" for budget and follow-up.', 'You become the owner of a lead you add.'],
         'resources.leads.edit' => ['The big red button is the next step for this lead.', 'The bar under the title shows how far the sale has come.', 'Lost needs a reason; won creates the customer for you.'],
         'resources.quotations.index' => ['Quotes you made, and their status.', 'A sent quote is locked: make a new version to change it.', 'The customer can accept from the link in the email.'],
         'resources.quotations.create' => ['Four steps: customer, dates, price, check.', 'The price is worked out from the rate card; add a discount if allowed.', '"Save and send" opens the send window straight away.'],
