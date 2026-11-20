@@ -113,7 +113,10 @@ class JobReportsTest extends TestCase
         $r = JobReports::current($b);
         $v2 = JobReports::generate($b->fresh(), auth()->user(), 'Again');
 
-        $this->get($r->url())->assertOk()->assertHeader('Cache-Control', 'no-store, private');
+        $res = $this->get($r->url())->assertOk();
+        // Never stored by browsers or proxies (a Livewire test earlier in the same run can add more directives).
+        $this->assertStringContainsString('no-store', $res->headers->get('Cache-Control'));
+        $this->assertStringContainsString('private', $res->headers->get('Cache-Control'));
         $this->assertTrue(AuditLog::where('event', 'download')->where('note', 'like', '%'.$r->number.'%')->exists());
 
         $mine = Accounts::customerAccount($b->customer, 'mine@example.com');

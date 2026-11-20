@@ -205,8 +205,9 @@ class DispatchBoard extends Page
             default => ['driver_id' => $driver->id],
         };
 
+        Booking::$driverNotice = null;
         try {
-            $booking->fill($changes)->save(); // the booking's own checks run (busy, not available, documents)
+            $booking->fill($changes)->save(); // the booking's own checks run (busy, not available); documents only warn
         } catch (ValidationException $e) {
             Notification::make()->title('Not moved')->body(collect($e->errors())->flatten()->implode(' '))->danger()->persistent()->send();
 
@@ -214,5 +215,9 @@ class DispatchBoard extends Page
         }
         AuditLog::note($booking, 'dispatch', ucfirst($part).' given to '.$driver->name.' on the dispatch board');
         Notification::make()->title(ucfirst($part).' of '.$booking->reference.' given to '.$driver->name)->body('Both drivers have been told.')->success()->send();
+        if (Booking::$driverNotice) {
+            Notification::make()->warning()->title('Documents not complete')->body(Booking::$driverNotice)->persistent()->send();
+            Booking::$driverNotice = null;
+        }
     }
 }

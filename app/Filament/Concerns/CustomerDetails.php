@@ -132,6 +132,29 @@ class CustomerDetails
         ];
     }
 
+    /**
+     * 20 Nov (Bilal, item 9): the customer picker used wherever staff choose or add a customer (New Booking,
+     * Quotations, Contracts): pick an existing customer, or add a new one / open the chosen one's details
+     * with this same form. One place, so every module asks the same things the same way.
+     */
+    public static function picker(Forms\Components\Select $select): Forms\Components\Select
+    {
+        return $select
+            ->createOptionForm(fn (): array => self::schema())
+            ->createOptionUsing(fn (array $data): int => self::create($data)->getKey())
+            ->createOptionModalHeading('New customer: details and documents')
+            ->createOptionAction(fn (Forms\Components\Actions\Action $action) => $action->modalWidth('5xl')->tooltip('New customer'))
+            ->editOptionForm(fn (Get $get): array => self::schema(Customer::find($get('customer_id'))))
+            ->fillEditOptionActionFormUsing(fn (Get $get): array => ($c = Customer::find($get('customer_id'))) ? self::fill($c) : [])
+            ->updateOptionUsing(function (array $data, Get $get) {
+                if ($c = Customer::find($get('customer_id'))) {
+                    self::update($c, $data);
+                }
+            })
+            ->editOptionModalHeading('Customer details and documents')
+            ->editOptionAction(fn (Forms\Components\Actions\Action $action) => $action->modalWidth('5xl')->tooltip('Customer details and documents'));
+    }
+
     /** Upload fields for the document types switched on in Business settings. */
     public static function uploads(): array
     {

@@ -34,6 +34,23 @@ class EditCustomer extends EditRecord
     }
 
     /** Customer account status under the title (4 Nov, 13.4). */
+    /** 20 Nov (item 9): the shared customer form (same as New Booking) on the customer page too. */
+    protected function mutateFormDataBeforeFill(array $data): array
+    {
+        return array_merge($data, \App\Filament\Concerns\CustomerDetails::fill($this->getRecord()));
+    }
+
+    protected function handleRecordUpdate(\Illuminate\Database\Eloquent\Model $record, array $data): \Illuminate\Database\Eloquent\Model
+    {
+        \App\Filament\Concerns\CustomerDetails::update($record, $data);
+        $extra = collect($data)->only(CustomerResource::EXTRA_FIELDS)->all();
+        if ($extra) {
+            $record->update($extra);
+        }
+
+        return $record->fresh();
+    }
+
     public function getSubheading(): ?string
     {
         $c = $this->getRecord();

@@ -14,8 +14,9 @@ use Filament\Pages\Page;
 use Illuminate\Validation\Rules\Password;
 
 /**
- * A driver's own profile: details and documents (read only), the fields the
- * admin lets them update, and their password. Role and other drivers are never reachable.
+ * A driver's own profile: details, documents, the fields the admin lets them update, and their
+ * password. Role and other drivers are never reachable.
+ * 20 Nov (Bilal, item 8): drivers upload their own documents here; the office approves or rejects them.
  */
 class MyProfile extends Page implements HasForms
 {
@@ -36,6 +37,8 @@ class MyProfile extends Page implements HasForms
     public ?array $details = [];
 
     public ?array $passwordData = [];
+
+    public ?array $docData = [];
 
     public static function canAccess(): bool
     {
@@ -64,7 +67,7 @@ class MyProfile extends Page implements HasForms
 
     protected function getForms(): array
     {
-        return ['detailsForm', 'passwordForm'];
+        return ['detailsForm', 'passwordForm', 'docForm'];
     }
 
     public static function editableFields(): array
@@ -85,6 +88,7 @@ class MyProfile extends Page implements HasForms
             'emergency_phone' => $profile?->emergency_phone,
         ]);
         $this->passwordForm->fill();
+        $this->docForm->fill();
     }
 
     public function detailsForm(Form $form): Form
@@ -98,6 +102,61 @@ class MyProfile extends Page implements HasForms
             in_array('emergency_phone', $fields, true) ? Forms\Components\TextInput::make('emergency_phone')->label(__('driver.emergency_phone'))->tel()->maxLength(30) : null,
             in_array('photo', $fields, true) ? Forms\Components\FileUpload::make('photo')->label(__('driver.new_photo'))->image()->avatar()->disk('private')->directory('tmp')->visibility('private')->maxSize(5120) : null,
         ])));
+    }
+
+    /** Required types first (Business settings), then the others. */
+    public static function uploadTypes(): array
+    {
+        $required = array_intersect_key(\App\Models\DriverDocument::TYPES, array_flip((array) Setting::read('driver_required_documents', [])));
+
+        return $required + \App\Models\DriverDocument::TYPES;
+    }
+
+    public function docForm(Form $form): Form
+    {
+        return $form->statePath('docData')->columns(2)->schema([
+            Forms\Components\Select::make('type')->label(__('driver.doc_type'))->options(self::uploadTypes())->native(false)->required()->live(),
+            Forms\Components\TextInput::make('label')->label(__('driver.doc_name'))->maxLength(120)
+                ->required(fn (Forms\Get $get): bool => $get('type') === 'other')
+                ->visible(fn (Forms\Get $get): bool => in_array($get('type'), ['other', 'permit'], true)),
+            Forms\Components\TextInput::make('number')->label(__('driver.doc_number'))->maxLength(60),
+            Forms\Components\DatePicker::make('expires_on')->label(__('driver.doc_expiry'))->native(false)->displayFormat('d M Y'),
+            Forms\Components\FileUpload::make('path')->label(__('driver.doc_file'))->required()
+                ->disk('private')->directory(fn (): string => 'drivers/'.auth()->id())->visibility('private')
+                ->acceptedFileTypes(['image/jpeg', 'image/png', 'image/webp', 'application/pdf'])->maxSize(10240)
+                ->storeFileNamesIn('original_name')->columnSpanFull(),
+        ]);
+    }
+
+    public function saveDocument(): void
+    {
+        $user = auth()->user();
+        abort_unless($user?->hasRole('Driver'), 403);
+        $data = $this->docForm->getState();
+        abort_unless(array_key_exists($data['type'] ?? '', \App\Models\DriverDocument::TYPES), 422);
+
+        $doc = $user->driverDocuments()->create([
+            'type' => $data['type'],
+            'label' => $data['label'] ?? null,
+            'number' => $data['number'] ?? null,
+            'expires_on' => $data['expires_on'] ?? null,
+            'path' => $data['path'],
+            'original_name' => $data['original_name'] ?? null,
+            'uploaded_by' => $user->id,
+            'status' => 'pending', // the office checks it; an older approved copy stays valid until then
+        ]);
+        \App\Support\Drivers\Notify::staff('manage-drivers', 'Driver document to check: '.$user->name,
+            $doc->typeLabel().' uploaded by the driver. Approve or reject it.',
+            \App\Filament\Resources\DriverResource::getUrl('edit', ['record' => $user]).'?activeRelationManager=0',
+            null, 'warning', 'other', 'driver-doc:'.$doc->id);
+
+        Notification::make()->title(__('driver.doc_sent'))->body(__('driver.doc_sent_body'))->success()->send();
+        $this->docForm->fill();
+    }
+
+    public function checklist(): array
+    {
+        return DriverPapers::checklist(auth()->user());
     }
 
     public function passwordForm(Form $form): Form
@@ -157,6 +216,6 @@ class MyProfile extends Page implements HasForms
 
     public function documents()
     {
-        return auth()->user()->driverDocuments()->current()->orderBy('type')->get();
+        return auth()->user()->driverDocuments()->current()->orderBy('type')->orderByDesc('id')->get();
     }
 }

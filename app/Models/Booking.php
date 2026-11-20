@@ -58,6 +58,9 @@ class Booking extends Model implements HasMedia
     /** 19 Nov: a note for the person saving (e.g. "saved as Waiting for payment because…"), read once by the screen. */
     public static ?string $savedNotice = null;
 
+    /** 20 Nov: "this driver's documents are not complete" after a driver was given the job (never blocks). */
+    public static ?string $driverNotice = null;
+
     protected function casts(): array
     {
         return [
@@ -375,9 +378,9 @@ class Booking extends Model implements HasMedia
             if ($driver->driverProfile && ! $driver->driverProfile->does('driver')) {
                 throw ValidationException::withMessages(['data.driver_id' => $driver->name.' is set up as yacht crew, not as a car driver.']);
             }
-            if (Setting::read('driver_block_incomplete') && ($missing = \App\Support\Drivers\DriverPapers::problems($driver))) {
-                throw ValidationException::withMessages(['data.driver_id' => $driver->name.' cannot get jobs until these are sorted: '.implode(', ', $missing).'.']);
-            }
+            // 20 Nov (Bilal, item 8): missing or unapproved driver documents never stop a job being given;
+            // the person assigning is warned instead (document checks are kept apart, under Drivers).
+            static::$driverNotice = \App\Support\Drivers\DriverPapers::assignWarning($driver);
         }
 
         $newlyHolding = ! $this->exists

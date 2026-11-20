@@ -32,7 +32,9 @@ class DocumentsRelationManager extends RelationManager
 
     public static function getBadge(Model $ownerRecord, string $pageClass): ?string
     {
-        $n = $ownerRecord->driverDocuments()->current()->whereNotNull('expires_on')->where('expires_on', '<=', today()->addDays(DriverDocument::warnDays()))->count();
+        // 20 Nov: documents waiting for approval count too.
+        $n = $ownerRecord->driverDocuments()->current()->where(fn ($q) => $q->where('status', 'pending')
+            ->orWhere(fn ($q2) => $q2->whereNotNull('expires_on')->where('expires_on', '<=', today()->addDays(DriverDocument::warnDays()))))->count();
 
         return $n ? (string) $n : null;
     }
@@ -99,8 +101,10 @@ class DocumentsRelationManager extends RelationManager
     public function table(Table $table): Table
     {
         return $table
+            // 20 Nov (item 8): the required documents and where each stands, above the list.
+            ->description(fn (): ?\Illuminate\Support\HtmlString => self::checklistHtml($this->getOwnerRecord()))
             ->recordTitle(fn (DriverDocument $record): string => $record->typeLabel())
-            ->modifyQueryUsing(fn (Builder $query) => $query->with('uploader'))
+            ->modifyQueryUsing(fn (Builder $query) => $query->with(['uploader', 'reviewer']))
             ->defaultSort('type')
             ->columns([
                 Tables\Columns\TextColumn::make('type')->label('Document')
@@ -112,7 +116,13 @@ class DocumentsRelationManager extends RelationManager
                     ->badge()
                     ->color(fn (DriverDocument $record): string => $record->replaced_at ? 'gray' : $record->expiryColor())
                     ->sortable(query: fn (Builder $query, string $direction) => $query->orderBy('expires_on', $direction)),
-                Tables\Columns\TextColumn::make('replaced_at')->label('Status')
+                Tables\Columns\TextColumn::make('status')->label('Check')
+                    ->badge()
+                    ->state(fn (DriverDocument $record): string => $record->statusLabel())
+                    ->color(fn (DriverDocument $record): string => $record->statusColor())
+                    ->description(fn (DriverDocument $record): ?string => $record->status === 'rejected' ? $record->review_note
+                        : ($record->reviewed_at ? 'by '.($record->reviewer?->name ?? '—').' · '.$record->reviewed_at->format('d M') : null)),
+                Tables\Columns\TextColumn::make('replaced_at')->label('Copy')
                     ->state(fn (DriverDocument $record): string => $record->replaced_at ? 'Replaced '.$record->replaced_at->format('d M Y') : 'Current')
                     ->color(fn (DriverDocument $record): string => $record->replaced_at ? 'gray' : 'success'),
                 Tables\Columns\TextColumn::make('created_at')->label('Added')
@@ -132,16 +142,39 @@ class DocumentsRelationManager extends RelationManager
                         blank: fn (Builder $q) => $q,
                     )
                     ->default(true),
+                Tables\Filters\SelectFilter::make('status')->label('Check')->options(DriverDocument::STATUSES),
             ])
             ->headerActions([
                 Tables\Actions\CreateAction::make()
                     ->label('Add document')
                     ->modalHeading('Add a document')
                     ->form(self::fields())
-                    ->mutateFormDataUsing(fn (array $data): array => $data + ['uploaded_by' => auth()->id()])
+                    // The office's own upload is approved straight away.
+                    ->mutateFormDataUsing(fn (array $data): array => $data + ['uploaded_by' => auth()->id(), 'status' => 'approved', 'reviewed_by' => auth()->id(), 'reviewed_at' => now()])
                     ->authorize(fn (): bool => Access::allows('manage-drivers')),
             ])
             ->actions([
+                // 20 Nov (item 8): approve / reject what the driver uploaded.
+                Tables\Actions\Action::make('approve')
+                    ->label('Approve')->icon('heroicon-o-check')->color('success')->button()->size('sm')
+                    ->visible(fn (DriverDocument $record): bool => $record->status !== 'approved' && ! $record->replaced_at && Access::allows('manage-drivers'))
+                    ->requiresConfirmation()
+                    ->modalHeading(fn (DriverDocument $record): string => 'Approve '.$record->typeLabel().'?')
+                    ->modalDescription('Check the copy, the number and the expiry date first. An older approved copy is kept as history.')
+                    ->action(function (DriverDocument $record): void {
+                        $record->update(['status' => 'approved', 'reviewed_by' => auth()->id(), 'reviewed_at' => now(), 'review_note' => null]);
+                        \App\Support\Drivers\Notify::driver($record->user, __('driver.doc_approved', ['doc' => $record->typeLabel()]), null, \App\Filament\Pages\MyProfile::getUrl(), 'success', 'other');
+                        \Filament\Notifications\Notification::make()->title($record->typeLabel().' approved')->success()->send();
+                    }),
+                Tables\Actions\Action::make('reject')
+                    ->label('Reject')->icon('heroicon-o-x-mark')->color('danger')->button()->size('sm')
+                    ->visible(fn (DriverDocument $record): bool => $record->status === 'pending' && Access::allows('manage-drivers'))
+                    ->form([Forms\Components\Textarea::make('review_note')->label('Why (the driver sees this)')->required()->rows(2)->maxLength(500)])
+                    ->action(function (DriverDocument $record, array $data): void {
+                        $record->update(['status' => 'rejected', 'reviewed_by' => auth()->id(), 'reviewed_at' => now(), 'review_note' => $data['review_note']]);
+                        \App\Support\Drivers\Notify::driver($record->user, __('driver.doc_rejected', ['doc' => $record->typeLabel()]), $data['review_note'], \App\Filament\Pages\MyProfile::getUrl(), 'danger', 'other');
+                        \Filament\Notifications\Notification::make()->title($record->typeLabel().' rejected')->body('The driver has been told and can send it again.')->send();
+                    }),
                 Tables\Actions\Action::make('view')
                     ->iconButton()->icon('heroicon-o-eye')->tooltip('Open file')
                     ->visible(fn (DriverDocument $record): bool => filled($record->path))
@@ -160,7 +193,8 @@ class DocumentsRelationManager extends RelationManager
                     ->fillForm(fn (DriverDocument $record): array => ['type' => $record->type, 'label' => $record->label, 'issued_by' => $record->issued_by, 'classes' => $record->classes])
                     ->form(fn (DriverDocument $record): array => self::fields(true, $record->type))
                     ->action(function (DriverDocument $record, array $data): void {
-                        $copy = $this->getOwnerRecord()->driverDocuments()->create($data + ['type' => $record->type, 'uploaded_by' => auth()->id()]);
+                        $copy = $this->getOwnerRecord()->driverDocuments()->create($data + ['type' => $record->type, 'uploaded_by' => auth()->id(),
+                            'status' => 'approved', 'reviewed_by' => auth()->id(), 'reviewed_at' => now()]);
                         if ($record->type === 'other') {
                             $record->update(['replaced_at' => now()]); // "other" papers are not replaced automatically
                         }
@@ -169,5 +203,20 @@ class DocumentsRelationManager extends RelationManager
             ])
             ->emptyStateHeading('No documents yet')
             ->emptyStateDescription('Add the passport, ID, licence and any permits with their expiry dates.');
+    }
+
+    /** Required documents with their state (missing, waiting, approved, rejected, expired). */
+    public static function checklistHtml(\App\Models\User $driver): ?\Illuminate\Support\HtmlString
+    {
+        $rows = \App\Support\Drivers\DriverPapers::checklist($driver);
+        if ($rows === []) {
+            return new \Illuminate\Support\HtmlString('<span style="opacity:.7">No documents are required in Business settings › Drivers.</span>');
+        }
+        $colors = ['approved' => '#16a34a', 'pending' => '#d97706', 'rejected' => '#dc2626', 'expired' => '#dc2626', 'missing' => '#dc2626'];
+        $labels = ['approved' => 'Approved', 'pending' => 'Waiting for approval', 'rejected' => 'Rejected', 'expired' => 'Expired', 'missing' => 'Missing'];
+        $out = collect($rows)->map(fn ($r) => '<span style="display:inline-block;margin:.15rem .6rem .15rem 0"><b>'.e($r['label']).'</b>: <span style="color:'.$colors[$r['state']].'">'.$labels[$r['state']]
+            .($r['state'] === 'approved' && $r['waiting'] ? ' (new copy waiting)' : '').'</span></span>')->implode('');
+
+        return new \Illuminate\Support\HtmlString('Required: '.$out.'<br><span style="opacity:.7">Missing documents never stop a job being given; staff see a warning.</span>');
     }
 }

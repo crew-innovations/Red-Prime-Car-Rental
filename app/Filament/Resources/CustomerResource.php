@@ -72,66 +72,22 @@ class CustomerResource extends Resource
                 Forms\Components\Group::make()
                     ->columnSpan(['lg' => 2])
                     ->schema([
-                        Forms\Components\Section::make('Customer')
-                            ->icon('heroicon-o-user')
-                            ->columns(2)
+                        // 20 Nov (Bilal, item 9): the same customer form as New Booking (contact, ID and licence,
+                        // documents, reading the documents), so a customer is entered the same way everywhere.
+                        ...\App\Filament\Concerns\CustomerDetails::schema($form->getRecord() instanceof Customer ? $form->getRecord() : null),
+
+                        // Extra details kept from the customer page (not on the booking form).
+                        Forms\Components\Section::make('Preferences')
+                            ->icon('heroicon-o-adjustments-horizontal')
+                            ->columns(3)
+                            ->collapsible()
                             ->schema([
-                                Forms\Components\ToggleButtons::make('type')
-                                    ->options(CustomerType::class)
-                                    ->default(CustomerType::Individual->value)
-                                    ->inline()
-                                    ->live()
-                                    ->columnSpanFull(),
-                                Forms\Components\TextInput::make('name')
-                                    ->label(fn (Get $get): string => $get('type') === CustomerType::Individual->value ? 'Full name' : 'Contact person')
-                                    ->required()
-                                    ->maxLength(255),
-                                Forms\Components\TextInput::make('company_name')
-                                    ->label('Company')
-                                    ->maxLength(255)
-                                    ->required(fn (Get $get): bool => $get('type') === CustomerType::Corporate->value)
-                                    ->visible(fn (Get $get): bool => $get('type') !== CustomerType::Individual->value),
-                                Forms\Components\TextInput::make('trn')
-                                    ->label('Company TRN (VAT number)')
-                                    ->helperText('Printed on tax invoices to this company.')
-                                    ->maxLength(30)
-                                    ->visible(fn (Get $get): bool => $get('type') !== CustomerType::Individual->value),
-                                Forms\Components\Textarea::make('address')
-                                    ->label('Billing address')
-                                    ->rows(2)
-                                    ->columnSpanFull(),
-                                Forms\Components\TextInput::make('phone')
-                                    ->tel()
-                                    ->placeholder('+971 50 123 4567')
-                                    ->maxLength(30)
-                                    ->unique(ignoreRecord: true),
-                                Forms\Components\TextInput::make('whatsapp')
-                                    ->label('WhatsApp')
-                                    ->tel()
-                                    ->placeholder('Same as phone')
-                                    ->maxLength(30),
-                                Forms\Components\TextInput::make('email')
-                                    ->email()
-                                    ->maxLength(255)
-                                    ->unique(ignoreRecord: true),
                                 Forms\Components\ToggleButtons::make('preferred_contact')
                                     ->label('Prefers')
                                     ->options(['whatsapp' => 'WhatsApp', 'phone' => 'Call', 'email' => 'Email'])
                                     ->icons(['whatsapp' => 'heroicon-o-chat-bubble-left-right', 'phone' => 'heroicon-o-phone', 'email' => 'heroicon-o-envelope'])
                                     ->default('whatsapp')
                                     ->inline(),
-                            ]),
-
-                        Forms\Components\Section::make('Profile')
-                            ->icon('heroicon-o-identification')
-                            ->columns(3)
-                            ->schema([
-                                Forms\Components\Select::make('nationality')
-                                    ->options(array_combine(self::NATIONALITIES, self::NATIONALITIES))
-                                    ->searchable(),
-                                Forms\Components\Select::make('residency')
-                                    ->options(['resident' => 'UAE resident', 'tourist' => 'Tourist / visitor', 'gcc' => 'GCC national'])
-                                    ->native(false),
                                 Forms\Components\Select::make('language')
                                     ->label('Language')
                                     ->options(self::LANGUAGES)
@@ -146,14 +102,9 @@ class CustomerResource extends Resource
                                         (bool) $record?->marketing_consent_at => 'Since '.$record->marketing_consent_at->format('d M Y').' ('.($record->marketing_consent_source ?? 'staff').')',
                                         default => 'Only customers who agreed get announcements. Quotations and bookings are sent either way.',
                                     }),
-                                Forms\Components\DatePicker::make('date_of_birth')
-                                    ->native(false)
-                                    ->displayFormat('d M Y')
-                                    ->maxDate(today()->subYears(18))
-                                    ->helperText('Used to check minimum driver age.'),
                                 Forms\Components\TagsInput::make('tags')
                                     ->suggestions(self::TAGS)
-                                    ->columnSpan(2),
+                                    ->columnSpanFull(),
                             ]),
 
                         Forms\Components\Placeholder::make('m2_note')
@@ -229,6 +180,9 @@ class CustomerResource extends Resource
                     ]),
             ]);
     }
+
+    /** 20 Nov (item 9): customer-page fields saved besides the shared customer form. */
+    public const EXTRA_FIELDS = ['preferred_contact', 'language', 'marketing_consent', 'tags', 'is_vip', 'lead_source_id', 'assigned_to', 'next_follow_up_at', 'notes'];
 
     public static function table(Table $table): Table
     {

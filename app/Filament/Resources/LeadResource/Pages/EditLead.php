@@ -221,21 +221,11 @@ class EditLead extends EditRecord
                 ->color('primary')
                 ->url(fn (): string => BookingResource::getUrl('create', ['lead' => $this->getRecord()->id]))
                 ->visible(fn (): bool => $this->getRecord()->pipeline !== Pipeline::B2b && $this->getRecord()->stage !== Pipeline::LOST),
-            Actions\Action::make('convert')
-                ->label('Create customer profile')
-                ->authorize('manage-leads')
-                ->icon('heroicon-o-user-plus')
+            LeadResource::customerProfileAction(Actions\Action::make('convert')) // 20 Nov (item 9): same customer form as New Booking
                 ->color('gray')
-                ->requiresConfirmation()
-                ->modalDescription('Creates a customer profile from this lead, or links the existing customer with the same phone or email. The pipeline stage stays the same.')
+                ->record(fn () => $this->getRecord())
                 ->visible(fn (): bool => ! $this->getRecord()->customer_id)
-                ->action(function () {
-                    $customer = $this->getRecord()->convertToCustomer();
-
-                    Notification::make()->title('Customer profile ready')->body($customer->name)->success()->send();
-
-                    $this->redirect(LeadResource::getUrl('edit', ['record' => $this->getRecord()]));
-                }),
+                ->after(fn () => $this->redirect(LeadResource::getUrl('edit', ['record' => $this->getRecord()]))),
             Actions\ActionGroup::make([
                 \App\Filament\Support\ReassignAction::make(Actions\Action::class)
                     ->visible(fn (): bool => (bool) $this->getRecord()->assigned_to || (bool) $this->getRecord()->customer_id),

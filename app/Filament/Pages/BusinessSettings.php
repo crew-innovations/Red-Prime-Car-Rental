@@ -593,8 +593,9 @@ class BusinessSettings extends Page implements HasForms
                             ->label('Minimum time between two jobs of the same driver')
                             ->helperText('A delivery or collection closer than this to another job counts as a clash. With-driver bookings keep the driver for the whole time.')
                             ->numeric()->minValue(0)->maxValue(1440)->suffix('minutes')->required(),
-                        Forms\Components\Toggle::make('driver_block_incomplete')
-                            ->label('Only assign drivers whose required documents are complete and not expired'),
+                        Forms\Components\Placeholder::make('driver_docs_assign_note')
+                            ->label('Drivers with incomplete documents')
+                            ->content('Can still be given jobs (Bilal, 20 Nov). Staff see a warning when they pick one; documents are checked under Drivers › Documents.'),
                     ]),
                 Forms\Components\Section::make('Driver profile and documents')
                     ->columns(2)
@@ -752,7 +753,7 @@ class BusinessSettings extends Page implements HasForms
         'driver_can_handover', 'handover_requires_approval', 'driver_can_return', 'driver_can_report_damage',
         'handover_require_km', 'handover_require_fuel', 'handover_min_photos', 'return_require_km', 'return_require_fuel', 'return_min_photos',
         'checklist_all_required', 'handover_checklist', 'return_checklist',
-        'driver_job_gap_minutes', 'driver_required_fields', 'driver_required_documents', 'driver_block_incomplete',
+        'driver_job_gap_minutes', 'driver_required_fields', 'driver_required_documents',
         'driver_doc_warn_days', 'driver_doc_reminders', 'notify_drivers_by_email', 'notify_staff_by_email',
         // 28 Oct: pricing and sales workflow
         'hourly_increment_minutes', 'price_max_discount_percent', 'price_approval_required', 'booking_requires_accepted_quote', 'doc_block_confirm',

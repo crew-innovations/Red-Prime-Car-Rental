@@ -6,7 +6,9 @@ use App\Enums\BookingStatus;
 use App\Enums\DriveMode;
 use App\Filament\Pages\DriverJob;
 use App\Filament\Resources\BookingResource\Pages\EditBooking;
+use App\Filament\Resources\BookingResource\BookingActions;
 use App\Filament\Resources\DriverResource;
+use App\Filament\Resources\DriverResource\RelationManagers\DocumentsRelationManager;
 use App\Models\Booking;
 use App\Models\BookingJob;
 use App\Models\DamageReport;
@@ -222,9 +224,14 @@ class DriverWorkflowTest extends TestCase
             $this->assertStringContainsString('inactive', collect($e->errors())->flatten()->implode(' '));
         }
 
+        // 20 Nov (Bilal, item 8): incomplete documents never block a job; a warning is given instead.
         Setting::write(['driver_block_incomplete' => true, 'driver_required_documents' => ['licence']]);
-        $this->expectException(ValidationException::class);
-        $this->booking($this->car(), '2026-11-12 10:00', '2026-11-13 10:00', ['driver_id' => $free->id]);
+        \App\Models\Booking::$driverNotice = null;
+        $b = $this->booking($this->car(), '2026-11-12 10:00', '2026-11-13 10:00', ['driver_id' => $free->id]);
+        $this->assertSame($free->id, $b->driver_id);
+        $this->assertStringContainsString('Driving licence missing', (string) \App\Models\Booking::$driverNotice);
+        $this->assertStringContainsString('documents incomplete', BookingActions::driverOptions()[$free->id]);
+        \App\Models\Booking::$driverNotice = null;
     }
 
     /* ---------- the driver's screens ---------- */
@@ -384,5 +391,50 @@ class DriverWorkflowTest extends TestCase
         $this->get('/crm/my-jobs')->assertForbidden();
         $this->assertSame(2, $booking->jobs()->open()->count(), 'jobs stay on the booking');
         $this->assertSame($me->id, $booking->fresh()->driver_id);
+    }
+    /* ---------- 20 Nov (item 8): drivers upload documents, the office approves or rejects ---------- */
+
+    public function test_driver_uploads_a_document_in_the_portal_and_the_office_approves_or_rejects_it(): void
+    {
+        Storage::fake('private');
+        Setting::write(['driver_required_documents' => ['licence', 'passport']]);
+        $driver = $this->driver();
+        $driver->driverDocuments()->create(['type' => 'licence', 'number' => 'OLD-1', 'expires_on' => '2027-01-01', 'uploaded_by' => $this->office->id]); // office copy: approved
+        $this->assertSame('approved', $driver->driverDocuments()->first()->status);
+
+        $this->actingAs($driver);
+        $this->get(\App\Filament\Pages\MyProfile::getUrl())->assertOk()->assertSee('Send a document')->assertSee('Missing'); // passport missing
+        Livewire::test(\App\Filament\Pages\MyProfile::class)
+            ->fillForm(['type' => 'licence', 'number' => 'NEW-2', 'expires_on' => '2030-01-01', 'path' => \Illuminate\Http\UploadedFile::fake()->image('licence.jpg')], 'docForm')
+            ->call('saveDocument')->assertHasNoFormErrors([], 'docForm')->assertNotified();
+        Livewire::test(\App\Filament\Pages\MyProfile::class)
+            ->fillForm(['type' => 'passport', 'path' => \Illuminate\Http\UploadedFile::fake()->create('passport.pdf', 50, 'application/pdf')], 'docForm')
+            ->call('saveDocument');
+
+        $new = DriverDocument::where('user_id', $driver->id)->where('type', 'licence')->where('status', 'pending')->sole();
+        $this->assertSame('NEW-2', $new->number);
+        $this->assertSame('pending', $new->status);
+        $this->assertNull(DriverDocument::where('user_id', $driver->id)->where('type', 'licence')->where('status', 'approved')->sole()->replaced_at, 'the approved copy stays valid while the new one waits');
+        $check = DriverPapers::checklist($driver);
+        $this->assertSame('approved', $check['licence']['state']);
+        $this->assertSame('pending', $check['passport']['state']);
+        $this->assertContains('Passport waiting for approval', DriverPapers::problems($driver));
+        $this->assertTrue(\Illuminate\Notifications\DatabaseNotification::where('notifiable_id', $this->office->id)->exists(), 'the office is told');
+
+        // The office approves the licence and rejects the passport.
+        $this->flushSession();
+        $this->actingAs($this->office);
+        $rm = Livewire::test(DocumentsRelationManager::class, ['ownerRecord' => $driver, 'pageClass' => \App\Filament\Resources\DriverResource\Pages\EditDriver::class]);
+        $rm->assertSee('Waiting for approval')->callTableAction('approve', $new)->assertHasNoTableActionErrors();
+        $this->assertSame('approved', $new->fresh()->status);
+        $this->assertNotNull(DriverDocument::where('user_id', $driver->id)->where('type', 'licence')->whereKeyNot($new->id)->sole()->replaced_at, 'old copy kept as history');
+        $passport = DriverDocument::where('user_id', $driver->id)->where('type', 'passport')->sole();
+        $rm->callTableAction('reject', $passport, ['review_note' => 'Photo is blurred'])->assertHasNoTableActionErrors();
+        $this->assertSame('rejected', $passport->fresh()->status);
+        $this->assertContains('Passport rejected (send it again)', DriverPapers::problems($driver));
+
+        // The office can upload for the driver: approved at once.
+        $rm->callTableAction('create', data: ['type' => 'passport', 'number' => 'P123', 'expires_on' => '2031-01-01', 'path' => \Illuminate\Http\UploadedFile::fake()->image('p.jpg')])->assertHasNoTableActionErrors();
+        $this->assertSame([], DriverPapers::problems($driver->fresh()));
     }
 }

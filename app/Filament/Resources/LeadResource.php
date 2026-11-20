@@ -528,16 +528,58 @@ class LeadResource extends Resource
 
     public static function convertAction(): Tables\Actions\Action
     {
-        return Tables\Actions\Action::make('convert')
+        return self::customerProfileAction(Tables\Actions\Action::make('convert'))
+            ->visible(fn (Lead $record): bool => ! $record->customer_id && ! $record->trashed());
+    }
+
+    /**
+     * 20 Nov (Bilal, item 9): "Create customer profile" opens the same customer form as New Booking,
+     * filled in from the lead. If the customer already exists (same phone / email) staff link that one
+     * instead, so there are no duplicates. Used on the leads list and on the lead page.
+     */
+    public static function customerProfileAction($action)
+    {
+        return $action
             ->label('Create customer profile')
             ->authorize('manage-leads')
             ->icon('heroicon-o-user-plus')
             ->color('success')
-            ->requiresConfirmation()
-            ->modalDescription('Creates a customer profile from this lead, or links the existing customer with the same phone or email. The pipeline stage stays the same.')
-            ->visible(fn (Lead $record): bool => ! $record->customer_id && ! $record->trashed())
-            ->action(function (Lead $record) {
-                $customer = $record->convertToCustomer();
+            ->modalWidth('5xl')
+            ->modalHeading('Customer profile from this lead')
+            ->modalDescription('The same customer form as New Booking. The pipeline stage stays the same.')
+            ->modalSubmitActionLabel('Save customer')
+            ->fillForm(fn (Lead $record): array => [
+                'existing_customer_id' => $record->matchingCustomer()?->id,
+                'type' => $record->pipeline === Pipeline::B2b ? \App\Enums\CustomerType::Corporate->value : \App\Enums\CustomerType::Individual->value,
+                'name' => $record->name,
+                'phone' => $record->phone,
+                'whatsapp' => $record->whatsapp,
+                'email' => $record->email,
+                'company_name' => $record->company_name,
+                'documents_checked' => \App\Support\Access::allows('review-documents'),
+            ])
+            ->form([
+                Forms\Components\Select::make('existing_customer_id')
+                    ->label('Customer already on file')
+                    ->placeholder('No: make a new customer below')
+                    ->helperText('Found by the same phone or email. Keep it to link this customer, or clear it to make a new one.')
+                    ->searchable()
+                    ->getSearchResultsUsing(fn (string $search): array => \App\Models\Customer::query()
+                        ->where(fn ($q) => $q->where('name', 'like', "%{$search}%")->orWhere('phone', 'like', "%{$search}%")->orWhere('email', 'like', "%{$search}%"))
+                        ->limit(30)->get()->mapWithKeys(fn ($c) => [$c->id => $c->name.($c->phone ? ' · '.$c->phone : '')])->all())
+                    ->getOptionLabelUsing(fn ($value): ?string => ($c = \App\Models\Customer::find($value)) ? $c->name.($c->phone ? ' · '.$c->phone : '') : null)
+                    ->live(),
+                Forms\Components\Group::make(\App\Filament\Concerns\CustomerDetails::schema())
+                    ->visible(fn (Get $get): bool => blank($get('existing_customer_id'))),
+            ])
+            ->action(function (Lead $record, array $data) {
+                $customer = filled($data['existing_customer_id'] ?? null)
+                    ? \App\Models\Customer::findOrFail($data['existing_customer_id'])
+                    : \App\Filament\Concerns\CustomerDetails::create($data);
+                if (blank($data['existing_customer_id'] ?? null)) {
+                    $customer->update(array_filter(['lead_source_id' => $record->lead_source_id, 'assigned_to' => $record->assigned_to]));
+                }
+                $record->linkCustomer($customer);
 
                 Notification::make()
                     ->title('Customer profile ready')

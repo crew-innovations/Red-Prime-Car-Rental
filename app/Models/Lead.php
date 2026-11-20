@@ -197,19 +197,8 @@ class Lead extends Model
     public function convertToCustomer(): Customer
     {
         return DB::transaction(function () {
-            $existing = ($this->phone || $this->whatsapp || $this->email)
-                ? Customer::query()->where(function ($q) {
-                    foreach (array_filter([$this->phone, $this->whatsapp]) as $number) {
-                        $q->orWhere(fn ($q) => \App\Support\Phone::whereMatches($q, ['phone', 'whatsapp'], $number));
-                    }
-                    if ($this->email) {
-                        $q->orWhere('email', $this->email);
-                    }
-                })->first()
-                : null;
-
             $customer = $this->customer
-                ?? $existing
+                ?? $this->matchingCustomer()
                 ?? Customer::create([
                     'name' => $this->name,
                     'phone' => $this->phone,
@@ -221,12 +210,35 @@ class Lead extends Model
                     'type' => $this->pipeline === Pipeline::B2b ? CustomerType::Corporate : CustomerType::Individual,
                 ]);
 
-            $this->forceFill(['customer_id' => $customer->id])->saveQuietly();
-            if ($customer->status === 'prospect') {
-                $customer->forceFill(['status' => 'customer'])->saveQuietly(); // won: a prospect becomes a customer (4 Nov, 13)
-            }
-
-            return $customer;
+            return $this->linkCustomer($customer);
         });
+    }
+
+    /** The customer already on file with this lead's phone, WhatsApp or email (no duplicates). */
+    public function matchingCustomer(): ?Customer
+    {
+        if (! ($this->phone || $this->whatsapp || $this->email)) {
+            return null;
+        }
+
+        return Customer::query()->where(function ($q) {
+            foreach (array_filter([$this->phone, $this->whatsapp]) as $number) {
+                $q->orWhere(fn ($q) => \App\Support\Phone::whereMatches($q, ['phone', 'whatsapp'], $number));
+            }
+            if ($this->email) {
+                $q->orWhere('email', $this->email);
+            }
+        })->first();
+    }
+
+    /** Link this lead to a customer; a prospect becomes a customer (4 Nov, 13). */
+    public function linkCustomer(Customer $customer): Customer
+    {
+        $this->forceFill(['customer_id' => $customer->id])->saveQuietly();
+        if ($customer->status === 'prospect') {
+            $customer->forceFill(['status' => 'customer'])->saveQuietly();
+        }
+
+        return $customer;
     }
 }

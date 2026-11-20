@@ -835,7 +835,8 @@ class BookingActions
                     .(in_array($u->id, $usual, true) ? ' ★ usual driver' : '')
                     .($u->phone ? ' · '.$u->phone : '')
                     .($clash ? self::BUSY.$clash->reference.' '.$clash->start_at->format('d M H:i') : '')
-                    .($off ? ' · not available ('.($off->reason ?: 'off').')' : '')];
+                    .($off ? ' · not available ('.($off->reason ?: 'off').')' : '')
+                    .(\App\Support\Drivers\DriverPapers::problems($u) ? ' · ⚠ documents incomplete' : '')]; // 20 Nov: a warning, never blocked
             })
             ->all();
     }

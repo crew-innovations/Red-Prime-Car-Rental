@@ -87,7 +87,7 @@ class CreateBooking extends CreateRecord
 
             return;
         }
-        Booking::$savedNotice = null;
+        Booking::$savedNotice = Booking::$driverNotice = null;
         try {
             parent::create($another);
             if ($this->record?->exists) {
@@ -117,10 +117,11 @@ class CreateBooking extends CreateRecord
         $b = $this->getRecord();
         $n = Notification::make()->success()->title('Booking '.($b->reference ?? '').' saved')
             ->body(($b->customer?->name ? $b->customer->name.' · ' : '').$b->status?->getLabel());
-        if (Booking::$savedNotice) {
-            $n = Notification::make()->warning()->title('Booking '.($b->reference ?? '').' saved')->body(Booking::$savedNotice)->persistent();
-            Booking::$savedNotice = null;
+        $notes = array_filter([Booking::$savedNotice, Booking::$driverNotice]);
+        if ($notes) {
+            $n = Notification::make()->warning()->title('Booking '.($b->reference ?? '').' saved')->body(implode(' ', $notes))->persistent();
         }
+        Booking::$savedNotice = Booking::$driverNotice = null;
 
         return $n;
     }

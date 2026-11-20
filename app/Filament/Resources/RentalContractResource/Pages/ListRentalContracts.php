@@ -37,8 +37,7 @@ class ListRentalContracts extends ListRecords
                         Forms\Components\Select::make('customer_id')->label('Customer')->required()->searchable()
                             ->getSearchResultsUsing(fn (string $search): array => \App\Models\Customer::query()->where(fn ($q) => $q->where('name', 'like', "%{$search}%")->orWhere('phone', 'like', "%{$search}%"))->limit(30)->pluck('name', 'id')->all())
                             ->getOptionLabelUsing(fn ($value): ?string => \App\Models\Customer::find($value)?->name)
-                            ->createOptionForm(fn (): array => \App\Filament\Concerns\CustomerDetails::schema())
-                            ->createOptionUsing(fn (array $data): int => \App\Filament\Concerns\CustomerDetails::create($data)->getKey()),
+                            ->tap(fn (Forms\Components\Select $select) => \App\Filament\Concerns\CustomerDetails::picker($select)), // 20 Nov: same customer form
                         Forms\Components\Select::make('car_id')->label('Car')->required()->searchable()
                             ->options(fn () => \App\Models\Car::withTrashed()->orderBy('name')->get()->mapWithKeys(fn ($c) => [$c->id => $c->name.($c->registration_number ? ' · '.$c->registration_number : '')])->all()),
                         Forms\Components\TextInput::make('paper_number')->label('Number on the paper contract')->required()->maxLength(60),

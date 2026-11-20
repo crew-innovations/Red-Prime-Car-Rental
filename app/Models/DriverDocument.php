@@ -29,6 +29,11 @@ class DriverDocument extends Model
         'other' => 'Other document',
     ];
 
+    /** 20 Nov (item 8): review of documents the driver uploads; the office's own uploads are approved. */
+    public const STATUSES = ['pending' => 'Waiting for approval', 'approved' => 'Approved', 'rejected' => 'Rejected'];
+
+    public const STATUS_COLORS = ['pending' => 'warning', 'approved' => 'success', 'rejected' => 'danger'];
+
     protected function casts(): array
     {
         return [
@@ -37,6 +42,7 @@ class DriverDocument extends Model
             'issued_on' => 'date',
             'expires_on' => 'date',
             'replaced_at' => 'datetime',
+            'reviewed_at' => 'datetime',
             'reminded_soon_at' => 'datetime',
             'reminded_expired_at' => 'datetime',
         ];
@@ -52,19 +58,50 @@ class DriverDocument extends Model
             }
         });
 
-        // A new copy of a type replaces the previous current one (kept as history).
-        static::created(function (DriverDocument $doc) {
-            if ($doc->type === 'other') {
-                return;
-            }
-            static::query()
-                ->where('user_id', $doc->user_id)
-                ->where('type', $doc->type)
-                ->whereKeyNot($doc->getKey())
-                ->whereNull('replaced_at')
-                ->get()
-                ->each(fn (DriverDocument $old) => $old->update(['replaced_at' => now()]));
+        // A new approved copy of a type replaces the previous current one (kept as history). A copy the
+        // driver uploads waits for approval first, so the old approved one stays valid until then.
+        static::creating(function (DriverDocument $doc) {
+            $doc->status ??= 'approved'; // the office's own uploads
         });
+        static::created(function (DriverDocument $doc) {
+            if ($doc->status === 'approved') {
+                $doc->replaceOlder();
+            }
+        });
+        static::updated(function (DriverDocument $doc) {
+            if ($doc->wasChanged('status') && $doc->status === 'approved') {
+                $doc->replaceOlder();
+            }
+        });
+    }
+
+    public function replaceOlder(): void
+    {
+        if ($this->type === 'other' || $this->replaced_at) {
+            return;
+        }
+        static::query()
+            ->where('user_id', $this->user_id)
+            ->where('type', $this->type)
+            ->whereKeyNot($this->getKey())
+            ->whereNull('replaced_at')
+            ->get()
+            ->each(fn (DriverDocument $old) => $old->update(['replaced_at' => now()]));
+    }
+
+    public function reviewer(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'reviewed_by');
+    }
+
+    public function statusLabel(): string
+    {
+        return self::STATUSES[$this->status ?? 'approved'] ?? ucfirst((string) $this->status);
+    }
+
+    public function statusColor(): string
+    {
+        return self::STATUS_COLORS[$this->status ?? 'approved'] ?? 'gray';
     }
 
     public function user(): BelongsTo

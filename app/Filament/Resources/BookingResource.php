@@ -209,19 +209,7 @@ class BookingResource extends Resource
                     ->required(fn (Get $get): bool => blank($get('lead_id')))
                     ->placeholder(fn (Get $get): string => filled($get('lead_id')) ? 'Created from the lead when saved' : 'Select an option')
                     // 18 Nov (meeting item 6): all customer details and documents in one pop-up, new or existing.
-                    ->createOptionForm(fn (): array => \App\Filament\Concerns\CustomerDetails::schema())
-                    ->createOptionUsing(fn (array $data): int => \App\Filament\Concerns\CustomerDetails::create($data)->getKey())
-                    ->createOptionModalHeading('New customer: details and documents')
-                    ->createOptionAction(fn (Forms\Components\Actions\Action $action) => $action->modalWidth('5xl')->tooltip('New customer'))
-                    ->editOptionForm(fn (Get $get): array => \App\Filament\Concerns\CustomerDetails::schema(\App\Models\Customer::find($get('customer_id'))))
-                    ->fillEditOptionActionFormUsing(fn (Get $get): array => ($c = \App\Models\Customer::find($get('customer_id'))) ? \App\Filament\Concerns\CustomerDetails::fill($c) : [])
-                    ->updateOptionUsing(function (array $data, Get $get) {
-                        if ($c = \App\Models\Customer::find($get('customer_id'))) {
-                            \App\Filament\Concerns\CustomerDetails::update($c, $data);
-                        }
-                    })
-                    ->editOptionModalHeading('Customer details and documents')
-                    ->editOptionAction(fn (Forms\Components\Actions\Action $action) => $action->modalWidth('5xl')->tooltip('Customer details and documents'))
+                    ->tap(fn (Forms\Components\Select $select) => \App\Filament\Concerns\CustomerDetails::picker($select)) // 20 Nov: shared with Quotations and Contracts
                     ->helperText(fn (Get $get): ?HtmlString => self::customerHint($get('customer_id'), $get('service_type'), $get('drive_mode')))
                     ->live()
                     ->columnSpanFull(),
@@ -1003,6 +991,7 @@ class BookingResource extends Resource
         return collect([
             $usual ? 'Usual driver(s) for this car: '.$usual.'.' : null,
             $driver ? $driver->name.' usually drives: '.($cars ?: 'no cars assigned yet').'.' : null,
+            \App\Support\Drivers\DriverPapers::assignWarning($driver) ? '⚠ '.\App\Support\Drivers\DriverPapers::assignWarning($driver) : null, // 20 Nov
         ])->filter()->implode(' ') ?: null;
     }
 

@@ -52,6 +52,10 @@ class EditBooking extends EditRecord
 
     protected function afterSave(): void
     {
+        if (\App\Models\Booking::$driverNotice) { // 20 Nov: driver given the job with incomplete documents (never blocked)
+            \Filament\Notifications\Notification::make()->warning()->title('Documents not complete')->body(\App\Models\Booking::$driverNotice)->persistent()->send();
+            \App\Models\Booking::$driverNotice = null;
+        }
         BookingResource::logOverride($this->getRecord(), $this->data);
     }
 

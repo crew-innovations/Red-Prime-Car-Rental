@@ -1,5 +1,17 @@
 # Development log — RED PRIME RENTALS CRM
 
+## 2026-11-20 · Driver documents and job assignment, one customer form everywhere
+
+Bilal, 20 Nov, items 8 and 9. Change request. Migration `2026_11_20_000001_driver_document_review` (additive: `driver_documents.status` default approved, `reviewed_by`, `reviewed_at`, `review_note`).
+
+- **Drivers upload their documents** (My profile › Send a document): type, number, expiry, photo / PDF. Saved as "Waiting for approval"; the office is told. The driver sees each required document as Missing / Waiting for approval / Approved / Rejected (with the reason) / Expired. Before: the page only showed documents, there was no upload.
+- **Office** (Drivers › Documents): the required list with each state at the top; Approve / Reject (reason, the driver is told); "Check" column and filter; documents added by the office are approved at once. A new copy replaces the old one only when approved, so the old approved copy stays valid meanwhile.
+- **Job assignment never blocked by documents**: the old switch "Only assign drivers whose documents are complete" no longer blocks (shown as a note in Business settings). The driver list marks "⚠ documents incomplete", the booking form says what is missing, and after saving (new booking, edit, dispatch board) a warning names it. `DriverPapers::checklist()` / `assignWarning()`.
+- **One customer form** (`CustomerDetails::picker()` + `schema()`): New Booking's customer form is now used by Customers › Add customer and the customer page (plus their own extras: preferences, VIP, source, manager, follow-up, notes), Quotations (add / open customer), Contracts (old paper contract) and Leads › Create customer profile (filled in from the lead; the customer already on file with the same phone / email is offered first, so no duplicates). Same fields, labels, validation (phone and email unique) and documents.
+- Tests: SQLite gets REGEXP_REPLACE / RIGHT in `tests/TestCase.php` (phone matching), which also fixes older website API tests.
+
+Tests: `DriverWorkflowTest` (new document test, assignment test updated to the new rule), `CustomerFormEverywhereTest` (3).
+
 ## 2026-11-19 (3) · Audit log fixed, booking creation made reliable, profile completion in the portal
 
 Bilal, 19 Nov, items 6 and 7. Bug fixes (M2) and change request (portal profile step). No migration.

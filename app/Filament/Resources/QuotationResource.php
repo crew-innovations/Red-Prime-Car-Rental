@@ -97,11 +97,9 @@ class QuotationResource extends Resource
                                 ->preload()
                                 ->required(fn (Get $get): bool => blank($get('lead_id')))
                                 ->placeholder(fn (Get $get): string => filled($get('lead_id')) ? 'From the lead (profile created when converted)' : 'Select an option')
-                                ->createOptionForm([
-                                    Forms\Components\TextInput::make('name')->required()->maxLength(255),
-                                    Forms\Components\TextInput::make('phone')->tel()->required()->maxLength(30),
-                                    Forms\Components\TextInput::make('email')->email()->maxLength(255),
-                                ])
+                                // 20 Nov (Bilal, item 9): the same customer form as New Booking (add new / open details).
+                                ->tap(fn (Forms\Components\Select $select) => \App\Filament\Concerns\CustomerDetails::picker($select))
+                                ->live()
                                 ->columnSpanFull(),
                             Forms\Components\Hidden::make('lead_id'),
                             Forms\Components\ToggleButtons::make('service_type')
