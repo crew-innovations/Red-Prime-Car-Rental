@@ -1,0 +1,61 @@
+# 24 Nov: every push to main goes live on Hostinger (crm.redprimerentals.com).
+# 1. Checks every PHP file for syntax errors (nothing goes live if one fails).
+# 2. Copies the files tracked in git into public_html over SSH (tar, overwrite only):
+#    .env, vendor, storage uploads and other server-only files are never touched, nothing is deleted.
+# 3. Runs scripts/deploy-hostinger.sh on the server: composer, DB backup, migrate, caches.
+# Settings (repo › Settings › Secrets and variables › Actions):
+#   secret SSH_KEY (private key whose .pub is in the server's ~/.ssh/authorized_keys)
+#   variables SSH_HOST, SSH_PORT, SSH_USER, APP_PATH (e.g. domains/crm.redprimerentals.com/public_html)
+name: Deploy to live
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-live
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          coverage: none
+
+      - name: Check PHP files for errors
+        run: |
+          git ls-files -z '*.php' | xargs -0 -n 50 php -l > lint.txt 2>&1 || { grep -v '^No syntax errors' lint.txt; exit 1; }
+          echo "All PHP files OK"
+
+      - name: Prepare SSH
+        env:
+          SSH_KEY: ${{ secrets.SSH_KEY }}
+        run: |
+          test -n "$SSH_KEY" || { echo "SSH_KEY secret is missing"; exit 1; }
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy && chmod 600 ~/.ssh/deploy
+          ssh-keyscan -p "${{ vars.SSH_PORT }}" -H "${{ vars.SSH_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Copy files to the server
+        run: |
+          git archive --format=tar HEAD -- . ':(exclude).github' ':(exclude)tests' \
+            | ssh -i ~/.ssh/deploy -p "${{ vars.SSH_PORT }}" "${{ vars.SSH_USER }}@${{ vars.SSH_HOST }}" \
+              "cd '${{ vars.APP_PATH }}' && tar -xf - && echo '${{ github.sha }}' > storage/app/deployed-commit.txt"
+
+      - name: Run the deploy script on the server
+        run: |
+          ssh -i ~/.ssh/deploy -p "${{ vars.SSH_PORT }}" "${{ vars.SSH_USER }}@${{ vars.SSH_HOST }}" \
+            "cd '${{ vars.APP_PATH }}' && bash scripts/deploy-hostinger.sh"
+
+      - name: Check the site answers
+        run: |
+          code=$(curl -s -o /dev/null -w '%{http_code}' https://crm.redprimerentals.com/crm/login)
+          echo "crm/login answered $code"
+          test "$code" = "200"

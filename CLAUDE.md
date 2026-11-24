@@ -77,6 +77,7 @@ If Packagist is blocked in the agent environment, install packages from GitHub c
   - Do not use SSH from the agent side. Bilal runs the commands himself.
 - **After uploading, Bilal runs:** `bash scripts/deploy-hostinger.sh` (add `--demo` for sample data).
   - It runs composer with `--no-scripts` (because `proc_open` is disabled), then package:discover, filament:upgrade, migrate, optimize:clear and optimize.
+- **Auto-deploy (24 Nov):** every push to GitHub `main` runs `.github/workflows/deploy.yml`: PHP syntax check, copy of the git-tracked files over SSH (never `.env`, `vendor`, `storage` uploads; nothing deleted), then `scripts/deploy-hostinger.sh` on the server. Needs the `SSH_KEY` secret (added by Bilal) and the variables SSH_HOST, SSH_PORT, SSH_USER, APP_PATH. Pushing to `main` = going live, so still ask Bilal before every push. Do not edit code on the server directly.
 - New routes, pages or widgets need `optimize:clear`, otherwise they return 404.
 - After a deploy, check `storage/logs/laravel.log` for new errors and smoke-test the affected pages.
 

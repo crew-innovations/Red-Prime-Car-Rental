@@ -1,5 +1,13 @@
 # Development log — RED PRIME RENTALS CRM
 
+## 2026-11-24 · Automatic deploy from GitHub
+
+Bilal: push to GitHub should go live by itself (change request, hosting setup).
+- `.github/workflows/deploy.yml`: on every push to `main` (or "Run workflow"): PHP syntax check → `git archive` of the tracked files piped over SSH into `public_html` (overwrite only; `.env`, `vendor`, `storage` and uploads untouched, nothing deleted) → `bash scripts/deploy-hostinger.sh` (composer, DB backup, migrate, caches) → checks `/crm/login` answers 200. The deployed commit is written to `storage/app/deployed-commit.txt`.
+- Why not Hostinger's own Git deploy: it only copies files (no composer / migrate / cache clear) and expects an empty folder.
+- Before switching it on, the live files were compared with GitHub `main` (733 files): identical except `.gitignore`.
+- GitHub variables set: SSH_HOST, SSH_PORT, SSH_USER, APP_PATH. The `SSH_KEY` secret is added by Bilal (a key made on the server for GitHub only).
+
 ## 2026-11-20 (2) · Document links fixed, Add lead with the customer form, help on every page, quote from a lead
 
 Bilal's items 10–13 (change requests; items 10 and 13 are fixes of M2 work, 11 and 12 extend the M1/M2 screens).
