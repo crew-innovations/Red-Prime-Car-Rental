@@ -17,6 +17,7 @@ class ContractDriver extends Model
         return [
             'is_main' => 'boolean',
             'date_of_birth' => 'date',
+            'id_issued_on' => 'date',
             'id_expires_on' => 'date',
             'licence_issued_on' => 'date',
             'licence_expires_on' => 'date',

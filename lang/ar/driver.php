@@ -146,6 +146,11 @@ return [
     'signed' => 'تم التوقيع',
     'clear' => 'مسح',
     'signature_needed' => 'توقيع العميل مطلوب.',
+    'sign_contract' => 'توقيع عقد الإيجار',
+    'sign_contract_desc' => 'اقرأ عقد الإيجار ووقّع كسائق. المستأجر يوقع بشكل منفصل.',
+    'sign_contract_save' => 'حفظ توقيعي',
+    'sign_contract_agree' => 'قرأت عقد الإيجار وأوافق على التوقيع كسائق.',
+    'sign_contract_saved' => 'توقيعك موجود على عقد الإيجار.',
 
     'start_charter' => 'بدء الرحلة',
     'picked_up' => 'تم استلام العميل',

@@ -9,6 +9,7 @@ use App\Models\Setting;
 use App\Support\Drivers\DriverJobs;
 use App\Support\Drivers\DriverWork;
 use App\Support\Phone;
+use App\Support\Uploads\CameraUpload;
 use Filament\Actions\Action;
 use Filament\Forms;
 use Filament\Notifications\Notification;
@@ -192,15 +193,18 @@ class DriverJob extends Page
                 ->bulkToggleable()
                 ->rules(Setting::read('checklist_all_required') ? ['array', 'size:'.count($list)] : ['array'])
                 ->validationMessages(['size' => __('driver.tick_all')]) : null,
-            Forms\Components\FileUpload::make('photos')
-                ->label($minPhotos ? __('driver.photos_min', ['n' => $minPhotos]) : __('driver.photos'))
-                ->helperText(__('driver.photos_help'))
-                ->disk('private')->directory('tmp')->visibility('private')
-                ->image()->multiple()->maxFiles(20)->maxSize(10240)
-                ->imageResizeMode('contain')->imageResizeTargetWidth('1600')->imageResizeTargetHeight('1600')
-                ->panelLayout('grid')
-                ->minFiles($minPhotos)
-                ->required($minPhotos > 0),
+            ...CameraUpload::withScan(
+                Forms\Components\FileUpload::make('photos')
+                    ->label($minPhotos ? __('driver.photos_min', ['n' => $minPhotos]) : __('driver.photos'))
+                    ->helperText(__('driver.photos_help'))
+                    ->disk('private')->directory('tmp')->visibility('private')
+                    ->image()->multiple()->maxFiles(20)->maxSize(10240)
+                    ->imageResizeMode('contain')->imageResizeTargetWidth('1600')->imageResizeTargetHeight('1600')
+                    ->panelLayout('grid')
+                    ->minFiles($minPhotos)
+                    ->required($minPhotos > 0),
+                'photos'
+            ),
             Forms\Components\Textarea::make('notes')->label(__('driver.notes'))->rows(2),
             // 4 Nov (15): the customer signs on the phone (Business settings: off / optional / required).
             $signature !== 'off' ? Forms\Components\TextInput::make('signer')->label(__('driver.signer'))->maxLength(120)
@@ -210,6 +214,60 @@ class DriverJob extends Page
                 ->rules($signature === 'required' ? ['required', 'string'] : ['nullable', 'string'])
                 ->validationMessages(['required' => __('driver.signature_needed')]) : null,
         ]));
+    }
+
+    /** 25 Nov: CRM driver signs the rental contract on their phone (independent of the hirer). */
+    public function signContractAction(): Action
+    {
+        return Action::make('signContract')
+            ->label(__('driver.sign_contract'))
+            ->icon('heroicon-o-pencil-square')
+            ->size(ActionSize::ExtraLarge)
+            ->extraAttributes(['class' => 'rp-dv-bigbtn'])
+            ->visible(fn (): bool => $this->canSignContract())
+            ->modalHeading(fn (): string => __('driver.sign_contract').' · '.($this->contract()?->number ?? ''))
+            ->modalDescription(__('driver.sign_contract_desc'))
+            ->modalSubmitActionLabel(__('driver.sign_contract_save'))
+            ->closeModalByClickingAway(false)
+            ->form([
+                Forms\Components\TextInput::make('signer')->label(__('driver.signer'))->required()->maxLength(120)
+                    ->default(fn () => auth()->user()?->name),
+                Forms\Components\ViewField::make('signature')->label(__('driver.signature').' *')
+                    ->view('filament.driver.signature-pad')
+                    ->rules(['required', 'string'])
+                    ->validationMessages(['required' => __('driver.signature_needed')]),
+                Forms\Components\Checkbox::make('agree')->label(__('driver.sign_contract_agree'))->accepted()
+                    ->validationMessages(['accepted' => __('driver.sign_contract_agree')]),
+            ])
+            ->action(function (array $data, Action $action): void {
+                $this->runSafely($action, function () use ($data) {
+                    $png = DriverWork::signaturePng($data['signature'] ?? null);
+                    if (! $png) {
+                        throw ValidationException::withMessages(['data.signature' => __('driver.signature_needed')]);
+                    }
+                    \App\Support\Contracts\Contracts::signDriver($this->contract()->fresh(), $png, $data['signer'] ?? auth()->user()?->name, 'driver');
+                });
+                Notification::make()->title(__('driver.sign_contract_saved'))->success()->send();
+                $this->record->refresh();
+            });
+    }
+
+    public function contract(): ?\App\Models\RentalContract
+    {
+        $b = $this->booking();
+
+        return $b ? \App\Models\RentalContract::where('booking_id', $b->id)->first() : null;
+    }
+
+    public function canSignContract(): bool
+    {
+        $c = $this->contract();
+
+        return $c
+            && $this->record->isOpen()
+            && $c->isEditable()
+            && ! $c->driver_signed_at
+            && in_array($this->record->type, ['delivery', 'collection'], true);
     }
 
     public function handoverAction(): Action
@@ -324,12 +382,15 @@ class DriverJob extends Page
                 Forms\Components\ViewField::make('location')->label(__('driver.where'))->view('filament.driver.location-field'),
                 Forms\Components\Hidden::make('lat'),
                 Forms\Components\Hidden::make('lng'),
-                Forms\Components\FileUpload::make('photos')
-                    ->label(__('driver.photos'))
-                    ->disk('private')->directory('tmp')->visibility('private')
-                    ->image()->multiple()->maxFiles(12)->maxSize(10240)
-                    ->imageResizeMode('contain')->imageResizeTargetWidth('1600')->imageResizeTargetHeight('1600')
-                    ->panelLayout('grid'),
+                ...CameraUpload::withScan(
+                    Forms\Components\FileUpload::make('photos')
+                        ->label(__('driver.photos'))
+                        ->disk('private')->directory('tmp')->visibility('private')
+                        ->image()->multiple()->maxFiles(12)->maxSize(10240)
+                        ->imageResizeMode('contain')->imageResizeTargetWidth('1600')->imageResizeTargetHeight('1600')
+                        ->panelLayout('grid'),
+                    'photos'
+                ),
             ])
             ->action(function (array $data, Action $action): void {
                 $this->runSafely($action, fn () => DriverWork::reportDamage($this->record->refresh(), auth()->user(), (string) $data['description'], (array) ($data['photos'] ?? []),

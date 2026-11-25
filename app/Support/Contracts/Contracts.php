@@ -67,6 +67,9 @@ class Contracts
                 'lpo_number' => $data['lpo_number'] ?? null,
                 'company_contact' => $data['company_contact'] ?? null,
                 'notes' => $data['notes'] ?? null,
+                'card_last4' => self::normalizeCardLast4($data['card_last4'] ?? null),
+                'card_brand' => filled($data['card_brand'] ?? null) ? mb_substr(trim((string) $data['card_brand']), 0, 40) : null,
+                'card_expires_on' => filled($data['card_expires_on'] ?? null) ? mb_substr(trim((string) $data['card_expires_on']), 0, 7) : null,
                 'created_by' => auth()->id(),
             ]);
             if ($contract->billing_period === 'monthly') {
@@ -136,9 +139,11 @@ class Contracts
             'nationality' => $c->nationality,
             'date_of_birth' => $c->date_of_birth,
             'id_number' => $c->id_number ?: $c->passport_number,
+            'id_issued_on' => $c->id_number ? $c->id_issued_on : $c->passport_issued_on,
             'id_expires_on' => $c->id_number ? $c->id_expires_on : $c->passport_expires_on,
             'licence_number' => $c->licence_number,
             'licence_country' => $c->licence_country,
+            'licence_place_of_issue' => $c->licence_place_of_issue,
             'licence_issued_on' => $c->licence_issued_on,
             'licence_expires_on' => $c->licence_expires_on,
         ]);
@@ -159,7 +164,8 @@ class Contracts
 
         return DB::transaction(function () use ($contract, $booking, $data) {
             $driver = $contract->drivers()->create(collect($data)->only([
-                'name', 'phone', 'nationality', 'date_of_birth', 'id_number', 'id_expires_on', 'licence_number', 'licence_country', 'licence_issued_on', 'licence_expires_on', 'charge',
+                'name', 'phone', 'nationality', 'date_of_birth', 'id_number', 'id_issued_on', 'id_expires_on',
+                'licence_number', 'licence_country', 'licence_place_of_issue', 'licence_issued_on', 'licence_expires_on', 'charge',
             ])->all() + ['is_main' => false]);
             if ((float) $driver->charge > 0 && $booking) {
                 $extras = (array) ($booking->extras ?? []);
@@ -203,14 +209,17 @@ class Contracts
         return route('contracts.sign', $contract->sign_token);
     }
 
-    /** The customer signed (office tablet, driver's phone or the link). */
+    /** The customer (hirer) signed (office tablet, driver's phone or the link). */
     public static function sign(RentalContract $contract, string $png, ?string $name, string $via): void
     {
         if ($contract->signed_at) {
-            throw ValidationException::withMessages(['signature' => 'This contract is already signed.']);
+            throw ValidationException::withMessages(['signature' => 'This contract is already signed by the hirer.']);
         }
         if (! in_array($contract->status, ['draft', 'open'], true)) {
             throw ValidationException::withMessages(['signature' => 'This contract can no longer be signed.']);
+        }
+        if ($missing = self::missingForSign($contract)) {
+            throw ValidationException::withMessages(['signature' => 'Still needed before signing: '.implode(', ', $missing).'.']);
         }
         DB::transaction(function () use ($contract, $png, $name, $via) {
             $contract->addMediaFromString($png)->usingFileName('signature-'.$contract->id.'-'.now()->format('YmdHis').'.png')
@@ -218,15 +227,202 @@ class Contracts
             $contract->forceFill([
                 'signed_at' => now(),
                 'signed_by_name' => $name ? mb_substr(trim($name), 0, 120) : $contract->customer?->name,
-                'signed_via' => $via,
+                'signed_via' => mb_substr($via, 0, 12),
                 'sign_token' => null,
                 'sign_token_expires_at' => null,
                 // The terms as they were when signed, so a later change in settings does not change this contract.
-                'terms_en' => (string) Setting::read('contract_terms_en'),
-                'terms_ar' => (string) Setting::read('contract_terms_ar'),
+                'terms_en' => filled($contract->terms_en) ? $contract->terms_en : (string) Setting::read('contract_terms_en'),
+                'terms_ar' => filled($contract->terms_ar) ? $contract->terms_ar : (string) Setting::read('contract_terms_ar'),
             ])->save();
-            self::savePdf($contract, 'Signed by the customer ('.$via.')');
+            self::savePdf($contract, 'Signed by the hirer ('.$via.')');
         });
+    }
+
+    /**
+     * 25 Nov: the CRM driver signs on their phone (My jobs). Independent of the hirer signature;
+     * the PDF regenerates after each. Fully signed = both.
+     */
+    public static function signDriver(RentalContract $contract, string $png, ?string $name, string $via = 'driver'): void
+    {
+        if ($contract->driver_signed_at) {
+            throw ValidationException::withMessages(['signature' => 'This contract already has the driver\'s signature.']);
+        }
+        if (! in_array($contract->status, ['draft', 'open'], true)) {
+            throw ValidationException::withMessages(['signature' => 'This contract can no longer be signed.']);
+        }
+        DB::transaction(function () use ($contract, $png, $name, $via) {
+            $contract->addMediaFromString($png)->usingFileName('driver-signature-'.$contract->id.'-'.now()->format('YmdHis').'.png')
+                ->usingName('Driver signature'.($name ? ': '.$name : ''))->toMediaCollection('driver_signature');
+            $contract->forceFill([
+                'driver_signed_at' => now(),
+                'driver_signed_by_name' => $name ? mb_substr(trim($name), 0, 120) : (auth()->user()?->name),
+                'driver_signed_via' => mb_substr($via, 0, 24),
+                'terms_en' => filled($contract->terms_en) ? $contract->terms_en : (string) Setting::read('contract_terms_en'),
+                'terms_ar' => filled($contract->terms_ar) ? $contract->terms_ar : (string) Setting::read('contract_terms_ar'),
+            ])->save();
+            self::savePdf($contract, 'Signed by the driver ('.$via.')');
+        });
+    }
+
+    public static function fullySigned(RentalContract $contract): bool
+    {
+        return $contract->isFullySigned();
+    }
+
+    /** Save deposit card reference (last 4 only — never a full card number). */
+    public static function saveCard(RentalContract $contract, array $data): void
+    {
+        self::assertEditable($contract);
+        $last4 = self::normalizeCardLast4($data['card_last4'] ?? null);
+        if ($last4 === null && filled($data['card_last4'] ?? null)) {
+            throw ValidationException::withMessages(['card_last4' => 'Enter the last 4 digits of the card only.']);
+        }
+        $contract->forceFill([
+            'card_last4' => $last4,
+            'card_brand' => filled($data['card_brand'] ?? null) ? mb_substr(trim((string) $data['card_brand']), 0, 40) : null,
+            'card_expires_on' => filled($data['card_expires_on'] ?? null) ? mb_substr(trim((string) $data['card_expires_on']), 0, 7) : null,
+        ])->save();
+        self::savePdf($contract, 'Card details updated');
+    }
+
+    protected static function normalizeCardLast4(mixed $value): ?string
+    {
+        $digits = preg_replace('/\D+/', '', (string) $value);
+        if ($digits === '') {
+            return null;
+        }
+        if (strlen($digits) > 4) {
+            $digits = substr($digits, -4);
+        }
+
+        return strlen($digits) === 4 ? $digits : null;
+    }
+
+    /**
+     * Fields the reference PDF needs before the hirer can sign. Empty = ready.
+     * Self-drive needs the main driver's licence block; with-driver still needs the hirer block.
+     *
+     * @return list<string>
+     */
+    public static function missingForSign(RentalContract $contract): array
+    {
+        $out = [];
+        $b = $contract->booking;
+        $cust = $contract->customer;
+        $car = $b?->bookable;
+        $main = $contract->mainDriver();
+        $selfDrive = $b?->drive_mode !== \App\Enums\DriveMode::WithDriver;
+
+        if (! $cust) {
+            $out[] = 'Hirer (customer)';
+        } else {
+            foreach (['name' => 'Hirer name', 'nationality' => 'Hirer nationality', 'phone' => 'Hirer mobile', 'address' => 'Hirer address'] as $f => $label) {
+                if (blank($cust->{$f})) {
+                    $out[] = $label;
+                }
+            }
+            $hasId = filled($cust->id_number);
+            $hasPass = filled($cust->passport_number);
+            if (! $hasId && ! $hasPass) {
+                $out[] = 'Hirer passport or ID number';
+            } elseif ($hasId) {
+                if (! $cust->id_issued_on) {
+                    $out[] = 'Hirer ID issue date';
+                }
+                if (! $cust->id_expires_on) {
+                    $out[] = 'Hirer ID expiry';
+                }
+            } else {
+                if (! $cust->passport_issued_on) {
+                    $out[] = 'Hirer passport issue date';
+                }
+                if (! $cust->passport_expires_on) {
+                    $out[] = 'Hirer passport expiry';
+                }
+            }
+        }
+
+        if ($selfDrive) {
+            if (blank($main?->licence_number) && blank($cust?->licence_number)) {
+                $out[] = 'Driving licence number';
+            }
+            if (blank($main?->licence_place_of_issue) && blank($cust?->licence_place_of_issue)) {
+                $out[] = 'Licence place of issue';
+            }
+            if (! ($main?->licence_issued_on ?? $cust?->licence_issued_on)) {
+                $out[] = 'Licence issue date';
+            }
+            if (! ($main?->licence_expires_on ?? $cust?->licence_expires_on)) {
+                $out[] = 'Licence expiry';
+            }
+        }
+
+        if (! $car instanceof Car) {
+            $out[] = 'Vehicle';
+        } else {
+            if (blank($car->registration_number)) {
+                $out[] = 'Plate number';
+            }
+            if (blank($car->name) && blank($car->type)) {
+                $out[] = 'Vehicle type';
+            }
+            if (blank($car->colour)) {
+                $out[] = 'Vehicle colour';
+            }
+            if (blank($car->year) && blank($car->model) && blank($car->brand)) {
+                $out[] = 'Vehicle model / year';
+            }
+        }
+
+        if (! $b?->start_at || ! $b?->end_at) {
+            $out[] = 'Rental period';
+        }
+
+        if (blank($contract->card_last4)) {
+            $out[] = 'Card last 4 digits (deposit reference)';
+        }
+
+        return array_values(array_unique($out));
+    }
+
+    /**
+     * Charge sheet for the reference PDF (Shahem-style).
+     *
+     * @return array{base: float, discount: float, days: int, advance: float, fines: float, deposit: float, extras: float, total: float, paid: float, balance: float}
+     */
+    public static function chargeSheet(RentalContract $contract): array
+    {
+        $b = $contract->booking;
+        $days = 1;
+        if ($b?->start_at && $b?->end_at) {
+            $days = max(1, (int) ceil($b->start_at->diffInMinutes($b->end_at) / 1440));
+        }
+        $fines = 0.0;
+        if ($b) {
+            $fines = (float) \App\Models\TrafficFine::query()->where('booking_id', $b->id)->sum('amount');
+        }
+        $extras = 0.0;
+        if ($b) {
+            foreach ((array) ($b->extras ?? []) as $line) {
+                $extras += (float) ($line['amount'] ?? 0);
+            }
+            foreach ((array) ($b->charges ?? []) as $v) {
+                $extras += (float) $v;
+            }
+        }
+
+        return [
+            'base' => round((float) ($b?->base_amount ?? $b?->total ?? 0), 2),
+            'discount' => round((float) ($b?->discount ?? 0), 2),
+            'days' => $days,
+            'advance' => round((float) ($b?->paid_amount ?? 0), 2),
+            'fines' => round($fines, 2),
+            'deposit' => $b?->deposit_mode === 'none' ? 0.0 : round((float) ($b?->security_deposit ?? 0), 2),
+            'extras' => round($extras, 2),
+            'total' => round((float) ($b?->amountDue() ?? $b?->total ?? 0), 2),
+            'paid' => round((float) ($b?->paid_amount ?? 0), 2),
+            'balance' => round((float) ($b?->balance ?? 0), 2),
+        ];
     }
 
     /** The car went out: the contract is open. */

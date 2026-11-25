@@ -153,6 +153,12 @@ return [
     'signed' => 'Signed',
     'clear' => 'Clear',
     'signature_needed' => 'The customer needs to sign.',
+    // 25 Nov: dual signatures on the rental contract
+    'sign_contract' => 'Sign rental contract',
+    'sign_contract_desc' => 'Read the rental agreement and sign as the driver. The customer (hirer) signs separately.',
+    'sign_contract_save' => 'Save my signature',
+    'sign_contract_agree' => 'I have read the rental agreement and agree to sign as the driver.',
+    'sign_contract_saved' => 'Your signature is on the rental contract.',
 
     // Charters and transfers
     'start_charter' => 'Start the charter',

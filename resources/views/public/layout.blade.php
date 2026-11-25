@@ -41,6 +41,7 @@
             .top { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
         }
     </style>
+    <link rel="stylesheet" href="{{ asset('css/crm.css') }}?v={{ @filemtime(public_path('css/crm.css')) }}">
 </head>
 <body>
     <header class="top">
@@ -53,5 +54,6 @@
         @yield('content')
         <div class="foot">RED PRIME RENTALS</div>
     </main>
+    {!! \App\Support\Uploads\CameraUpload::scriptTag() !!}
 </body>
 </html>

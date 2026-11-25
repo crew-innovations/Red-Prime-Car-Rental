@@ -25,12 +25,16 @@ class ConfirmCheck
         'date_of_birth' => 'Date of birth',
         'address' => 'Address',
         'id_or_passport' => 'Emirates ID or passport number',
+        'id_or_passport_issued' => 'ID / passport issue date',
+        'id_or_passport_expiry' => 'ID / passport expiry',
         'licence_number' => 'Driving licence number (self-drive)',
+        'licence_place_of_issue' => 'Licence place of issue (self-drive)',
+        'licence_issued_on' => 'Driving licence issue date (self-drive)',
         'licence_expires_on' => 'Driving licence expiry (self-drive)',
     ];
 
     /** Licence fields only matter when the customer drives. */
-    protected const SELF_DRIVE_ONLY = ['licence_number', 'licence_expires_on'];
+    protected const SELF_DRIVE_ONLY = ['licence_number', 'licence_place_of_issue', 'licence_issued_on', 'licence_expires_on'];
 
     public static function enabled(): bool
     {
@@ -75,6 +79,16 @@ class ConfirmCheck
             }
             $ok = match ($field) {
                 'id_or_passport' => filled($customer->id_number) || filled($customer->passport_number),
+                'id_or_passport_issued' => match (true) {
+                    filled($customer->id_number) => (bool) $customer->id_issued_on,
+                    filled($customer->passport_number) => (bool) $customer->passport_issued_on,
+                    default => false,
+                },
+                'id_or_passport_expiry' => match (true) {
+                    filled($customer->id_number) => (bool) $customer->id_expires_on,
+                    filled($customer->passport_number) => (bool) $customer->passport_expires_on,
+                    default => false,
+                },
                 default => filled($customer->{$field} ?? null),
             };
             if (! $ok) {

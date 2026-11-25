@@ -101,9 +101,14 @@ class AdminPanelProvider extends PanelProvider
             // Installed app and push notifications (4 Nov, brief 9 / 16).
             ->renderHook(PanelsRenderHook::HEAD_END, fn (): HtmlString => \App\Support\Push\PanelHooks::head())
             ->renderHook(PanelsRenderHook::BODY_END, fn (): HtmlString => \App\Support\Push\PanelHooks::body())
-            // 19 Nov: "Read the documents" on this computer (Tesseract, loaded only when used).
+            // 19 Nov: "Read the documents" on this computer (Tesseract, staff only).
             ->renderHook(PanelsRenderHook::BODY_END, fn (): HtmlString => new HtmlString(auth()->check() && ! auth()->user()->isDriverOnly()
-                ? '<script src="'.asset('js/rp-ocr.js').'?v='.@filemtime(public_path('js/rp-ocr.js')).'" defer></script>' : ''))
+                ? '<script src="'.asset('js/rp-ocr.js').'?v='.@filemtime(public_path('js/rp-ocr.js')).'" defer></script>'
+                : ''))
+            // 25 Nov: camera scan on document / ID / handover uploads (staff + drivers).
+            ->renderHook(PanelsRenderHook::BODY_END, fn (): HtmlString => new HtmlString(
+                auth()->check() ? \App\Support\Uploads\CameraUpload::scriptTag() : ''
+            ))
             // Driver phone (4 Nov, 15): bottom navigation, the phone action queue and the texts it shows.
             ->renderHook(PanelsRenderHook::HEAD_END, fn (): HtmlString => auth()->user()?->isDriverOnly()
                 ? new HtmlString('<script>window.RP_DRIVER_TEXT='.json_encode(['saved' => __('driver.saved', [], \App\Support\Drivers\DriverLang::for(auth()->user())), 'sent' => __('driver.sent', [], \App\Support\Drivers\DriverLang::for(auth()->user())), 'queued' => __('driver.queued', [], \App\Support\Drivers\DriverLang::for(auth()->user())), 'not_saved' => __('driver.not_saved', [], \App\Support\Drivers\DriverLang::for(auth()->user()))], JSON_UNESCAPED_UNICODE | JSON_HEX_TAG).';</script><script src="'.asset('js/driver.js').'?v='.@filemtime(public_path('js/driver.js')).'"></script>')

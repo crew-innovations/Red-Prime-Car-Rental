@@ -131,7 +131,8 @@ class Setting extends Model
         'no_deposit_fee_mode' => 'off',      // off / fixed / per_day / percent (of the rental). C-3 open
         'no_deposit_fee_amount' => null,
         'confirm_requires_details' => true,  // item 8: a car booking is confirmed only with the customer details and documents complete
-        'confirm_required_fields' => ['name', 'phone', 'nationality', 'residency', 'id_or_passport', 'licence_number', 'licence_expires_on'],
+        // 25 Nov: reference contract PDF fields (issue dates, place of issue, address) added to the default list.
+        'confirm_required_fields' => ['name', 'phone', 'nationality', 'residency', 'address', 'id_or_passport', 'id_or_passport_issued', 'id_or_passport_expiry', 'licence_number', 'licence_place_of_issue', 'licence_issued_on', 'licence_expires_on'],
         'contract_number_prefix' => 'RC',    // C-8: RC-2026-00001
         'contract_terms_en' => null,         // C-1: RED PRIME's own terms (English)
         'contract_terms_ar' => null,         // C-1: Arabic

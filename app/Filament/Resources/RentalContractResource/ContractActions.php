@@ -74,6 +74,7 @@ class ContractActions
 
         return [
             self::sign($contract)->after($after),
+            self::card($contract)->after($after),
             Action::make('signLink')
                 ->label('Send signing link')
                 ->icon('heroicon-o-link')
@@ -81,7 +82,7 @@ class ContractActions
                 ->authorize('manage-contracts')
                 ->visible(fn (): bool => ! $contract()->signed_at && $contract()->isEditable())
                 ->modalHeading('Signing link for the customer')
-                ->modalDescription('The customer opens it on their phone, reads the contract and signs. One use; it expires (Contract settings).')
+                ->modalDescription('The customer opens it on their phone, reads the contract and signs. One use; it expires (Contract settings). The CRM driver still signs on My jobs.')
                 ->modalSubmitAction(false)->modalCancelActionLabel('Close')
                 ->form(fn (): array => [
                     Forms\Components\TextInput::make('link')->label('Link')->default(Contracts::signLink($contract()))->readOnly()
@@ -195,7 +196,10 @@ class ContractActions
                     // 19 Nov (suggestion 5): tap the areas on the car diagram.
                     Forms\Components\ViewField::make('zones')->label('Where on the car')->view('filament.forms.car-diagram')->default([]),
                     Forms\Components\Textarea::make('description')->label('What')->required()->rows(3)->maxLength(1000),
-                    Forms\Components\FileUpload::make('photos')->label('Photos')->disk('private')->directory('damage')->visibility('private')->image()->multiple()->maxFiles(10)->maxSize(10240),
+                    ...\App\Support\Uploads\CameraUpload::withScan(
+                        Forms\Components\FileUpload::make('photos')->label('Photos')->disk('private')->directory('damage')->visibility('private')->image()->multiple()->maxFiles(10)->maxSize(10240),
+                        'photos'
+                    ),
                 ])
                 ->action(function (array $data) use ($contract) {
                     $b = $contract()->booking;
@@ -230,8 +234,11 @@ class ContractActions
                         Forms\Components\TextInput::make('black_points')->numeric()->minValue(0)->maxValue(24),
                         Forms\Components\TextInput::make('offence')->maxLength(255),
                         Forms\Components\TextInput::make('location')->maxLength(255),
-                        Forms\Components\FileUpload::make('path')->label('Fine notice (PDF or photo)')->disk('private')->directory('fines')->visibility('private')
-                            ->acceptedFileTypes(['application/pdf', 'image/*'])->maxSize(8192)->columnSpanFull(),
+                        ...\App\Support\Uploads\CameraUpload::withScan(
+                            Forms\Components\FileUpload::make('path')->label('Fine notice (PDF or photo)')->disk('private')->directory('fines')->visibility('private')
+                                ->acceptedFileTypes(['application/pdf', 'image/*'])->maxSize(8192)->columnSpanFull(),
+                            'path'
+                        ),
                     ]),
                 ])
                 ->action(function (array $data) use ($contract) {
@@ -258,8 +265,11 @@ class ContractActions
                 ->color('gray')
                 ->visible(fn (): bool => Access::allows('manage-contracts'))
                 ->form([
-                    Forms\Components\FileUpload::make('files')->label('Files')->disk('private')->directory('contract-files')->visibility('private')
-                        ->acceptedFileTypes(['image/*', 'application/pdf'])->multiple()->maxFiles(10)->maxSize(10240)->required(),
+                    ...\App\Support\Uploads\CameraUpload::withScan(
+                        Forms\Components\FileUpload::make('files')->label('Files')->disk('private')->directory('contract-files')->visibility('private')
+                            ->acceptedFileTypes(['image/*', 'application/pdf'])->multiple()->maxFiles(10)->maxSize(10240)->required(),
+                        'files'
+                    ),
                 ])
                 ->action(function (array $data) use ($contract) {
                     foreach (\App\Support\PrivateFiles::freshUploads((array) ($data['files'] ?? []), 'contract-files') as $path) {
@@ -339,13 +349,13 @@ class ContractActions
     public static function sign(Closure $contract): Action
     {
         return Action::make('signContract')
-            ->label('Customer signs here')
+            ->label('Hirer signs here')
             ->icon('heroicon-o-pencil')
             ->authorize('manage-contracts')
             ->visible(fn (): bool => ($c = $contract()) && ! $c->signed_at && $c->isEditable())
             ->modalHeading(fn (): string => 'Sign rental agreement '.$contract()?->number)
-            ->modalDescription(fn (): HtmlString => new HtmlString('Hand the screen to the customer. They read the contract (<a target="_blank" style="text-decoration:underline" href="'.e(route('pdf.contract', $contract())).'">open PDF</a>) and sign below.'
-                .(($m = \App\Support\Contracts\ConfirmCheck::missing($contract()->booking)) ? '<br><span style="color:rgb(var(--warning-600))">Still missing: '.e(implode(', ', $m)).'.</span>' : '')))
+            ->modalDescription(fn (): HtmlString => new HtmlString('Hand the screen to the customer (hirer). They read the contract (<a target="_blank" style="text-decoration:underline" href="'.e(route('pdf.contract', $contract())).'">open PDF</a>) and sign below. The CRM driver signs separately on My jobs.'
+                .(($m = Contracts::missingForSign($contract())) ? '<br><span style="color:rgb(var(--warning-600))">Still needed: '.e(implode(', ', $m)).'.</span>' : '')))
             ->form([
                 Forms\Components\TextInput::make('signer')->label('Name of the person signing')->required()->maxLength(120)->default(fn () => $contract()?->customer?->name),
                 Forms\Components\ViewField::make('signature')->label('Signature')->view('filament.driver.signature-pad')->rules(['required', 'string'])
@@ -362,7 +372,41 @@ class ContractActions
                 }
                 try {
                     Contracts::sign($contract(), $png, $data['signer'], 'office');
-                    Notification::make()->success()->title('Signed')->body('A new PDF version with the signature was saved.')->send();
+                    Notification::make()->success()->title('Hirer signed')->body($contract()->fresh()->isFullySigned()
+                        ? 'Both signatures are on the PDF.'
+                        : 'Waiting for the driver\'s signature on My jobs.')->send();
+                } catch (ValidationException $e) {
+                    Notification::make()->danger()->title(collect($e->errors())->flatten()->first())->send();
+                }
+            });
+    }
+
+    /** Deposit card reference (last 4 only) for the contract PDF. */
+    public static function card(Closure $contract): Action
+    {
+        return Action::make('cardDetails')
+            ->label('Card for deposit')
+            ->icon('heroicon-o-credit-card')
+            ->color('gray')
+            ->authorize('manage-contracts')
+            ->visible(fn (): bool => ($c = $contract()) && $c->isEditable())
+            ->modalHeading('Card last 4 digits (deposit reference)')
+            ->modalDescription('Never type a full card number. Only the last 4 digits are stored and printed on the rental agreement.')
+            ->fillForm(fn (): array => [
+                'card_last4' => $contract()?->card_last4,
+                'card_brand' => $contract()?->card_brand,
+                'card_expires_on' => $contract()?->card_expires_on,
+            ])
+            ->form([
+                Forms\Components\TextInput::make('card_last4')->label('Last 4 digits')->required()->length(4)->numeric()
+                    ->extraInputAttributes(['inputmode' => 'numeric', 'maxlength' => 4]),
+                Forms\Components\TextInput::make('card_brand')->label('Brand (optional)')->maxLength(40)->placeholder('Visa / Mastercard…'),
+                Forms\Components\TextInput::make('card_expires_on')->label('Expires (MM/YYYY)')->maxLength(7)->placeholder('12/2028'),
+            ])
+            ->action(function (array $data) use ($contract) {
+                try {
+                    Contracts::saveCard($contract(), $data);
+                    Notification::make()->success()->title('Card details saved on the contract PDF.')->send();
                 } catch (ValidationException $e) {
                     Notification::make()->danger()->title(collect($e->errors())->flatten()->first())->send();
                 }
@@ -396,11 +440,13 @@ class ContractActions
                 Forms\Components\Select::make('nationality')->options(array_combine(\App\Filament\Resources\CustomerResource::NATIONALITIES, \App\Filament\Resources\CustomerResource::NATIONALITIES))->searchable(),
                 $date('date_of_birth', 'Date of birth')->maxDate(today())->required(),
                 Forms\Components\TextInput::make('id_number')->label('Emirates ID / passport no.')->required()->maxLength(40),
+                $date('id_issued_on', 'ID / passport issued')->maxDate(today()),
                 $date('id_expires_on', 'ID / passport expiry'),
                 Forms\Components\TextInput::make('licence_number')->label('Licence number')->required()->maxLength(40),
-                Forms\Components\TextInput::make('licence_country')->label('Licence issued in')->maxLength(60),
+                Forms\Components\TextInput::make('licence_country')->label('Licence issued in (country)')->maxLength(60),
+                Forms\Components\TextInput::make('licence_place_of_issue')->label('Licence place of issue')->required()->maxLength(120),
                 $date('licence_expires_on', 'Licence expiry')->required(),
-                $date('licence_issued_on', 'Licence issued'),
+                $date('licence_issued_on', 'Licence issued')->required()->maxDate(today()),
                 Forms\Components\TextInput::make('charge')->label('Additional driver charge')->numeric()->minValue(0)->prefix('AED')
                     ->default(fn () => \App\Models\Setting::read('additional_driver_charge'))
                     ->helperText('Added to the booking as its own line. Empty = no charge.'),

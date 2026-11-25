@@ -21,8 +21,8 @@ class DocumentReader
 
     public const CUSTOMER_FIELDS = [
         'name', 'nationality', 'date_of_birth', 'address',
-        'id_number', 'id_expires_on', 'passport_number', 'passport_expires_on',
-        'licence_number', 'licence_country', 'licence_issued_on', 'licence_expires_on',
+        'id_number', 'id_issued_on', 'id_expires_on', 'passport_number', 'passport_issued_on', 'passport_expires_on',
+        'licence_number', 'licence_country', 'licence_place_of_issue', 'licence_issued_on', 'licence_expires_on',
         'trade_licence_number', 'trade_licence_expires_on', 'company_name',
     ];
 

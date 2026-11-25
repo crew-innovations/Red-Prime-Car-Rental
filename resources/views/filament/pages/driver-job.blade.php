@@ -164,7 +164,7 @@
                     {{ __('driver.step_'.$step) }}
                 </x-filament::button>
             @endforeach
-            @foreach ([$this->handoverAction, $this->collectAction, $this->startCharterAction, $this->finishCharterAction] as $action)
+            @foreach ([$this->signContractAction, $this->handoverAction, $this->collectAction, $this->startCharterAction, $this->finishCharterAction] as $action)
                 @if ($action->isVisible())
                     {{ $action }}
                 @endif

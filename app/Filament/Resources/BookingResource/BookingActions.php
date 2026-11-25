@@ -114,11 +114,14 @@ class BookingActions
                             ->label('Paid by')
                             ->options(PaymentMethod::class)->native(false),
                     ]),
-                Forms\Components\FileUpload::make('photos')
-                    ->label('Photos (condition at handover)')
-                    ->disk('private')->directory('tmp')->visibility('private')
-                    ->image()->multiple()->maxFiles(12)->maxSize(8192)
-                    ->panelLayout('grid'),
+                ...\App\Support\Uploads\CameraUpload::withScan(
+                    Forms\Components\FileUpload::make('photos')
+                        ->label('Photos (condition at handover)')
+                        ->disk('private')->directory('tmp')->visibility('private')
+                        ->image()->multiple()->maxFiles(12)->maxSize(8192)
+                        ->panelLayout('grid'),
+                    'photos'
+                ),
                 Forms\Components\Textarea::make('delivery_notes')
                     ->label('Handover notes (optional)')
                     ->placeholder('Existing scratches, items handed over, etc.')
@@ -326,11 +329,14 @@ class BookingActions
                             ->visible(fn (Get $get): bool => (bool) $get('refund_deposit') && $record->depositHeld() > 0),
                     ]),
 
-                Forms\Components\FileUpload::make('photos')
-                    ->label('Photos (condition at return)')
-                    ->disk('private')->directory('tmp')->visibility('private')
-                    ->image()->multiple()->maxFiles(12)->maxSize(8192)
-                    ->panelLayout('grid'),
+                ...\App\Support\Uploads\CameraUpload::withScan(
+                    Forms\Components\FileUpload::make('photos')
+                        ->label('Photos (condition at return)')
+                        ->disk('private')->directory('tmp')->visibility('private')
+                        ->image()->multiple()->maxFiles(12)->maxSize(8192)
+                        ->panelLayout('grid'),
+                    'photos'
+                ),
                 Forms\Components\Textarea::make('return_notes')
                     ->label('Return notes')
                     ->rows(2),
@@ -468,9 +474,12 @@ class BookingActions
                 Forms\Components\TextInput::make('description')->maxLength(255),
                 Forms\Components\Select::make('method')->label('Paid by')->options(PaymentMethod::class)->native(false),
                 Forms\Components\Toggle::make('is_estimate')->label('Estimate (not final yet)'),
-                Forms\Components\FileUpload::make('receipt')->label('Receipt photo / PDF')
-                    ->disk('private')->directory('tmp')->visibility('private')
-                    ->acceptedFileTypes(['image/jpeg', 'image/png', 'image/webp', 'application/pdf'])->maxSize(10240),
+                ...\App\Support\Uploads\CameraUpload::withScan(
+                    Forms\Components\FileUpload::make('receipt')->label('Receipt photo / PDF')
+                        ->disk('private')->directory('tmp')->visibility('private')
+                        ->acceptedFileTypes(['image/jpeg', 'image/png', 'image/webp', 'application/pdf'])->maxSize(10240),
+                    'receipt'
+                ),
                 \App\Filament\Concerns\ReceiptReader::button('receipt'), // 18 Nov (meeting item 7)
             ])
             ->action(function (Booking $record, array $data) {
@@ -807,10 +816,21 @@ class BookingActions
         foreach ($record->missingDocuments() as $label) {
             $blockers[] = 'Missing approved document: '.$label.'.';
         }
-        // 18 Nov: with "hand over only with a signed contract" on (Contract settings).
-        if ($record->isCar() && ! $signedOnPhone && \App\Models\Setting::read('contract_required_for_handover')
-            && ! ($contract = \App\Models\RentalContract::where('booking_id', $record->id)->first())?->signed_at) {
-            $blockers[] = $contract ? 'The rental contract '.$contract->number.' is not signed yet.' : 'There is no rental contract yet (Make rental contract).';
+        // 18 Nov / 25 Nov: with "hand over only with a signed contract" on — needs hirer + driver signatures.
+        if ($record->isCar() && ! $signedOnPhone && \App\Models\Setting::read('contract_required_for_handover')) {
+            $contract = \App\Models\RentalContract::where('booking_id', $record->id)->first();
+            if (! $contract) {
+                $blockers[] = 'There is no rental contract yet (Make rental contract).';
+            } elseif (! $contract->isFullySigned()) {
+                $parts = [];
+                if (! $contract->signed_at) {
+                    $parts[] = 'hirer';
+                }
+                if (! $contract->driver_signed_at) {
+                    $parts[] = 'driver';
+                }
+                $blockers[] = 'The rental contract '.$contract->number.' still needs the '.implode(' and ', $parts).' signature.';
+            }
         }
 
         return $blockers;

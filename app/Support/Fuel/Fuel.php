@@ -87,6 +87,14 @@ class Fuel
         return $e === null ? '–' : self::EIGHTHS[$e];
     }
 
+    /** Percent for rental-contract PDFs (e.g. 7/8 → "88%"). */
+    public static function percentLabel(mixed $value): string
+    {
+        $e = self::eighth($value);
+
+        return $e === null ? '—' : ((int) round($e / 8 * 100)).'%';
+    }
+
     /** Level at handover or return, reading the old quarter column when the eighths one is empty. */
     public static function bookingLevel(Booking $b, string $stage): ?int
     {

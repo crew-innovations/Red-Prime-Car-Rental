@@ -27,7 +27,9 @@ class Customer extends Model
             'unsubscribed_at' => 'datetime',
             // 18 Nov: contract details and blacklist
             'id_expires_on' => 'date',
+            'id_issued_on' => 'date',
             'passport_expires_on' => 'date',
+            'passport_issued_on' => 'date',
             'licence_issued_on' => 'date',
             'licence_expires_on' => 'date',
             'trade_licence_expires_on' => 'date',

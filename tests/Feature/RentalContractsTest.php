@@ -44,7 +44,13 @@ class RentalContractsTest extends TestCase
         Storage::fake('private');
         $this->seedRoles();
         $this->actingAs($this->user('Admin'));
-        $this->car = $this->car(['delivery_fee' => 100]);
+        $this->car = $this->car([
+            'delivery_fee' => 100,
+            'colour' => 'RED',
+            'year' => 2024,
+            'registration_number' => 'EE-98399',
+            'type' => 'sports',
+        ]);
     }
 
     protected function tearDown(): void
@@ -56,9 +62,21 @@ class RentalContractsTest extends TestCase
     protected function fullCustomer(array $attrs = []): Customer
     {
         return $this->customer($attrs + [
-            'nationality' => 'United Kingdom', 'residency' => 'tourist', 'passport_number' => 'GB1234567',
-            'licence_number' => 'UK998877', 'licence_expires_on' => '2030-01-01', 'licence_issued_on' => '2015-01-01', 'date_of_birth' => '1990-05-05',
+            'nationality' => 'United Kingdom', 'residency' => 'tourist', 'address' => 'Dubai Marina',
+            'passport_number' => 'GB1234567', 'passport_issued_on' => '2015-06-10', 'passport_expires_on' => '2035-06-09',
+            'licence_number' => 'UK998877', 'licence_country' => 'United Kingdom', 'licence_place_of_issue' => 'London',
+            'licence_expires_on' => '2030-01-01', 'licence_issued_on' => '2015-01-01', 'date_of_birth' => '1990-05-05',
         ]);
+    }
+
+    /** Contract ready for the hirer to sign (reference PDF fields complete + card last 4). */
+    protected function readyContract(array $bookingAttrs = []): RentalContract
+    {
+        $c = Contracts::make($this->rental($bookingAttrs));
+        Contracts::saveCard($c, ['card_last4' => '4242', 'card_brand' => 'Visa', 'card_expires_on' => '12/2028']);
+        Contracts::syncMainDriver($c->fresh());
+
+        return $c->fresh();
     }
 
     protected function rental(array $attrs = []): Booking
@@ -247,7 +265,7 @@ class RentalContractsTest extends TestCase
 
     public function test_customer_signs_through_the_link_once(): void
     {
-        $c = Contracts::make($this->rental());
+        $c = $this->readyContract();
         $link = Contracts::signLink($c);
         $token = basename(parse_url($link, PHP_URL_PATH));
 
@@ -261,7 +279,7 @@ class RentalContractsTest extends TestCase
         $this->assertSame('link', $c->signed_via);
         $this->assertSame('John Smith', $c->signed_by_name);
         $this->assertNotNull($c->getFirstMedia('signature'));
-        $this->assertSame(2, $c->version);
+        $this->assertFalse($c->isFullySigned(), 'driver has not signed yet');
         $this->get('/sign/'.$token)->assertStatus(410);
     }
 
@@ -456,5 +474,77 @@ class RentalContractsTest extends TestCase
         $edit = \Livewire\Livewire::test(\App\Filament\Resources\BookingResource\Pages\EditBooking::class, ['record' => $b->getKey()]);
         $edit->assertActionVisible('openContract');
         $edit->assertFormFieldExists('deposit_mode');
+    }
+
+    /* ---------- 25 Nov: reference PDF layout + dual signatures ---------- */
+
+    public function test_reference_pdf_has_driver_hirer_charges_and_three_signature_labels(): void
+    {
+        $c = $this->readyContract();
+        $html = view('pdf.contract', ['c' => $c, 'b' => $c->booking, 'version' => 1, 'asPdf' => false])->render();
+        foreach (['Driver Details', 'Hirer Details', 'Vehicle Details', 'Charge Details', 'Signature Hirer', 'Signature Driver', 'Signature Company', 'Document Images', 'OUT', 'IN', 'My Credit Card No'] as $needle) {
+            $this->assertStringContainsString($needle, $html, $needle);
+        }
+        $this->assertStringContainsString('4242', $html);
+        $this->assertStringContainsString('EE-98399', $html);
+    }
+
+    public function test_missing_licence_place_and_card_block_hirer_sign(): void
+    {
+        $cust = $this->fullCustomer(['licence_place_of_issue' => null, 'address' => null]);
+        $b = $this->booking($this->car, '2026-11-20 10:00', '2026-11-23 10:00', ['customer_id' => $cust->id]);
+        $c = Contracts::make($b);
+        $missing = Contracts::missingForSign($c->fresh());
+        $this->assertContains('Licence place of issue', $missing);
+        $this->assertContains('Hirer address', $missing);
+        $this->assertContains('Card last 4 digits (deposit reference)', $missing);
+
+        try {
+            Contracts::sign($c, $this->png(), 'Test', 'office');
+            $this->fail('sign should refuse incomplete contracts');
+        } catch (ValidationException $e) {
+            $this->assertStringContainsString('Still needed', collect($e->errors())->flatten()->implode(' '));
+        }
+    }
+
+    public function test_hirer_and_driver_signatures_are_independent_fully_signed_needs_both(): void
+    {
+        $c = $this->readyContract();
+        $this->assertSame([], Contracts::missingForSign($c));
+        $this->assertFalse($c->isFullySigned());
+
+        Contracts::sign($c->fresh(), $this->png(), 'Hirer Name', 'office');
+        $c->refresh();
+        $this->assertNotNull($c->signed_at);
+        $this->assertNull($c->driver_signed_at);
+        $this->assertFalse($c->isFullySigned());
+        $this->assertNotNull($c->getFirstMedia('signature'));
+
+        Contracts::signDriver($c->fresh(), $this->png(), 'Driver Name', 'driver');
+        $c->refresh();
+        $this->assertNotNull($c->driver_signed_at);
+        $this->assertTrue($c->isFullySigned());
+        $this->assertNotNull($c->getFirstMedia('driver_signature'));
+
+        $html = view('pdf.contract', ['c' => $c, 'b' => $c->booking, 'version' => $c->version, 'asPdf' => false])->render();
+        $this->assertStringContainsString('Hirer Name', $html);
+        $this->assertStringContainsString('Driver Name', $html);
+    }
+
+    public function test_handover_gate_requires_both_signatures_when_setting_on(): void
+    {
+        Setting::write(['contract_required_for_handover' => true]);
+        $c = $this->readyContract(['status' => BookingStatus::Confirmed]);
+        $b = $c->booking;
+        $blockers = \App\Filament\Resources\BookingResource\BookingActions::handoverBlockers($b);
+        $this->assertTrue(collect($blockers)->contains(fn ($m) => str_contains($m, 'hirer') && str_contains($m, 'driver')));
+
+        Contracts::sign($c->fresh(), $this->png(), 'Hirer', 'office');
+        $blockers = \App\Filament\Resources\BookingResource\BookingActions::handoverBlockers($b->fresh());
+        $this->assertTrue(collect($blockers)->contains(fn ($m) => str_contains($m, 'driver') && ! str_contains($m, 'hirer')));
+
+        Contracts::signDriver($c->fresh(), $this->png(), 'Driver', 'driver');
+        $blockers = \App\Filament\Resources\BookingResource\BookingActions::handoverBlockers($b->fresh());
+        $this->assertFalse(collect($blockers)->contains(fn ($m) => str_contains($m, 'signature') || str_contains($m, 'signed')));
     }
 }

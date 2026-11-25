@@ -5,6 +5,7 @@ namespace App\Filament\Pages;
 use App\Models\DriverProfile;
 use App\Models\Setting;
 use App\Support\Drivers\DriverPapers;
+use App\Support\Uploads\CameraUpload;
 use Filament\Forms;
 use Filament\Forms\Concerns\InteractsWithForms;
 use Filament\Forms\Contracts\HasForms;
@@ -100,7 +101,11 @@ class MyProfile extends Page implements HasForms
             in_array('address', $fields, true) ? Forms\Components\Textarea::make('address')->label(__('driver.address'))->rows(2)->maxLength(500) : null,
             in_array('emergency_name', $fields, true) ? Forms\Components\TextInput::make('emergency_name')->label(__('driver.emergency_name'))->maxLength(120) : null,
             in_array('emergency_phone', $fields, true) ? Forms\Components\TextInput::make('emergency_phone')->label(__('driver.emergency_phone'))->tel()->maxLength(30) : null,
-            in_array('photo', $fields, true) ? Forms\Components\FileUpload::make('photo')->label(__('driver.new_photo'))->image()->avatar()->disk('private')->directory('tmp')->visibility('private')->maxSize(5120) : null,
+            ...(in_array('photo', $fields, true)
+                ? CameraUpload::withScan(
+                    Forms\Components\FileUpload::make('photo')->label(__('driver.new_photo'))->image()->avatar()->disk('private')->directory('tmp')->visibility('private')->maxSize(5120),
+                    'photo'
+                ) : []),
         ])));
     }
 
@@ -121,10 +126,13 @@ class MyProfile extends Page implements HasForms
                 ->visible(fn (Forms\Get $get): bool => in_array($get('type'), ['other', 'permit'], true)),
             Forms\Components\TextInput::make('number')->label(__('driver.doc_number'))->maxLength(60),
             Forms\Components\DatePicker::make('expires_on')->label(__('driver.doc_expiry'))->native(false)->displayFormat('d M Y'),
-            Forms\Components\FileUpload::make('path')->label(__('driver.doc_file'))->required()
-                ->disk('private')->directory(fn (): string => 'drivers/'.auth()->id())->visibility('private')
-                ->acceptedFileTypes(['image/jpeg', 'image/png', 'image/webp', 'application/pdf'])->maxSize(10240)
-                ->storeFileNamesIn('original_name')->columnSpanFull(),
+            ...CameraUpload::withScan(
+                Forms\Components\FileUpload::make('path')->label(__('driver.doc_file'))->required()
+                    ->disk('private')->directory(fn (): string => 'drivers/'.auth()->id())->visibility('private')
+                    ->acceptedFileTypes(['image/jpeg', 'image/png', 'image/webp', 'application/pdf'])->maxSize(10240)
+                    ->storeFileNamesIn('original_name')->columnSpanFull(),
+                'path'
+            ),
         ]);
     }
 

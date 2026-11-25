@@ -258,7 +258,7 @@ class HelpGuides
                         'Press "Add customer".',
                         'Fill in the customer form (same as New Booking): Contact (type, full name as on ID, phone, WhatsApp, email, residency, nationality, date of birth, company and TRN for companies, address).',
                         'ID and driving licence: Emirates ID and expiry, passport and expiry, licence number, country, issue and expiry dates.',
-                        'Documents: upload photos / PDFs; tick "I checked these against the originals" to approve them now.',
+                        'Documents: upload photos / PDFs, or press "Scan with camera" to take a photo on the phone or webcam; tick "I checked these against the originals" to approve them now.',
                         'Optional: "Read the documents (OCR)" fills empty fields from the uploads; check them.',
                         'Preferences (contact preference, language, marketing, tags), Account (VIP, source, account manager, follow-up) and notes.',
                         'Press Create. A phone or email already used by another customer is refused, so there are no duplicates.',
@@ -287,7 +287,10 @@ class HelpGuides
                 ],
                 'buttons' => ['Tabs' => 'To review, Waiting for a new upload, Expired, All.'],
                 'after' => ['Approving the last required document opens the customer\'s account and tells them.', 'Rejected: the customer is asked to send it again.'],
-                'tips' => ['Files are private: they open only for logged-in staff allowed to see that customer.'],
+                'tips' => [
+                    'Files are private: they open only for logged-in staff allowed to see that customer.',
+                    'On every document upload use "Scan with camera" or Choose file — same private storage either way.',
+                ],
             ],
 
             'bookings' => [
@@ -356,13 +359,14 @@ class HelpGuides
                         'Open the driver › Documents tab. At the top: every required document and its state (Missing, Waiting for approval, Approved, Rejected, Expired).',
                         'Open the file (eye icon), check it, then "Approve" or "Reject" (the driver sees your reason).',
                     ],
-                    'Upload a document for a driver' => ['Documents tab › "Add document": type, number, issue / expiry dates and the file. Documents the office adds are approved at once.'],
+                    'Upload a document for a driver' => ['Documents tab › "Add document": type, number, issue / expiry dates and the file (or "Scan with camera"). Documents the office adds are approved at once.'],
                     'Replace a document' => ['Use the arrows icon on the row. The old copy is kept as history.'],
                 ],
                 'buttons' => [
                     'Check column' => 'Waiting for approval / Approved / Rejected.',
                     'Expiry' => 'Valid, expiring soon or expired.',
                     'Tabs' => 'Documents, Jobs, Not available, Emails, Bookings, History.',
+                    'Scan with camera' => 'On the profile photo and document uploads: take a photo, or still Choose file.',
                 ],
                 'after' => [
                     'Drivers can still be given jobs while documents are missing; staff get a warning.',
@@ -385,18 +389,27 @@ class HelpGuides
 
             'contracts' => [
                 'title' => 'Rental contracts',
-                'for' => 'Car rental contracts: signed by the customer, with drivers, car swaps, extensions, monthly invoices, damage, fines and the PDF.',
-                'where' => 'Admin: Menu › Contracts. Agents: My contracts.',
-                'who' => 'Admin and Agents (agents: their own bookings\' contracts).',
+                'for' => 'Car rental contracts in the reference PDF layout: hirer and driver details, vehicle and charges, OUT/IN, card last 4, terms, document images, and three signatures (hirer, driver, company).',
+                'where' => 'Admin: Menu › Contracts. Agents: My contracts. Drivers: My jobs › Sign rental contract.',
+                'who' => 'Admin and Agents (agents: their own bookings\' contracts). Drivers sign on their phone.',
                 'steps' => [
                     'Make a new contract (without opening a booking)' => [
                         'Press "New contract".',
                         'Fill in the same steps as a car booking: customer (or add a new one), car, dates, rental agreement, price, deposit.',
-                        'Contract step: type (individual, company, monthly), purchase order and company contact, invoices per rental or per month, auto-renew, notes and additional drivers with their licence.',
+                        'Contract step: type, company details if needed, deposit card last 4 digits, notes and additional drivers with licence place of issue and dates.',
                         'Press Create: the booking behind it and the contract are made together and the contract opens.',
                     ],
                     'Make a contract for an existing booking' => ['"From a booking" and pick the booking, or on the booking press "Make rental contract".'],
-                    'Get it signed' => ['"Customer signs here" on the tablet, or "Send signing link" (email / WhatsApp).'],
+                    'Fill what the PDF needs' => [
+                        'Customer: address, passport or Emirates ID with issue and expiry, licence number, place of issue, issue and expiry.',
+                        'Car: plate, type/name, colour, model or year.',
+                        '"Card for deposit": last 4 digits only (never a full card number).',
+                    ],
+                    'Get it signed (both)' => [
+                        'Hirer: "Hirer signs here" on the tablet, or "Send signing link" (WhatsApp / link).',
+                        'Driver: on My jobs for the delivery, press "Sign rental contract".',
+                        'The PDF shows both signatures. With "Hand over only with a fully signed contract" on, both are needed before handover.',
+                    ],
                     'During the rental' => ['Extend, Replace car, Add driver, Add damage report, Add traffic fine, Invoice the next period (monthly).'],
                     'Close the contract' => ['After the car is returned and the booking is completed, press "Close contract".'],
                     'Enter an old paper contract' => ['"Enter old contract": customer, car, dates, km, amounts and the scan. It is saved as a completed rental and does not hold the car.'],
@@ -404,10 +417,12 @@ class HelpGuides
                 'buttons' => [
                     'Tabs' => 'Open, Drafts / to sign, Due back today, Closed, Company, Monthly, Cancelled, All.',
                     'Fines and tolls' => 'On the contract page: fines and Salik matched to this rental.',
+                    'Card for deposit' => 'Stores last 4 digits for the PDF only.',
                     'Make the PDF again' => 'A new PDF version after a change (versions are kept).',
+                    'Scan with camera' => 'On attachments, damage photos and fine notice: take a photo, or still Choose file / PDF.',
                 ],
                 'after' => ['Each change makes a new PDF version. Monthly contracts invoice each period by themselves.'],
-                'tips' => [],
+                'tips' => ['The PDF matches the reference Vehicle Rental Agreement: Driver | Hirer, Vehicle | Charges, OUT/IN with fuel %, three signature lines, terms page, document images page.'],
             ],
 
             'cars' => [
@@ -682,12 +697,15 @@ class HelpGuides
                 'where' => 'Menu: My jobs, Fuel, Messages, My profile.',
                 'who' => 'Drivers, captains and crew. You see only your own jobs and never money amounts.',
                 'steps' => [
-                    'Do a job' => ['My jobs › open the job.', 'Accept it, then "On the way", "Arrived".', 'Hand over or collect: follow the checks (km, fuel, photos, signature). Report damage if needed.'],
-                    'Send a document' => ['My profile › "Send a document": choose the document, number and expiry, take a clear photo, "Send to the office".', 'It shows "Waiting for approval" until the office checks it. If rejected, the reason is shown: send it again.'],
+                    'Do a job' => ['My jobs › open the job.', 'Accept it, then "On the way", "Arrived".', 'Hand over or collect: follow the checks (km, fuel, photos, signature). Use "Scan with camera" for photos when you can. Report damage if needed.'],
+                    'Send a document' => ['My profile › "Send a document": choose the document, number and expiry, then "Scan with camera" or Choose file, "Send to the office".', 'It shows "Waiting for approval" until the office checks it. If rejected, the reason is shown: send it again.'],
                     'Add a fill-up' => ['Fuel › add km, litres, amount and the receipt photo. The office confirms it.'],
                     'Say when you cannot work' => ['My schedule › add the time off.'],
                 ],
-                'buttons' => ['Language' => 'English, Urdu or Arabic (My profile).'],
+                'buttons' => [
+                    'Language' => 'English, Urdu or Arabic (My profile).',
+                    'Scan with camera' => 'On documents and job photos: opens the phone camera; Choose file still works if camera is blocked.',
+                ],
                 'after' => ['The office is told about every document and fill-up you send.'],
                 'tips' => [],
             ],
@@ -740,7 +758,7 @@ class HelpGuides
             'steps' => [
                 'Complete your account' => [
                     'If the page asks for details, fill in what is missing (for example date of birth, nationality, licence number) and press Save.',
-                    'Documents: upload a clear photo or PDF of each document asked for (Emirates ID or passport, driving licence…), front and back if asked.',
+                    'Documents: upload a clear photo or PDF of each document asked for (Emirates ID or passport, driving licence…), front and back if asked. You can press "Scan with camera" or Choose file.',
                     'Each document shows its state: Waiting for a check, Approved, or Please send again (with the reason).',
                     'Our team checks them; your bookings and payments open when they are approved. You get a message when that happens.',
                 ],
