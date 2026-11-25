@@ -47,6 +47,7 @@
         : '—';
     $docs = $cust ? $cust->documents()->latest()->limit(12)->get() : collect();
     $docImages = collect();
+    $attachmentNotes = collect();
     foreach ($docs as $doc) {
         if (! $doc->path) {
             continue;
@@ -60,8 +61,21 @@
             $label = \App\Support\Options::documentLabel($doc->type);
             $docImages->push(['label' => $label, 'src' => $data]);
         }
-        if ($docImages->count() >= 8) {
+        if ($docImages->count() >= 12) {
             break;
+        }
+    }
+    // Contract attachments uploaded on the contract (Add attachment) — images on the PDF; PDFs listed by name.
+    foreach ($c->getMedia('attachments') as $media) {
+        $mime = (string) ($media->mime_type ?: '');
+        $label = 'Attachment: '.($media->file_name ?: $media->name ?: 'file');
+        if (str_starts_with($mime, 'image/')) {
+            $bytes = rescue(fn () => \Illuminate\Support\Facades\Storage::disk($media->disk)->get($media->getPathRelativeToRoot()), null, false);
+            if ($bytes) {
+                $docImages->push(['label' => $label, 'src' => 'data:'.$mime.';base64,'.base64_encode($bytes)]);
+            }
+        } else {
+            $attachmentNotes->push($label.($mime ? ' ('.$mime.')' : ''));
         }
     }
 @endphp
@@ -188,7 +202,7 @@
         'stamp' => $stamp, 'c' => $c, 'companyName' => $companyName,
     ])
 
-    {{-- Page 2: terms --}}
+    {{-- Page 2: terms (default = reference-style T&Cs from Contract settings) --}}
     <div class="page-break">
         <h3><span class="rule"></span>{!! $t('terms') !!}</h3>
         @if (filled($termsEn) || filled($termsAr))
@@ -206,25 +220,37 @@
         ])
     </div>
 
-    {{-- Page 3: document images --}}
+    {{-- Page 3: customer document images + contract attachments --}}
     <div class="page-break">
         <h3><span class="rule"></span>{!! $t('document_images') !!}</h3>
-        @if ($docImages->isEmpty())
-            <div class="terms muted">No document images attached yet.</div>
+        @if ($docImages->isEmpty() && $attachmentNotes->isEmpty())
+            <div class="terms muted">No document images or contract attachments yet.</div>
         @else
-            <table class="doc-grid">
-                @foreach ($docImages->chunk(2) as $row)
-                    <tr>
-                        @foreach ($row as $img)
-                            <td>
-                                <div class="muted" style="margin-bottom:4px">{{ $img['label'] }}</div>
-                                <img src="{{ $img['src'] }}" alt="">
-                            </td>
+            @if ($docImages->isNotEmpty())
+                <table class="doc-grid">
+                    @foreach ($docImages->chunk(2) as $row)
+                        <tr>
+                            @foreach ($row as $img)
+                                <td>
+                                    <div class="muted" style="margin-bottom:4px">{{ $img['label'] }}</div>
+                                    <img src="{{ $img['src'] }}" alt="">
+                                </td>
+                            @endforeach
+                            @if ($row->count() === 1)<td></td>@endif
+                        </tr>
+                    @endforeach
+                </table>
+            @endif
+            @if ($attachmentNotes->isNotEmpty())
+                <div class="terms" style="margin-top:10px">
+                    <strong>Other attachments (file kept with the contract; not an image for this page):</strong>
+                    <ul style="margin:4px 0 0;padding-left:16px">
+                        @foreach ($attachmentNotes as $note)
+                            <li>{{ $note }}</li>
                         @endforeach
-                        @if ($row->count() === 1)<td></td>@endif
-                    </tr>
-                @endforeach
-            </table>
+                    </ul>
+                </div>
+            @endif
         @endif
     </div>
 @endsection
