@@ -38,6 +38,7 @@ class RentalContract extends Model implements HasMedia
             'auto_renew' => 'boolean',
             'next_invoice_on' => 'date',
             'signed_at' => 'datetime',
+            'driver_signed_at' => 'datetime',
             'sign_token_expires_at' => 'datetime',
             'closed_at' => 'datetime',
             'closing' => 'array',
@@ -56,7 +57,15 @@ class RentalContract extends Model implements HasMedia
     public function registerMediaCollections(): void
     {
         $this->addMediaCollection('signature')->useDisk('private')->singleFile();
+        // 25 Nov: driver (chauffeur or delivery driver) signature on the reference contract PDF.
+        $this->addMediaCollection('driver_signature')->useDisk('private')->singleFile();
         $this->addMediaCollection('attachments')->useDisk('private');
+    }
+
+    /** Hirer and driver have both signed (reference layout needs both). */
+    public function isFullySigned(): bool
+    {
+        return (bool) $this->signed_at && (bool) $this->driver_signed_at;
     }
 
     public function booking(): BelongsTo

@@ -10,6 +10,7 @@ use App\Models\CustomerDocument;
 use App\Support\Access;
 use App\Support\Ocr\DocumentReader;
 use App\Support\Ocr\LocalOcr;
+use App\Support\Uploads\CameraUpload;
 use Filament\Forms;
 use Filament\Forms\Get;
 use Filament\Forms\Set;
@@ -27,8 +28,8 @@ class CustomerDetails
 {
     /** upload key => [label, number field, expiry field, issue field] */
     public const UPLOADS = [
-        'emirates_id' => ['Emirates ID (front and back)', 'id_number', 'id_expires_on', null],
-        'passport' => ['Passport', 'passport_number', 'passport_expires_on', null],
+        'emirates_id' => ['Emirates ID (front and back)', 'id_number', 'id_expires_on', 'id_issued_on'],
+        'passport' => ['Passport', 'passport_number', 'passport_expires_on', 'passport_issued_on'],
         'driving_licence' => ['Driving licence (front and back)', 'licence_number', 'licence_expires_on', 'licence_issued_on'],
         'international_licence' => ['International driving permit', null, null, null],
         'visa' => ['Visa / entry stamp', null, null, null],
@@ -40,8 +41,8 @@ class CustomerDetails
     /** Customer columns saved from this form. */
     public const FIELDS = [
         'name', 'phone', 'whatsapp', 'email', 'type', 'company_name', 'trn', 'address', 'residency', 'nationality', 'date_of_birth',
-        'id_number', 'id_expires_on', 'passport_number', 'passport_expires_on',
-        'licence_number', 'licence_country', 'licence_issued_on', 'licence_expires_on', 'trade_licence_number', 'trade_licence_expires_on',
+        'id_number', 'id_issued_on', 'id_expires_on', 'passport_number', 'passport_issued_on', 'passport_expires_on',
+        'licence_number', 'licence_country', 'licence_place_of_issue', 'licence_issued_on', 'licence_expires_on', 'trade_licence_number', 'trade_licence_expires_on',
     ];
 
     public static function schema(?Customer $customer = null): array
@@ -80,11 +81,14 @@ class CustomerDetails
                 ->columns(4)
                 ->schema([
                     Forms\Components\TextInput::make('id_number')->label('Emirates ID number')->placeholder('784-XXXX-XXXXXXX-X')->maxLength(40)->columnSpan(2),
-                    $date('id_expires_on', 'Emirates ID expiry')->columnSpan(2),
+                    $date('id_issued_on', 'Emirates ID issued')->maxDate(today()),
+                    $date('id_expires_on', 'Emirates ID expiry'),
                     Forms\Components\TextInput::make('passport_number')->label('Passport number')->maxLength(40)->columnSpan(2),
-                    $date('passport_expires_on', 'Passport expiry')->columnSpan(2),
+                    $date('passport_issued_on', 'Passport issued')->maxDate(today()),
+                    $date('passport_expires_on', 'Passport expiry'),
                     Forms\Components\TextInput::make('licence_number')->label('Licence number')->maxLength(40),
-                    Forms\Components\TextInput::make('licence_country')->label('Issued in')->maxLength(60)->datalist(['United Arab Emirates', 'Saudi Arabia', 'United Kingdom', 'India', 'Pakistan', 'Russia', 'Germany', 'France', 'United States']),
+                    Forms\Components\TextInput::make('licence_country')->label('Issued in (country)')->maxLength(60)->datalist(['United Arab Emirates', 'Saudi Arabia', 'United Kingdom', 'India', 'Pakistan', 'Russia', 'Germany', 'France', 'United States']),
+                    Forms\Components\TextInput::make('licence_place_of_issue')->label('Licence place of issue')->maxLength(120)->helperText('City or authority on the licence (needed on the rental contract PDF).')->columnSpan(2),
                     $date('licence_issued_on', 'Licence issued')->maxDate(today()),
                     $date('licence_expires_on', 'Licence expiry'),
                     Forms\Components\TextInput::make('trade_licence_number')->label('Trade licence number')->maxLength(60)->visible($company)->columnSpan(2),
@@ -94,13 +98,17 @@ class CustomerDetails
                 ->description('Photos or PDFs. Front and back can go in the same field. Then press "Read the documents" to fill the empty fields above.')
                 ->columns(2)
                 ->schema([
-                    ...collect(self::uploads())->map(fn ($meta, $key) => Forms\Components\FileUpload::make('upload_'.$key)
-                        ->label($meta[0])
-                        ->disk('private')->directory('customers/'.($customer?->id ?? 'new'))->visibility('private')
-                        ->acceptedFileTypes(['image/jpeg', 'image/png', 'image/webp', 'application/pdf'])
-                        ->maxSize(10240)->multiple()->maxFiles(4)->imagePreviewHeight('80')
-                        ->visible($key === 'trade_licence' ? $company : true)
-                        ->helperText(fn () => self::onFile($customer, $key)))->values()->all(),
+                    ...collect(self::uploads())->flatMap(function ($meta, $key) use ($customer, $company) {
+                        $upload = Forms\Components\FileUpload::make('upload_'.$key)
+                            ->label($meta[0])
+                            ->disk('private')->directory('customers/'.($customer?->id ?? 'new'))->visibility('private')
+                            ->acceptedFileTypes(['image/jpeg', 'image/png', 'image/webp', 'application/pdf'])
+                            ->maxSize(10240)->multiple()->maxFiles(4)->imagePreviewHeight('80')
+                            ->visible($key === 'trade_licence' ? $company : true)
+                            ->helperText(fn () => self::onFile($customer, $key));
+
+                        return CameraUpload::withScan($upload, 'upload_'.$key);
+                    })->values()->all(),
                     Forms\Components\Toggle::make('documents_checked')
                         ->label('I checked these against the originals')
                         ->helperText('On: saved as approved. Off: saved to be reviewed.')
@@ -179,7 +187,7 @@ class CustomerDetails
     public static function fill(Customer $customer): array
     {
         $data = $customer->only(self::FIELDS);
-        foreach (['date_of_birth', 'id_expires_on', 'passport_expires_on', 'licence_issued_on', 'licence_expires_on', 'trade_licence_expires_on'] as $d) {
+        foreach (['date_of_birth', 'id_issued_on', 'id_expires_on', 'passport_issued_on', 'passport_expires_on', 'licence_issued_on', 'licence_expires_on', 'trade_licence_expires_on'] as $d) {
             $data[$d] = $customer->{$d} ? \Illuminate\Support\Carbon::parse($customer->{$d})->toDateString() : null;
         }
         $data['type'] = $customer->type?->value ?? CustomerType::Individual->value;

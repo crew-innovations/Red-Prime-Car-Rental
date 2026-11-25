@@ -85,15 +85,18 @@ class DocumentsRelationManager extends RelationManager
             Forms\Components\DatePicker::make('issued_on')->label('Issue date')->native(false)->displayFormat('d M Y'),
             Forms\Components\DatePicker::make('expires_on')->label('Expiry date')->native(false)->displayFormat('d M Y')
                 ->afterOrEqual('issued_on'),
-            $withFile ? Forms\Components\FileUpload::make('path')
-                ->label('Copy (photo or PDF)')
-                ->disk('private')
-                ->directory(fn (RelationManager $livewire): string => 'drivers/'.$livewire->getOwnerRecord()->getKey())
-                ->visibility('private')
-                ->acceptedFileTypes(['image/jpeg', 'image/png', 'image/webp', 'application/pdf'])
-                ->maxSize(10240)
-                ->storeFileNamesIn('original_name')
-                ->columnSpanFull() : null,
+            ...($withFile ? \App\Support\Uploads\CameraUpload::withScan(
+                Forms\Components\FileUpload::make('path')
+                    ->label('Copy (photo or PDF)')
+                    ->disk('private')
+                    ->directory(fn (RelationManager $livewire): string => 'drivers/'.$livewire->getOwnerRecord()->getKey())
+                    ->visibility('private')
+                    ->acceptedFileTypes(['image/jpeg', 'image/png', 'image/webp', 'application/pdf'])
+                    ->maxSize(10240)
+                    ->storeFileNamesIn('original_name')
+                    ->columnSpanFull(),
+                'path'
+            ) : []),
             Forms\Components\Textarea::make('notes')->rows(2)->columnSpanFull(),
         ]));
     }

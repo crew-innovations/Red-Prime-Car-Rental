@@ -103,7 +103,7 @@ class NextStep
             return 'makeContract';
         }
 
-        return ! $c->signed_at && \App\Models\Setting::read('contract_required_for_handover') ? 'signContract' : null;
+        return ! $c->isFullySigned() && \App\Models\Setting::read('contract_required_for_handover') ? 'signContract' : null;
     }
 
     public static function depositHeld(Booking $b): bool

@@ -112,11 +112,14 @@ class DriverResource extends Resource
                             Forms\Components\TextInput::make('emergency_phone')->label('Emergency contact phone')->tel()->maxLength(30)->required(self::req('emergency_phone')),
                             Forms\Components\TextInput::make('employee_ref')->label('Driver ID / employee ref')->maxLength(50)->required(self::req('employee_ref')),
                             Forms\Components\DatePicker::make('joined_on')->label('Joining date')->native(false)->displayFormat('d M Y')->required(self::req('joined_on')),
-                            Forms\Components\SpatieMediaLibraryFileUpload::make('photo')
-                                ->label('Profile photo')
-                                ->collection('photo')->disk('private')->visibility('private')
-                                ->image()->avatar()->maxSize(5120)
-                                ->required(self::req('photo')),
+                            ...\App\Support\Uploads\CameraUpload::withScan(
+                                Forms\Components\SpatieMediaLibraryFileUpload::make('photo')
+                                    ->label('Profile photo')
+                                    ->collection('photo')->disk('private')->visibility('private')
+                                    ->image()->avatar()->maxSize(5120)
+                                    ->required(self::req('photo')),
+                                'photo'
+                            ),
                         ]),
                     Forms\Components\Section::make('Operational notes')
                         ->collapsible()

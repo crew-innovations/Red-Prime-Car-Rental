@@ -1,5 +1,13 @@
 # Development log — RED PRIME RENTALS CRM
 
+## 2026-11-25 · Reference rental contract PDF + dual sign + Scan with camera
+
+Bilal, 24 Nov meeting (contract layout + camera document scan). Change request / M2 extension. Additive only. Branch `feature/reference-contract-pdf`.
+
+- **Reference contract PDF** matches the sample Vehicle Rental Agreement layout (Driver | Hirer, Vehicle | Charges, OUT/IN with fuel %, three signature lines, terms, document images). Migration `2026_11_25_000001_reference_contract_fields` (ID/licence issue fields, card last 4 only, driver signature fields). `Contracts::signDriver` + driver My jobs “Sign rental contract”; fully signed = hirer + driver. ConfirmCheck / forms require the printed fields before ready-to-sign.
+- **Scan with camera** on document / ID / driver photo / handover / damage / fine / receipt uploads (browser `getUserMedia` → JPEG into the same private FileUpload path). File picker kept. No paid OCR SaaS. Shared `public/js/rp-camera.js`, `App\Support\Uploads\CameraUpload`, CRM overlay CSS; registered on Admin, Account and public upload layouts. Not added to Excel imports, blog covers or fleet marketing galleries.
+- HelpGuides updated (contracts, documents, drivers, driver screens, customer account). Tests: `RentalContractsTest` dual-sign / PDF fields; `CameraUploadTest` (script registered, JPEG still accepted as a normal upload).
+
 ## 2026-11-24 · Automatic deploy from GitHub
 
 Bilal: push to GitHub should go live by itself (change request, hosting setup).

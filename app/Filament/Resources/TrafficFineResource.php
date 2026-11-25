@@ -89,8 +89,11 @@ class TrafficFineResource extends Resource
                 Forms\Components\TextInput::make('offence')->maxLength(255)->columnSpan(2),
                 Forms\Components\TextInput::make('black_points')->numeric()->minValue(0)->maxValue(24),
                 Forms\Components\TextInput::make('location')->maxLength(255)->columnSpan(2),
-                Forms\Components\FileUpload::make('path')->label('Fine notice (PDF or photo)')->disk('private')->directory('fines')->visibility('private')
-                    ->acceptedFileTypes(['application/pdf', 'image/*'])->maxSize(8192),
+                ...\App\Support\Uploads\CameraUpload::withScan(
+                    Forms\Components\FileUpload::make('path')->label('Fine notice (PDF or photo)')->disk('private')->directory('fines')->visibility('private')
+                        ->acceptedFileTypes(['application/pdf', 'image/*'])->maxSize(8192),
+                    'path'
+                ),
             ]),
         ]);
     }

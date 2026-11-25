@@ -49,7 +49,11 @@
         </select>
 
         <label for="file">Photo or PDF (max 10 MB)</label>
-        <input id="file" type="file" name="file" accept="image/jpeg,image/png,image/webp,application/pdf" required>
+        <input id="file" type="file" name="file" accept="image/jpeg,image/png,image/webp,application/pdf" data-rp-camera-input="upload-file" required>
+        <div class="rp-camera-trigger" style="margin-top:10px">
+            <button type="button" class="rp-camera-trigger-btn" data-rp-camera-open="upload-file">Scan with camera</button>
+        </div>
+        <p class="muted" style="margin:8px 0 0">Camera takes a photo. You can still choose a PDF or image from your files.</p>
 
         <div style="margin-top:18px">
             <button class="btn btn-primary" type="submit" style="width:100%">Upload</button>

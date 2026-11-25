@@ -145,15 +145,18 @@ class Documents extends Page implements HasForms
                 ->options(fn (): array => self::uploadTypes())
                 ->native(false)
                 ->required(),
-            Forms\Components\FileUpload::make('path')
-                ->label('Photo or PDF (max 10 MB)')
-                ->disk('private')
-                ->directory(fn (): string => 'customers/'.CustomerArea::customerId())
-                ->visibility('private')
-                ->acceptedFileTypes(['image/jpeg', 'image/png', 'image/webp', 'application/pdf'])
-                ->maxSize(10240)
-                ->storeFileNamesIn('original_name')
-                ->required(),
+            ...\App\Support\Uploads\CameraUpload::withScan(
+                Forms\Components\FileUpload::make('path')
+                    ->label('Photo or PDF (max 10 MB)')
+                    ->disk('private')
+                    ->directory(fn (): string => 'customers/'.CustomerArea::customerId())
+                    ->visibility('private')
+                    ->acceptedFileTypes(['image/jpeg', 'image/png', 'image/webp', 'application/pdf'])
+                    ->maxSize(10240)
+                    ->storeFileNamesIn('original_name')
+                    ->required(),
+                'path'
+            ),
         ]);
     }
 

@@ -70,6 +70,15 @@ class CreateRentalContract extends CreateBooking
                     ->visible(fn (Get $get): bool => $get('contract.type') === 'monthly'),
                 Forms\Components\Textarea::make('contract.notes')->label('Notes on the contract (optional)')->rows(2)->maxLength(1000)->dehydrated(false)->columnSpanFull(),
             ]),
+            Forms\Components\Section::make('Deposit card (last 4 only)')
+                ->description('Printed on the rental agreement. Never type a full card number.')
+                ->columns(3)
+                ->schema([
+                    Forms\Components\TextInput::make('contract.card_last4')->label('Last 4 digits')->length(4)->numeric()->dehydrated(false)
+                        ->extraInputAttributes(['inputmode' => 'numeric', 'maxlength' => 4]),
+                    Forms\Components\TextInput::make('contract.card_brand')->label('Brand')->maxLength(40)->placeholder('Visa / Mastercard…')->dehydrated(false),
+                    Forms\Components\TextInput::make('contract.card_expires_on')->label('Expires (MM/YYYY)')->maxLength(7)->placeholder('12/2028')->dehydrated(false),
+                ]),
             Forms\Components\Section::make('Additional drivers')
                 ->description('The customer is the main driver. Add anyone else who will drive, with their licence.')
                 ->schema([
@@ -80,9 +89,12 @@ class CreateRentalContract extends CreateBooking
                             Forms\Components\TextInput::make('phone')->tel()->maxLength(30),
                             $date('date_of_birth', 'Date of birth')->required()->maxDate(today()),
                             Forms\Components\TextInput::make('id_number')->label('Emirates ID / passport no.')->required()->maxLength(40),
+                            $date('id_issued_on', 'ID / passport issued')->maxDate(today()),
                             Forms\Components\TextInput::make('licence_number')->label('Licence number')->required()->maxLength(40),
+                            Forms\Components\TextInput::make('licence_place_of_issue')->label('Licence place of issue')->required()->maxLength(120),
                             $date('licence_expires_on', 'Licence expiry')->required(),
-                            Forms\Components\TextInput::make('licence_country')->label('Licence issued in')->maxLength(60),
+                            $date('licence_issued_on', 'Licence issued')->required()->maxDate(today()),
+                            Forms\Components\TextInput::make('licence_country')->label('Licence issued in (country)')->maxLength(60),
                             Forms\Components\TextInput::make('charge')->label('Charge')->numeric()->minValue(0)->prefix('AED')
                                 ->default(fn () => \App\Models\Setting::read('additional_driver_charge')),
                         ]),
@@ -104,7 +116,10 @@ class CreateRentalContract extends CreateBooking
         /** @var Booking $booking */
         $booking = $this->getRecord();
         $in = (array) ($this->data['contract'] ?? []);
-        $this->contract = Contracts::make($booking->fresh(), collect($in)->only(['type', 'lpo_number', 'company_contact', 'billing_period', 'auto_renew', 'notes'])->filter(fn ($v) => $v !== null && $v !== '')->all());
+        $this->contract = Contracts::make($booking->fresh(), collect($in)->only([
+            'type', 'lpo_number', 'company_contact', 'billing_period', 'auto_renew', 'notes',
+            'card_last4', 'card_brand', 'card_expires_on',
+        ])->filter(fn ($v) => $v !== null && $v !== '')->all());
         foreach ((array) ($in['drivers'] ?? []) as $d) {
             if (blank($d['name'] ?? null)) {
                 continue;

@@ -65,6 +65,8 @@ class AccountPanelProvider extends PanelProvider
             ->renderHook(PanelsRenderHook::PAGE_HEADER_ACTIONS_BEFORE, fn (): HtmlString => \App\Support\Help::button())
             ->renderHook(PanelsRenderHook::HEAD_END, fn (): HtmlString => \App\Support\Push\PanelHooks::head())
             ->renderHook(PanelsRenderHook::BODY_END, fn (): HtmlString => \App\Support\Push\PanelHooks::body())
+            // 25 Nov: Scan with camera on account document uploads.
+            ->renderHook(PanelsRenderHook::BODY_END, fn (): HtmlString => new HtmlString(\App\Support\Uploads\CameraUpload::scriptTag()))
             // The bell for customers too (4 Nov, 9.1).
             ->databaseNotifications()
             ->databaseNotificationsPolling('60s')

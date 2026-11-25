@@ -9,6 +9,7 @@ use App\Models\CustomerDocument;
 use App\Models\DocumentRequest;
 use App\Models\Setting;
 use App\Support\Phone;
+use App\Support\Uploads\CameraUpload;
 use Filament\Forms;
 use Filament\Notifications\Actions\Action as NotificationAction;
 use Filament\Notifications\Notification;
@@ -90,16 +91,19 @@ class DocumentActions
                 ->label('Expiry date')
                 ->native(false)
                 ->displayFormat('d M Y'),
-            Forms\Components\FileUpload::make('path')
-                ->label('File')
-                ->disk('private')
-                ->directory(fn () => 'customers/'.($customerId ?? 'misc'))
-                ->visibility('private')
-                ->acceptedFileTypes(['image/jpeg', 'image/png', 'image/webp', 'application/pdf'])
-                ->maxSize(10240)
-                ->storeFileNamesIn('original_name')
-                ->required()
-                ->columnSpanFull(),
+            ...CameraUpload::withScan(
+                Forms\Components\FileUpload::make('path')
+                    ->label('File')
+                    ->disk('private')
+                    ->directory(fn () => 'customers/'.($customerId ?? 'misc'))
+                    ->visibility('private')
+                    ->acceptedFileTypes(['image/jpeg', 'image/png', 'image/webp', 'application/pdf'])
+                    ->maxSize(10240)
+                    ->storeFileNamesIn('original_name')
+                    ->required()
+                    ->columnSpanFull(),
+                'path'
+            ),
             Forms\Components\ToggleButtons::make('status')
                 ->options([DocumentStatus::Approved->value => 'Checked and approved', DocumentStatus::Received->value => 'Review later'])
                 ->colors([DocumentStatus::Approved->value => 'success', DocumentStatus::Received->value => 'info'])
