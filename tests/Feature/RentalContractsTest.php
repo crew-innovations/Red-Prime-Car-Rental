@@ -482,13 +482,13 @@ class RentalContractsTest extends TestCase
     {
         $c = $this->readyContract();
         $html = view('pdf.contract', ['c' => $c, 'b' => $c->booking, 'version' => 1, 'asPdf' => false])->render();
-        foreach (['Driver Details', 'Hirer Details', 'Vehicle Details', 'Charge Details', 'Signature Hirer', 'Signature Driver', 'Signature Company', 'Document Images', 'OUT', 'IN', 'My Credit Card No', 'TERMS AND CONDITIONS', 'Car structure', 'Before (OUT)', 'After (IN)', 'شرائط و ضوابط', 'Vehicle Check Out', 'Vehicle Check In', 'Conditions'] as $needle) {
+        foreach (['Driver Details', 'Hirer Details', 'Vehicle Details', 'Charge Details', 'Signature Hirer', 'Signature Driver', 'Signature Company', 'Document Images', 'OUT', 'IN', 'My Credit Card No', 'TERMS AND CONDITIONS', 'Car structure', 'Before (OUT)', 'After (IN)', 'Vehicle Check Out', 'Vehicle Check In', 'Conditions'] as $needle) {
             $this->assertStringContainsString($needle, $html, $needle);
         }
-        // Page 2: English and Urdu terms side by side (not stacked).
+        $this->assertStringContainsString('ra-lines', $html);
         $this->assertStringContainsString('terms-parallel', $html);
         $this->assertStringContainsString('col-en', $html);
-        $this->assertStringContainsString('col-ur', $html);
+        $this->assertStringContainsString('col-ar', $html);
         $this->assertStringContainsString('4242', $html);
         $this->assertStringContainsString('EE-98399', $html);
         $this->assertStringContainsString('car-top', $html);
@@ -515,6 +515,22 @@ class RentalContractsTest extends TestCase
         $this->assertStringContainsString('Attachment: licence-scan.jpg', $html);
         $this->assertStringContainsString('data:image/', $html);
         $this->assertStringNotContainsString('Other attachments', $html);
+    }
+
+    public function test_first_saved_pdf_includes_an_attachment_even_when_media_was_already_loaded(): void
+    {
+        $c = $this->readyContract();
+        $c->load('media');
+        $this->assertCount(0, $c->getMedia('attachments'));
+        $path = 'contract-files/licence-scan.jpg';
+        Storage::disk('private')->put($path, base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='));
+        $c->addMediaFromDisk($path, 'private')->usingFileName('licence-scan.jpg')->toMediaCollection('attachments');
+
+        $version = Contracts::savePdf($c, 'Attachment added');
+        $this->assertNotNull($version);
+        $html = view('pdf.contract', ['c' => $c, 'b' => $c->booking, 'version' => $version->version, 'asPdf' => false])->render();
+        $this->assertStringContainsString('Attachment: licence-scan.jpg', $html);
+        $this->assertStringContainsString('data:image/', $html);
     }
 
     public function test_missing_licence_place_and_card_block_hirer_sign(): void

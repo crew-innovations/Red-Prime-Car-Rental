@@ -8,6 +8,15 @@
     $pdfText = new \App\Support\Documents\PdfText('both');
     $t = fn (string $key) => $pdfText->t('contract.'.$key);
     $x = fn ($v) => \App\Support\Documents\PdfText::x($v);
+    $en = fn (string $key) => e((string) __('pdf.contract.'.$key, [], 'en'));
+    $ar = fn (string $key) => e(\App\Support\Documents\ArabicText::shape((string) __('pdf.contract.'.$key, [], 'ar')));
+    $cell = function (string $key, $value) use ($en, $ar, $x) {
+        $val = $value instanceof \Illuminate\Support\HtmlString ? (string) $value : (string) $x($value);
+        return '<tr><td class="en">'.$en($key).'</td><td class="val">'.$val.'</td><td class="ar">'.$ar($key).'</td></tr>';
+    };
+    $head = function (string $key) use ($en, $ar) {
+        return '<table class="ra-head"><tr><td class="en">'.$en($key).'</td><td class="ar">'.$ar($key).'</td></tr></table>';
+    };
     $aed = fn ($v) => number_format((float) $v, 2).' AED';
     $d = fn ($v) => $v ? \Illuminate\Support\Carbon::parse($v)->format('Y-m-d') : '—';
     $tm = fn ($v) => $v ? \Illuminate\Support\Carbon::parse($v)->format('H:i:s') : '—';
@@ -137,15 +146,18 @@
     .ra-grid { margin-top: 4px; }
     .ra-grid td { width: 50%; vertical-align: top; padding: 0 3px; }
     .ra-box { border: 1.5px solid #d4a62a; border-radius: 2px; padding: 0; min-height: 0; overflow: hidden; }
-    .ra-box .label { font-size: 7px; letter-spacing: .3px; text-transform: uppercase; color: #111; font-weight: bold; margin: 0; padding: 2px 6px; background: #e8d48b; border-bottom: 1px solid #d4a62a; }
+    .ra-box .label { font-size: 7px; letter-spacing: .2px; text-transform: uppercase; color: #111; font-weight: bold; margin: 0; padding: 2px 6px; background: #e8d48b; border-bottom: 1px solid #d4a62a; }
     .ra-box .body { padding: 2px 6px 3px; }
-    .ra-row { padding: 0; border-bottom: 1px solid #f3ead2; font-size: 6.7px; line-height: 1.2; }
-    .ra-row .k { color: #52525b; display: inline; }
-    .ra-row .k .ar-sub { font-size: 6px; white-space: normal; }
-    .ra-row .v { font-weight: 600; color: #111; }
-    .ra-charges .ra-row .k { min-width: 55%; }
+    .ra-head td { padding: 0; border: 0; font-size: 7px; font-weight: bold; }
+    .ra-head .en { text-align: left; }
+    .ra-head .ar { text-align: right; font-family: DejaVu Sans, sans-serif; text-transform: none; letter-spacing: 0; }
+    .ra-lines { width: 100%; }
+    .ra-lines td { font-size: 6.8px; padding: 1px 2px; border-bottom: 1px solid #f3ead2; vertical-align: middle; }
+    .ra-lines .en { width: 36%; color: #3f3f46; text-align: left; white-space: nowrap; }
+    .ra-lines .val { font-weight: 700; color: #111; text-align: left; }
+    .ra-lines .ar { width: 32%; text-align: right; font-family: DejaVu Sans, sans-serif; color: #3f3f46; white-space: nowrap; }
     .ra-outin-mini { width: 100%; margin-top: 4px; }
-    .ra-outin-mini td { width: 50%; vertical-align: top; padding: 0 2px; }
+    .ra-outin-mini > tr > td, .ra-outin-mini > tbody > tr > td { width: 50%; vertical-align: top; padding: 0 2px; }
     .ra-out-box, .ra-in-box { border: 1px solid #d4a62a; background: #faf6e8; padding: 4px 6px; font-size: 7px; }
     .ra-out-box .ttl, .ra-in-box .ttl { font-weight: bold; color: #a8781a; font-size: 7.2px; margin-bottom: 2px; }
     .ra-diagrams td { width: 50%; vertical-align: top; text-align: center; padding: 2px 6px; }
@@ -160,7 +172,7 @@
     .cond-box { border: 1.5px solid #d4a62a; min-height: 0; }
     .cond-box .label { font-size: 7.4px; font-weight: bold; padding: 3px 8px; background: #e8d48b; border-bottom: 1px solid #d4a62a; }
     .cond-box .body { padding: 6px 8px; font-size: 7px; line-height: 1.35; color: #3f3f46; }
-    .cond-ar { direction: rtl; text-align: right; font-family: DejaVu Sans, sans-serif; }
+    .cond-ar { text-align: right; font-family: DejaVu Sans, sans-serif; }
     .card-row { border: 1px solid #d4a62a; padding: 5px 8px; margin-top: 6px; font-size: 7.4px; }
     .sig3 td { width: 33%; vertical-align: bottom; padding: 8px 6px 0; }
     .sig3 .sig-img { height: 36px; max-width: 130px; }
@@ -169,10 +181,10 @@
     .terms-parallel { width: 100%; table-layout: fixed; }
     .terms-parallel td { width: 50%; vertical-align: top; padding: 0 6px; }
     .terms-parallel .col-en { border-right: 1px solid #e8d48b; padding-right: 8px; }
-    .terms-parallel .col-ur { direction: rtl; text-align: right; font-family: DejaVu Sans, sans-serif; padding-left: 8px; }
+    .terms-parallel .col-ar { text-align: right; font-family: DejaVu Sans, sans-serif; padding-left: 8px; }
     .terms-parallel .col-title { font-size: 9px; font-weight: bold; color: #a8781a; margin-bottom: 6px; border-bottom: 1.5px solid #d4a62a; padding-bottom: 3px; }
     .terms { font-size: 6.6px; line-height: 1.38; color: #3f3f46; }
-    .terms-ur { direction: rtl; text-align: right; font-family: DejaVu Sans, sans-serif; }
+    .terms-ar { text-align: right; font-family: DejaVu Sans, sans-serif; }
     .doc-grid td { width: 50%; vertical-align: top; padding: 6px; }
     .doc-grid img { max-width: 100%; max-height: 220px; border: 1px solid #e4e4e7; }
     .page-break { page-break-before: always; }
@@ -193,28 +205,32 @@
         <tr>
             <td>
                 <div class="ra-box">
-                    <div class="label">{!! $t('driver_details') !!}</div>
+                    <div class="label">{!! $head('driver_details') !!}</div>
                     <div class="body">
-                        <div class="ra-row"><span class="k">{!! $t('name') !!}</span><span class="v">{{ $x($driverName) }}</span></div>
-                        <div class="ra-row"><span class="k">{!! $t('nationality') !!}</span><span class="v">{{ $x($driverNat ?: '—') }}</span></div>
-                        <div class="ra-row"><span class="k">{!! $t('driving_lic') !!}</span><span class="v">{{ $x($licNo ?: '—') }}</span></div>
-                        <div class="ra-row"><span class="k">{!! $t('place_of_issue') !!}</span><span class="v">{{ $x($licPlace ?: '—') }}</span></div>
-                        <div class="ra-row"><span class="k">{!! $t('date_of_issue') !!}</span><span class="v">{{ $d($licIssue) }}</span></div>
-                        <div class="ra-row"><span class="k">{!! $t('date_of_expiry') !!}</span><span class="v">{{ $d($licExpiry) }}</span></div>
+                        <table class="ra-lines">
+                            {!! $cell('name', $x($driverName)) !!}
+                            {!! $cell('nationality', $x($driverNat ?: '—')) !!}
+                            {!! $cell('driving_lic', $x($licNo ?: '—')) !!}
+                            {!! $cell('place_of_issue', $x($licPlace ?: '—')) !!}
+                            {!! $cell('date_of_issue', $d($licIssue)) !!}
+                            {!! $cell('date_of_expiry', $d($licExpiry)) !!}
+                        </table>
                     </div>
                 </div>
             </td>
             <td>
                 <div class="ra-box">
-                    <div class="label">{!! $t('hirer_details') !!}</div>
+                    <div class="label">{!! $head('hirer_details') !!}</div>
                     <div class="body">
-                        <div class="ra-row"><span class="k">{!! $t('name') !!}</span><span class="v">{{ $x($cust?->name) }}</span></div>
-                        <div class="ra-row"><span class="k">{!! $t('nationality') !!}</span><span class="v">{{ $x($cust?->nationality ?: '—') }}</span></div>
-                        <div class="ra-row"><span class="k">{!! $t('passport_or_id') !!}</span><span class="v">{{ $x($idOrPass ?: '—') }}</span></div>
-                        <div class="ra-row"><span class="k">{!! $t('date_of_issue') !!}</span><span class="v">{{ $d($idIssue) }}</span></div>
-                        <div class="ra-row"><span class="k">{!! $t('expiry_date') !!}</span><span class="v">{{ $d($idExpiry) }}</span></div>
-                        <div class="ra-row"><span class="k">{!! $t('address') !!}</span><span class="v">{{ $x($cust?->address ?: '—') }}</span></div>
-                        <div class="ra-row"><span class="k">{!! $t('mobile') !!}</span><span class="v">{{ $x($cust?->phone ?: '—') }}</span></div>
+                        <table class="ra-lines">
+                            {!! $cell('name', $x($cust?->name)) !!}
+                            {!! $cell('nationality', $x($cust?->nationality ?: '—')) !!}
+                            {!! $cell('passport_or_id', $x($idOrPass ?: '—')) !!}
+                            {!! $cell('date_of_issue', $d($idIssue)) !!}
+                            {!! $cell('expiry_date', $d($idExpiry)) !!}
+                            {!! $cell('address', $x($cust?->address ?: '—')) !!}
+                            {!! $cell('mobile', $x($cust?->phone ?: '—')) !!}
+                        </table>
                     </div>
                 </div>
             </td>
@@ -225,28 +241,34 @@
         <tr>
             <td>
                 <div class="ra-box">
-                    <div class="label">{!! $t('vehicle_details') !!}</div>
+                    <div class="label">{!! $head('vehicle_details') !!}</div>
                     <div class="body">
-                        <div class="ra-row"><span class="k">{!! $t('plate') !!}</span><span class="v">{{ $x($car?->registration_number ?: '—') }}</span></div>
-                        <div class="ra-row"><span class="k">{!! $t('vehicle_type') !!}</span><span class="v">{{ $x($vehicleType) }}</span></div>
-                        <div class="ra-row"><span class="k">{!! $t('colour') !!}</span><span class="v">{{ $x($car?->colour ?: '—') }}</span></div>
-                        <div class="ra-row"><span class="k">{!! $t('model') !!}</span><span class="v">{{ $x($vehicleModel) }}</span></div>
+                        <table class="ra-lines">
+                            {!! $cell('plate', $x($car?->registration_number ?: '—')) !!}
+                            {!! $cell('vehicle_type', $x($vehicleType)) !!}
+                            {!! $cell('colour', $x($car?->colour ?: '—')) !!}
+                            {!! $cell('model', $x($vehicleModel)) !!}
+                        </table>
                         <table class="ra-outin-mini">
                             <tr>
                                 <td>
                                     <div class="ra-out-box">
-                                        <div class="ttl">{!! $t('out') !!}</div>
-                                        <div>{!! $t('date') !!}: {{ $d($outAt) }}</div>
-                                        <div>{!! $t('time') !!}: {{ $tm($outAt) }}</div>
-                                        <div>{!! $t('km') !!}: {{ $b?->delivery_km !== null ? number_format($b->delivery_km) : '—' }}</div>
+                                        <div class="ttl">{!! $en('out') !!} <span class="ar">{!! $ar('out') !!}</span></div>
+                                        <table class="ra-lines">
+                                            {!! $cell('date', $d($outAt)) !!}
+                                            {!! $cell('time', $tm($outAt)) !!}
+                                            {!! $cell('km', $b?->delivery_km !== null ? number_format($b->delivery_km) : '—') !!}
+                                        </table>
                                     </div>
                                 </td>
                                 <td>
                                     <div class="ra-in-box">
-                                        <div class="ttl">{!! $t('in') !!}</div>
-                                        <div>{!! $t('date') !!}: {{ $d($inAt) }}</div>
-                                        <div>{!! $t('time') !!}: {{ $tm($inAt) }}</div>
-                                        <div>{!! $t('km') !!}: {{ $b?->return_km !== null ? number_format($b->return_km) : '—' }}</div>
+                                        <div class="ttl">{!! $en('in') !!} <span class="ar">{!! $ar('in') !!}</span></div>
+                                        <table class="ra-lines">
+                                            {!! $cell('date', $d($inAt)) !!}
+                                            {!! $cell('time', $tm($inAt)) !!}
+                                            {!! $cell('km', $b?->return_km !== null ? number_format($b->return_km) : '—') !!}
+                                        </table>
                                     </div>
                                 </td>
                             </tr>
@@ -256,18 +278,20 @@
             </td>
             <td>
                 <div class="ra-box ra-charges">
-                    <div class="label">{!! $t('charge_details') !!}</div>
+                    <div class="label">{!! $head('charge_details') !!}</div>
                     <div class="body">
-                        <div class="ra-row"><span class="k">{!! $t('base_rental') !!}</span><span class="v">{{ $aed($sheet['base']) }}</span></div>
-                        <div class="ra-row"><span class="k">{!! $t('discount') !!}</span><span class="v">{{ $aed($sheet['discount']) }}</span></div>
-                        <div class="ra-row"><span class="k">{!! $t('no_of_days') !!}</span><span class="v">{{ $sheet['days'] }}</span></div>
-                        <div class="ra-row"><span class="k">{!! $t('advance_paid') !!}</span><span class="v">{{ $aed($sheet['advance']) }}</span></div>
-                        <div class="ra-row"><span class="k">{!! $t('traffic_fines') !!}</span><span class="v">{{ $aed($sheet['fines']) }}</span></div>
-                        <div class="ra-row"><span class="k">{!! $t('deposit') !!}</span><span class="v">{{ $aed($sheet['deposit']) }}</span></div>
-                        <div class="ra-row"><span class="k">{!! $t('add_charges') !!}</span><span class="v">{{ $aed($sheet['extras']) }}</span></div>
-                        <div class="ra-row"><span class="k">{!! $t('total') !!}</span><span class="v">{{ $aed($sheet['total']) }}</span></div>
-                        <div class="ra-row"><span class="k">{!! $t('paid') !!}</span><span class="v">{{ $aed($sheet['paid']) }}</span></div>
-                        <div class="ra-row"><span class="k">{!! $t('balance') !!}</span><span class="v"><strong>{{ $aed($sheet['balance']) }}</strong></span></div>
+                        <table class="ra-lines">
+                            {!! $cell('base_rental', $aed($sheet['base'])) !!}
+                            {!! $cell('discount', $aed($sheet['discount'])) !!}
+                            {!! $cell('no_of_days', $sheet['days']) !!}
+                            {!! $cell('advance_paid', $aed($sheet['advance'])) !!}
+                            {!! $cell('traffic_fines', $aed($sheet['fines'])) !!}
+                            {!! $cell('deposit', $aed($sheet['deposit'])) !!}
+                            {!! $cell('add_charges', $aed($sheet['extras'])) !!}
+                            {!! $cell('total', $aed($sheet['total'])) !!}
+                            {!! $cell('paid', $aed($sheet['paid'])) !!}
+                            {!! $cell('balance', $aed($sheet['balance'])) !!}
+                        </table>
                     </div>
                 </div>
             </td>
@@ -337,7 +361,7 @@
             </td>
             <td style="padding-left:3px">
                 <div class="cond-box">
-                    <div class="label">{!! $t('conditions') !!}</div>
+                    <div class="label">{!! $ar('terms') !!}</div>
                     <div class="body cond-ar">
                         @if ($condAr !== '')
                             {{ \App\Support\Documents\PdfText::paragraph($condAr, 90) }}
@@ -365,7 +389,7 @@
         <table class="terms-parallel">
             <tr>
                 <td class="col-en">
-                    <div class="col-title">{!! $t('terms') !!} · English</div>
+                    <div class="col-title">{!! $en('terms') !!}</div>
                     @if (filled($termsEn))
                         <div class="terms">{!! nl2br(e($termsEn)) !!}</div>
                     @elseif ($policies->isNotEmpty())
@@ -376,12 +400,12 @@
                         <div class="terms muted">The rental terms of {{ $companyName }} apply.</div>
                     @endif
                 </td>
-                <td class="col-ur">
-                    <div class="col-title">شرائط و ضوابط · Urdu</div>
-                    @if (filled($termsUr))
-                        <div class="terms terms-ur">{!! nl2br(e($termsUr)) !!}</div>
+                <td class="col-ar">
+                    <div class="col-title">{!! $ar('terms') !!}</div>
+                    @if (filled($termsAr))
+                        <div class="terms terms-ar">{{ \App\Support\Documents\PdfText::paragraph($termsAr, 68) }}</div>
                     @else
-                        <div class="terms terms-ur muted">اردو شرائط Contract settings میں شامل کریں۔</div>
+                        <div class="terms terms-ar">{{ \App\Support\Documents\PdfText::paragraph('تُطبَّق شروط الشركة.', 68) }}</div>
                     @endif
                 </td>
             </tr>

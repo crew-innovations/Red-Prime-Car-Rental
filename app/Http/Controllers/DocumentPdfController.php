@@ -47,11 +47,25 @@ class DocumentPdfController extends Controller
         return Pdf::response('pdf.confirmation', ['b' => $booking], 'Booking '.$booking->reference.'.pdf', $request->boolean('download'));
     }
 
-    /** 18 Nov: the rental contract, as its latest saved version (made again live if none is saved). */
+    /** Current contract PDF, including attachments added after the last saved version. */
     public function contract(Request $request, \App\Models\RentalContract $contract)
     {
         abort_unless($contract->booking, 404);
         $this->allowBooking($request, $contract->booking);
+        $contract->unsetRelation('media');
+        $contract->load(['media', 'customer.documents', 'booking']);
+
+        try {
+            return Pdf::response(
+                'pdf.contract',
+                ['c' => $contract, 'b' => $contract->booking, 'version' => max(1, (int) $contract->version)],
+                'Contract '.$contract->number.'.pdf',
+                $request->boolean('download')
+            );
+        } catch (\Throwable $e) {
+            report($e);
+        }
+
         $v = $contract->latestVersion();
         $disk = \Illuminate\Support\Facades\Storage::disk('private');
         if ($v && $disk->exists($v->path)) {
@@ -64,7 +78,7 @@ class DocumentPdfController extends Controller
             ]);
         }
 
-        return Pdf::response('pdf.contract', ['c' => $contract, 'b' => $contract->booking, 'version' => max(1, (int) $contract->version)], 'Contract '.$contract->number.'.pdf', $request->boolean('download'));
+        abort(404);
     }
 
     /** 19 Nov (suggestion 3): the latest deposit settlement of a booking. */
