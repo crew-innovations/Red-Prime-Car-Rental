@@ -22,7 +22,7 @@ class RentalContract extends Model implements HasMedia
 
     protected $guarded = ['id'];
 
-    protected $hidden = ['sign_otp_hash', 'sign_token'];
+    protected $hidden = ['sign_otp_hash', 'sign_token', 'driver_sign_token'];
 
     public const TYPES = ['individual' => 'Individual', 'company' => 'Company', 'monthly' => 'Monthly / long term'];
 
@@ -40,6 +40,7 @@ class RentalContract extends Model implements HasMedia
             'signed_at' => 'datetime',
             'driver_signed_at' => 'datetime',
             'sign_token_expires_at' => 'datetime',
+            'driver_sign_token_expires_at' => 'datetime',
             'closed_at' => 'datetime',
             'closing' => 'array',
             'sign_otp_expires_at' => 'datetime',

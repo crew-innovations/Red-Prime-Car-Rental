@@ -213,6 +213,31 @@ class Contracts
         return route('contracts.sign', $contract->sign_token);
     }
 
+    /** Name and phone for the driver signing link (chauffeur on the booking, otherwise the named driver). */
+    public static function driverContact(RentalContract $contract): array
+    {
+        $user = $contract->booking?->driver;
+        if ($user) {
+            return ['name' => $user->name, 'phone' => $user->phone];
+        }
+        $main = $contract->mainDriver();
+
+        return ['name' => $main?->name ?: $contract->customer?->name, 'phone' => $main?->phone ?: $contract->customer?->whatsapp ?: $contract->customer?->phone];
+    }
+
+    /** The link the driver opens to read and sign. Separate from the hirer's link. */
+    public static function driverSignLink(RentalContract $contract): string
+    {
+        if (! $contract->driver_sign_token || ! $contract->driver_sign_token_expires_at || $contract->driver_sign_token_expires_at->isPast()) {
+            $contract->forceFill([
+                'driver_sign_token' => Str::random(48),
+                'driver_sign_token_expires_at' => now()->addHours(max(1, (int) Setting::read('contract_sign_link_hours', 48))),
+            ])->saveQuietly();
+        }
+
+        return route('contracts.driver-sign', $contract->driver_sign_token);
+    }
+
     /** The customer (hirer) signed (office tablet, driver's phone or the link). */
     public static function sign(RentalContract $contract, string $png, ?string $name, string $via): void
     {
@@ -262,6 +287,8 @@ class Contracts
                 'driver_signed_at' => now(),
                 'driver_signed_by_name' => $name ? mb_substr(trim($name), 0, 120) : (auth()->user()?->name),
                 'driver_signed_via' => mb_substr($via, 0, 24),
+                'driver_sign_token' => null,
+                'driver_sign_token_expires_at' => null,
                 'terms_en' => filled($contract->terms_en) ? $contract->terms_en : (string) Setting::read('contract_terms_en'),
                 'terms_ar' => filled($contract->terms_ar) ? $contract->terms_ar : (string) Setting::read('contract_terms_ar'),
                 'terms_ur' => filled($contract->terms_ur) ? $contract->terms_ur : (string) Setting::read('contract_terms_ur'),

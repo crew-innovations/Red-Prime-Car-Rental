@@ -29,7 +29,7 @@ class ViewRentalContract extends ViewRecord
     {
         $after = fn () => $this->redirect(RentalContractResource::getUrl('view', ['record' => $this->getRecord()]));
         $all = ContractActions::forContract(fn () => $this->getRecord()->fresh(), $after);
-        $main = ['signContract', 'cardDetails', 'closeContract'];
+        $main = ['signContract', 'driverSignContract', 'cardDetails', 'closeContract'];
 
         return [
             Actions\Action::make('pdf')->label('Contract PDF')->icon('heroicon-o-document-arrow-down')->color('gray')

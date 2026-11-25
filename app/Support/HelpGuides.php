@@ -407,7 +407,7 @@ class HelpGuides
                     ],
                     'Get it signed (both)' => [
                         'Hirer: "Hirer signs here" on the tablet, or "Send signing link" (WhatsApp / link).',
-                        'Driver: on My jobs for the delivery, press "Sign rental contract".',
+                        'Driver: "Driver signs here" on the tablet, "Send driver signing link" (WhatsApp / link), or on My jobs press "Sign rental contract".',
                         'The PDF shows both signatures. With "Hand over only with a fully signed contract" on, both are needed before handover.',
                     ],
                     'During the rental' => ['Extend, Replace car, Add driver, Add damage report, Add traffic fine, Invoice the next period (monthly).'],
