@@ -75,4 +75,13 @@ class CameraUploadTest extends TestCase
             ->assertOk()
             ->assertSee('rp-camera.js', false);
     }
+
+    public function test_media_image_detects_by_extension_when_mime_missing(): void
+    {
+        $this->assertTrue(\App\Support\MediaImage::isImage(null, 'scan_20261125.jpg'));
+        $this->assertTrue(\App\Support\MediaImage::isImage('application/octet-stream', 'id-front.PNG'));
+        $this->assertFalse(\App\Support\MediaImage::isImage('application/pdf', 'scan.pdf'));
+        $this->assertSame('image/jpeg', \App\Support\MediaImage::mime('application/octet-stream', 'photo.jpg'));
+        $this->assertSame('image/png', \App\Support\MediaImage::mime(null, 'x.png'));
+    }
 }

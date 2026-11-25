@@ -231,9 +231,10 @@ class RentalContractResource extends Resource
                                 }
 
                                 return $items->map(function ($m) {
+                                    $path = $m->getPathRelativeToRoot();
+                                    $name = $m->file_name ?: $m->name ?: 'file';
                                     $url = rescue(fn () => $m->getTemporaryUrl(now()->addMinutes(60)), null, false);
                                     if (! $url) {
-                                        $path = $m->getPathRelativeToRoot();
                                         $url = \Illuminate\Support\Facades\URL::temporarySignedRoute(
                                             'private-file',
                                             now()->addMinutes(60),
@@ -241,15 +242,21 @@ class RentalContractResource extends Resource
                                             absolute: false
                                         );
                                     }
-                                    $name = e($m->file_name ?: $m->name ?: 'file');
-                                    $isImage = str_starts_with((string) $m->mime_type, 'image/');
-                                    $thumb = $isImage
-                                        ? '<div style="margin:.4rem 0"><a target="_blank" href="'.e($url).'"><img src="'.e($url).'" alt="" style="max-width:100%;max-height:160px;border-radius:8px;border:1px solid #e4e4e7"></a></div>'
-                                        : '';
+                                    $isImage = \App\Support\MediaImage::isImage($m->mime_type, $name, $path);
+                                    $thumb = '';
+                                    if ($isImage) {
+                                        // Embed as data URI so the CRM shows the picture even when mime_type was empty / octet-stream.
+                                        $mime = \App\Support\MediaImage::mime($m->mime_type, $name, $path);
+                                        $bytes = rescue(fn () => \Illuminate\Support\Facades\Storage::disk($m->disk)->get($path), null, false);
+                                        if ($bytes) {
+                                            $src = 'data:'.$mime.';base64,'.base64_encode($bytes);
+                                            $thumb = '<div style="margin:.4rem 0"><a target="_blank" href="'.e($url).'"><img src="'.$src.'" alt="" style="max-width:100%;max-height:160px;border-radius:8px;border:1px solid #e4e4e7"></a></div>';
+                                        }
+                                    }
 
                                     return '<div style="margin-bottom:.75rem">'.$thumb
-                                        .'<a target="_blank" style="font-weight:600;text-decoration:underline" href="'.e($url).'">'.$name.'</a>'
-                                        .'<div style="opacity:.7;font-size:.85em">'.e((string) $m->mime_type).'</div></div>';
+                                        .'<a target="_blank" style="font-weight:600;text-decoration:underline" href="'.e($url).'">'.e($name).'</a>'
+                                        .'<div style="opacity:.7;font-size:.85em">'.e((string) ($m->mime_type ?: \App\Support\MediaImage::mime(null, $name, $path))).'</div></div>';
                                 })->implode('');
                             }),
                     ]),

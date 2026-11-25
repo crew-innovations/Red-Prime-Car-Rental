@@ -95,7 +95,7 @@ class CustomerDetails
                     $date('trade_licence_expires_on', 'Trade licence expiry')->visible($company)->columnSpan(2),
                 ]),
             Forms\Components\Section::make('Documents')
-                ->description('Photos or PDFs. Front and back can go in the same field. Then press "Read the documents" to fill the empty fields above.')
+                ->description('Photos or PDFs (Scan with camera or Choose file). After a photo lands, empty fields above are filled automatically — check them before saving. "Read the documents" runs OCR again if needed.')
                 ->columns(2)
                 ->schema([
                     ...collect(self::uploads())->flatMap(function ($meta, $key) use ($customer, $company) {
@@ -105,7 +105,15 @@ class CustomerDetails
                             ->acceptedFileTypes(['image/jpeg', 'image/png', 'image/webp', 'application/pdf'])
                             ->maxSize(10240)->multiple()->maxFiles(4)->imagePreviewHeight('80')
                             ->visible($key === 'trade_licence' ? $company : true)
-                            ->helperText(fn () => self::onFile($customer, $key));
+                            ->helperText(fn () => self::onFile($customer, $key))
+                            ->live()
+                            ->afterStateUpdated(function ($state, Get $get, Set $set, $livewire, $component) {
+                                // Camera or Choose file: once the file is on disk, read it and fill empty fields.
+                                if (! is_array($state) || $state === []) {
+                                    return;
+                                }
+                                self::autoReadUploads($get, $set, $livewire, $component);
+                            });
 
                         return CameraUpload::withScan($upload, 'upload_'.$key);
                     })->values()->all(),
@@ -127,7 +135,7 @@ class CustomerDetails
                     ])->columnSpanFull(),
                     Forms\Components\Hidden::make('ocr_result'),
                     // 19 Nov: the text read on this computer comes back here and is matched to the fields.
-                    Forms\Components\Hidden::make('ocr_text')->dehydrated(false)
+                    Forms\Components\Hidden::make('ocr_text')->dehydrated(false)->live()
                         ->afterStateUpdated(function (?string $state, Get $get, Set $set) {
                             if (blank($state)) {
                                 return;
@@ -259,6 +267,25 @@ class CustomerDetails
                 ]);
             }
         }
+    }
+
+    /**
+     * 25 Nov: after Scan with camera / Choose file, read the uploads and fill empty fields
+     * (same path as the "Read the documents" button — no second click needed).
+     */
+    public static function autoReadUploads(Get $get, Set $set, $livewire, $component, string $prefix = ''): void
+    {
+        $files = self::uploadedFiles($get, $prefix);
+        if ($files === []) {
+            return;
+        }
+        if (DocumentReader::ready()) {
+            self::fillFromDocuments($get, $set, $prefix);
+
+            return;
+        }
+        $ocrPath = $component->getContainer()->getStatePath().'.ocr_text';
+        LocalOcr::start($livewire, $ocrPath, $files);
     }
 
     /** Uploaded and stored files of the document fields, with their upload key. */

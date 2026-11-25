@@ -273,7 +273,19 @@ class ContractActions
                 ])
                 ->action(function (array $data) use ($contract) {
                     foreach (\App\Support\PrivateFiles::freshUploads((array) ($data['files'] ?? []), 'contract-files') as $path) {
-                        $contract()->addMediaFromDisk($path, 'private')->toMediaCollection('attachments');
+                        $mime = rescue(fn () => \Illuminate\Support\Facades\Storage::disk('private')->mimeType($path), null, false);
+                        $mime = \App\Support\MediaImage::mime($mime, basename($path), $path);
+                        $contract()->addMediaFromDisk($path, 'private')
+                            ->usingFileName(basename($path))
+                            ->withCustomProperties(['source' => 'attach'])
+                            ->toMediaCollection('attachments');
+                        // Spatie may leave mime empty on some hosts — fix from extension / sniffed type.
+                        if ($media = $contract()->getMedia('attachments')->last()) {
+                            if (! str_starts_with((string) $media->mime_type, 'image/') && \App\Support\MediaImage::isImage($mime, $media->file_name, $path)) {
+                                $media->mime_type = $mime;
+                                $media->save();
+                            }
+                        }
                     }
                     Notification::make()->success()->title('Saved')->send();
                 })->after($after),
