@@ -21,7 +21,18 @@ class ContractSignController extends Controller
             return response()->view('public.contract-sign-closed', [], 410)->header('X-Robots-Tag', 'noindex, nofollow');
         }
 
-        return response()->view('public.contract-sign', ['c' => $contract, 'b' => $contract->booking, 'token' => $token])
+        return response()->view('public.contract-sign', ['c' => $contract, 'b' => $contract->booking, 'token' => $token, 'who' => 'hirer'])
+            ->header('X-Robots-Tag', 'noindex, nofollow')->header('Cache-Control', 'private, no-store');
+    }
+
+    public function showDriver(string $token)
+    {
+        $contract = $this->findDriver($token);
+        if (! $contract) {
+            return response()->view('public.contract-sign-closed', [], 410)->header('X-Robots-Tag', 'noindex, nofollow');
+        }
+
+        return response()->view('public.contract-sign', ['c' => $contract, 'b' => $contract->booking, 'token' => $token, 'who' => 'driver'])
             ->header('X-Robots-Tag', 'noindex, nofollow')->header('Cache-Control', 'private, no-store');
     }
 
@@ -74,7 +85,30 @@ class ContractSignController extends Controller
         rescue(fn () => \App\Support\Drivers\Notify::staff('manage-contracts', 'Contract signed: '.$contract->number, $data['name'].' signed on their phone.',
             \App\Filament\Resources\RentalContractResource::getUrl('view', ['record' => $contract]), $contract->booking?->assignee, 'success', 'contract_signed'), report: false);
 
-        return response()->view('public.contract-sign', ['c' => $contract->fresh(), 'b' => $contract->booking, 'token' => null, 'done' => true])
+        return response()->view('public.contract-sign', ['c' => $contract->fresh(), 'b' => $contract->booking, 'token' => null, 'who' => 'hirer', 'done' => true])
+            ->header('X-Robots-Tag', 'noindex, nofollow');
+    }
+
+    public function storeDriver(Request $request, string $token)
+    {
+        $contract = $this->findDriver($token);
+        if (! $contract) {
+            return response()->view('public.contract-sign-closed', [], 410);
+        }
+        $data = $request->validate([
+            'name' => ['required', 'string', 'max:120'],
+            'signature' => ['required', 'string'],
+            'agree' => ['accepted'],
+        ], ['agree.accepted' => 'Please tick that you have read and agree to the contract.', 'signature.required' => 'Please sign in the box.']);
+        $png = DriverWork::signaturePng($data['signature']);
+        if (! $png) {
+            throw ValidationException::withMessages(['signature' => 'Please sign in the box.']);
+        }
+        Contracts::signDriver($contract, $png, $data['name'], 'link');
+        rescue(fn () => \App\Support\Drivers\Notify::staff('manage-contracts', 'Driver signed: '.$contract->number, $data['name'].' signed the contract on their phone.',
+            \App\Filament\Resources\RentalContractResource::getUrl('view', ['record' => $contract]), $contract->booking?->assignee, 'success', 'contract_signed'), report: false);
+
+        return response()->view('public.contract-sign', ['c' => $contract->fresh(), 'b' => $contract->booking, 'token' => null, 'who' => 'driver', 'done' => true])
             ->header('X-Robots-Tag', 'noindex, nofollow');
     }
 
@@ -86,5 +120,15 @@ class ContractSignController extends Controller
         $c = RentalContract::where('sign_token', $token)->first();
 
         return $c && $c->sign_token_expires_at?->isFuture() && ! $c->signed_at && in_array($c->status, ['draft', 'open'], true) ? $c : null;
+    }
+
+    protected function findDriver(string $token): ?RentalContract
+    {
+        if (strlen($token) < 40) {
+            return null;
+        }
+        $c = RentalContract::where('driver_sign_token', $token)->first();
+
+        return $c && $c->driver_sign_token_expires_at?->isFuture() && ! $c->driver_signed_at && in_array($c->status, ['draft', 'open'], true) ? $c : null;
     }
 }

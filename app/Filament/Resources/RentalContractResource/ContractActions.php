@@ -74,6 +74,7 @@ class ContractActions
 
         return [
             self::sign($contract)->after($after),
+            self::driverSign($contract)->after($after),
             self::card($contract)->after($after),
             Action::make('signLink')
                 ->label('Send signing link')
@@ -82,7 +83,7 @@ class ContractActions
                 ->authorize('manage-contracts')
                 ->visible(fn (): bool => ! $contract()->signed_at && $contract()->isEditable())
                 ->modalHeading('Signing link for the customer')
-                ->modalDescription('The customer opens it on their phone, reads the contract and signs. One use; it expires (Contract settings). The CRM driver still signs on My jobs.')
+                ->modalDescription('The customer opens it on their phone, reads the contract and signs. One use; it expires (Contract settings).')
                 ->modalSubmitAction(false)->modalCancelActionLabel('Close')
                 ->form(fn (): array => [
                     Forms\Components\TextInput::make('link')->label('Link')->default(Contracts::signLink($contract()))->readOnly()
@@ -105,6 +106,41 @@ class ContractActions
                     $ok ? \App\Models\AuditLog::note($c, 'contract', 'Signing link sent on WhatsApp') : null;
                     Notification::make()->{$ok ? 'success' : 'danger'}()->title($ok ? 'Sent on WhatsApp' : 'WhatsApp did not accept it')
                         ->body($ok ? null : 'See Settings › Integrations › log. Use "Send signing link" to send it from your phone instead.')->send();
+                }),
+            Action::make('driverSignLink')
+                ->label('Send driver signing link')
+                ->icon('heroicon-o-link')
+                ->color('gray')
+                ->authorize('manage-contracts')
+                ->visible(fn (): bool => ! $contract()->driver_signed_at && $contract()->isEditable())
+                ->modalHeading('Signing link for the driver')
+                ->modalDescription('The driver opens it on their phone, reads the contract and signs. One use; it expires (Contract settings). This does not sign for the hirer.')
+                ->modalSubmitAction(false)->modalCancelActionLabel('Close')
+                ->form(fn (): array => [
+                    Forms\Components\TextInput::make('link')->label('Link')->default(Contracts::driverSignLink($contract()))->readOnly()
+                        ->suffixAction(Forms\Components\Actions\Action::make('wa')->icon('heroicon-o-chat-bubble-left-right')->tooltip('Send on WhatsApp')
+                            ->url(function ($state) use ($contract): ?string {
+                                $who = Contracts::driverContact($contract());
+
+                                return Phone::whatsappUrl($who['phone'],
+                                    'Hello '.strtok((string) $who['name'], ' ').'! Please read and sign RED PRIME rental agreement '.$contract()->number.' as the driver here: '.$state);
+                            }, true)),
+                ]),
+            Action::make('sendDriverSignLink')
+                ->label('Send driver link on WhatsApp')
+                ->icon('heroicon-o-chat-bubble-left-right')
+                ->color('gray')
+                ->authorize('manage-contracts')
+                ->visible(fn (): bool => ! $contract()->driver_signed_at && $contract()->isEditable() && \App\Support\Chat\WhatsAppNotify::ready('contract') && filled(Contracts::driverContact($contract())['phone']))
+                ->requiresConfirmation()
+                ->modalDescription(fn (): string => 'Sends the driver signing link to '.Contracts::driverContact($contract())['phone'].'.')
+                ->action(function () use ($contract) {
+                    $c = $contract();
+                    $who = Contracts::driverContact($c);
+                    $ok = \App\Support\Chat\WhatsAppNotify::send($who['phone'], 'contract', [strtok((string) $who['name'], ' '), $c->number, Contracts::driverSignLink($c)]);
+                    $ok ? \App\Models\AuditLog::note($c, 'contract', 'Driver signing link sent on WhatsApp') : null;
+                    Notification::make()->{$ok ? 'success' : 'danger'}()->title($ok ? 'Sent on WhatsApp' : 'WhatsApp did not accept it')
+                        ->body($ok ? null : 'Use "Send driver signing link" and the WhatsApp button to send it from your phone.')->send();
                 }),
             Action::make('addDriver')
                 ->label('Add driver')
@@ -369,7 +405,7 @@ class ContractActions
             ->authorize('manage-contracts')
             ->visible(fn (): bool => ($c = $contract()) && ! $c->signed_at && $c->isEditable())
             ->modalHeading(fn (): string => 'Sign rental agreement '.$contract()?->number)
-            ->modalDescription(fn (): HtmlString => new HtmlString('Hand the screen to the customer (hirer). They read the contract (<a target="_blank" style="text-decoration:underline" href="'.e(route('pdf.contract', $contract())).'">open PDF</a>) and sign below. The CRM driver signs separately on My jobs.'
+            ->modalDescription(fn (): HtmlString => new HtmlString('Hand the screen to the customer (hirer). They read the contract (<a target="_blank" style="text-decoration:underline" href="'.e(route('pdf.contract', $contract())).'">open PDF</a>) and sign below. The driver signs with "Driver signs here" or their own link.'
                 .(($m = Contracts::missingForSign($contract())) ? '<br><span style="color:rgb(var(--warning-600))">Still needed: '.e(implode(', ', $m)).'.</span>' : '')))
             ->form([
                 Forms\Components\TextInput::make('signer')->label('Name of the person signing')->required()->maxLength(120)->default(fn () => $contract()?->customer?->name),
@@ -389,7 +425,44 @@ class ContractActions
                     Contracts::sign($contract(), $png, $data['signer'], 'office');
                     Notification::make()->success()->title('Hirer signed')->body($contract()->fresh()->isFullySigned()
                         ? 'Both signatures are on the PDF.'
-                        : 'Waiting for the driver\'s signature on My jobs.')->send();
+                        : 'Waiting for the driver\'s signature.')->send();
+                } catch (ValidationException $e) {
+                    Notification::make()->danger()->title(collect($e->errors())->flatten()->first())->send();
+                }
+            });
+    }
+
+    /** Sign in the office (tablet / phone handed to the driver). */
+    public static function driverSign(Closure $contract): Action
+    {
+        return Action::make('driverSignContract')
+            ->label('Driver signs here')
+            ->icon('heroicon-o-pencil')
+            ->color('gray')
+            ->authorize('manage-contracts')
+            ->visible(fn (): bool => ($c = $contract()) && ! $c->driver_signed_at && $c->isEditable())
+            ->modalHeading(fn (): string => 'Driver signs '.$contract()?->number)
+            ->modalDescription(fn (): HtmlString => new HtmlString('Hand the screen to the driver. They read the contract (<a target="_blank" style="text-decoration:underline" href="'.e(route('pdf.contract', $contract())).'">open PDF</a>) and sign below. Or send them "Send driver signing link".'))
+            ->form([
+                Forms\Components\TextInput::make('signer')->label('Name of the driver signing')->required()->maxLength(120)
+                    ->default(fn () => Contracts::driverContact($contract())['name'] ?? null),
+                Forms\Components\ViewField::make('signature')->label('Signature')->view('filament.driver.signature-pad')->rules(['required', 'string'])
+                    ->validationMessages(['required' => 'Ask the driver to sign in the box.']),
+                Forms\Components\Checkbox::make('agree')->label('The driver read the contract and the terms and agrees to them')->accepted()
+                    ->validationMessages(['accepted' => 'Tick that the driver agrees.']),
+            ])
+            ->action(function (array $data) use ($contract) {
+                $png = DriverWork::signaturePng($data['signature'] ?? null);
+                if (! $png) {
+                    Notification::make()->danger()->title('Ask the driver to sign in the box.')->send();
+
+                    return;
+                }
+                try {
+                    Contracts::signDriver($contract(), $png, $data['signer'], 'office');
+                    Notification::make()->success()->title('Driver signed')->body($contract()->fresh()->isFullySigned()
+                        ? 'Both signatures are on the PDF.'
+                        : 'Waiting for the hirer\'s signature.')->send();
                 } catch (ValidationException $e) {
                     Notification::make()->danger()->title(collect($e->errors())->flatten()->first())->send();
                 }

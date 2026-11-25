@@ -76,6 +76,8 @@ Route::post('/quote/{token}/decline', [QuotationPublicController::class, 'declin
 Route::get('/sign/{token}', [\App\Http\Controllers\ContractSignController::class, 'show'])->middleware('throttle:30,1')->where('token', '[A-Za-z0-9]{40,64}')->name('contracts.sign');
 Route::post('/sign/{token}/code', [\App\Http\Controllers\ContractSignController::class, 'code'])->middleware('throttle:5,10')->where('token', '[A-Za-z0-9]{40,64}')->name('contracts.sign.code');
 Route::post('/sign/{token}', [\App\Http\Controllers\ContractSignController::class, 'store'])->middleware('throttle:10,1')->where('token', '[A-Za-z0-9]{40,64}')->name('contracts.sign.store');
+Route::get('/sign-driver/{token}', [\App\Http\Controllers\ContractSignController::class, 'showDriver'])->middleware('throttle:30,1')->where('token', '[A-Za-z0-9]{40,64}')->name('contracts.driver-sign');
+Route::post('/sign-driver/{token}', [\App\Http\Controllers\ContractSignController::class, 'storeDriver'])->middleware('throttle:10,1')->where('token', '[A-Za-z0-9]{40,64}')->name('contracts.driver-sign.store');
 // Rental contract PDF (latest version) for staff and the customer's own account.
 Route::get('/documents/contract/{contract}', [\App\Http\Controllers\DocumentPdfController::class, 'contract'])->middleware('throttle:60,1')->whereNumber('contract')->name('pdf.contract');
 

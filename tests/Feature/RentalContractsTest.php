@@ -283,6 +283,31 @@ class RentalContractsTest extends TestCase
         $this->get('/sign/'.$token)->assertStatus(410);
     }
 
+    public function test_driver_signs_through_their_own_link_once(): void
+    {
+        $c = $this->readyContract();
+        $hirer = Contracts::signLink($c);
+        $link = Contracts::driverSignLink($c);
+        $token = basename(parse_url($link, PHP_URL_PATH));
+
+        $this->assertNotSame($hirer, $link);
+        $this->get('/sign-driver/'.$token)->assertOk()->assertSee('Driver signature')->assertSee($c->number);
+        auth()->logout();
+        $this->post('/sign-driver/'.$token, ['name' => 'Ali Driver', 'signature' => 'data:image/png;base64,'.base64_encode($this->png()), 'agree' => '1'])
+            ->assertOk()->assertSee('is signed');
+
+        $c->refresh();
+        $this->assertNull($c->signed_at, 'the hirer has not signed');
+        $this->assertNotNull($c->driver_signed_at);
+        $this->assertSame('link', $c->driver_signed_via);
+        $this->assertSame('Ali Driver', $c->driver_signed_by_name);
+        $this->assertNull($c->driver_sign_token);
+        $this->assertNotNull($c->getFirstMedia('driver_signature'));
+        $this->assertFalse($c->isFullySigned());
+        $this->assertNotNull($c->sign_token, 'the hirer link stays open');
+        $this->get('/sign-driver/'.$token)->assertStatus(410);
+    }
+
     public function test_extend_replace_car_and_close_with_km_of_both_cars(): void
     {
         $b = $this->rental(['km_limit_per_day' => 100]);
@@ -464,7 +489,7 @@ class RentalContractsTest extends TestCase
         $c = Contracts::make($b);
         BookingFlow::deliver($b->fresh(), ['delivery_km' => 100, 'delivery_fuel' => 8]);
         $page = \Livewire\Livewire::test(\App\Filament\Resources\RentalContractResource\Pages\ViewRentalContract::class, ['record' => $c->getKey()]);
-        foreach (['signContract', 'signLink', 'addDriver', 'extend', 'swap', 'damage', 'attach', 'editDetails', 'closeContract', 'remakePdf'] as $name) {
+        foreach (['signContract', 'driverSignContract', 'signLink', 'driverSignLink', 'addDriver', 'extend', 'swap', 'damage', 'attach', 'editDetails', 'closeContract', 'remakePdf'] as $name) {
             $page->mountAction($name)->assertHasNoActionErrors();
             $page->unmountAction();
         }

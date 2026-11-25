@@ -5,15 +5,16 @@
 @php
     $aed = fn ($v) => 'AED '.number_format((float) $v, 2);
     $s = \App\Models\Setting::values();
-    $terms = $c->signed_at ? $c->terms_en : ($s['contract_terms_en'] ?? null);
-    $termsAr = $c->signed_at ? $c->terms_ar : ($s['contract_terms_ar'] ?? null);
+    $locked = $c->signed_at || $c->driver_signed_at;
+    $terms = $locked ? $c->terms_en : ($s['contract_terms_en'] ?? null);
+    $termsAr = $locked ? $c->terms_ar : ($s['contract_terms_ar'] ?? null);
     $policies = collect(['policy_fuel' => 'Fuel', 'policy_late_return' => 'Late return', 'policy_fines' => 'Fines, Salik and tolls', 'policy_cancellation' => 'Cancellation and changes'])
         ->filter(fn ($label, $key) => filled($s[$key] ?? null));
 @endphp
 
 @section('content')
     @if (! empty($done))
-        <div class="alert ok">Thank you, {{ strtok((string) $c->signed_by_name, ' ') }}. Your rental agreement {{ $c->number }} is signed. Our team has been told.</div>
+        <div class="alert ok">Thank you, {{ strtok((string) (($who ?? 'hirer') === 'driver' ? $c->driver_signed_by_name : $c->signed_by_name), ' ') }}. Your rental agreement {{ $c->number }} is signed. Our team has been told.</div>
     @endif
 
     <div class="card">
@@ -44,17 +45,21 @@
     </div>
 
     @if ($token)
-        <form method="post" action="{{ route('contracts.sign.store', $token) }}" class="card" id="sign-form">
+        @php
+            $who = $who ?? 'hirer';
+            $driver = $who === 'driver' ? \App\Support\Contracts\Contracts::driverContact($c) : null;
+        @endphp
+        <form method="post" action="{{ route($who === 'driver' ? 'contracts.driver-sign.store' : 'contracts.sign.store', $token) }}" class="card" id="sign-form">
             @csrf
-            <h2>Sign</h2>
+            <h2>{{ $who === 'driver' ? 'Driver signature' : 'Sign' }}</h2>
             @if ($errors->any())<div class="alert bad">{{ $errors->first() }}</div>@endif
             <label for="name">Your full name</label>
-            <input id="name" name="name" value="{{ old('name', $c->customer?->name) }}" required maxlength="120" style="width:100%;font:15px Poppins,sans-serif;padding:12px;border:1px solid var(--line);border-radius:12px">
+            <input id="name" name="name" value="{{ old('name', $who === 'driver' ? ($driver['name'] ?? '') : $c->customer?->name) }}" required maxlength="120" style="width:100%;font:15px Poppins,sans-serif;padding:12px;border:1px solid var(--line);border-radius:12px">
             <label>Signature</label>
             <canvas id="pad" style="width:100%;height:180px;border:1px dashed #a1a1aa;border-radius:12px;background:#fff;touch-action:none"></canvas>
             <div style="display:flex;justify-content:space-between;margin-top:6px"><span class="muted">Sign with your finger or mouse</span><button type="button" class="btn btn-ghost" id="clear" style="padding:6px 12px">Clear</button></div>
             <input type="hidden" name="signature" id="signature">
-            @if (\App\Http\Controllers\ContractSignController::needsCode($c))
+            @if ($who === 'hirer' && \App\Http\Controllers\ContractSignController::needsCode($c))
                 <label for="code">Code from your email</label>
                 <div style="display:flex;gap:8px">
                     <input id="code" name="code" inputmode="numeric" maxlength="6" autocomplete="one-time-code" style="flex:1;font:15px Poppins,sans-serif;padding:12px;border:1px solid var(--line);border-radius:12px">
