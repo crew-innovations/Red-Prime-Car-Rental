@@ -63,6 +63,9 @@ class TextParser
         foreach ($docs as $d) {
             $type = (string) ($d['type'] ?? '');
             $text = self::tidy((string) ($d['text'] ?? ''));
+            if ($type === '' || $type === 'scan') {
+                $type = self::guessType($text);
+            }
             if ($text === '') {
                 continue;
             }
@@ -115,6 +118,38 @@ class TextParser
         }
 
         return $out;
+    }
+
+    /**
+     * Which customer document a scan is, from its text. Unknown scans stay "other"
+     * so only matching form fields are filled.
+     */
+    public static function guessType(string $text): string
+    {
+        $t = mb_strtolower(self::tidy($text));
+        if ($t === '') {
+            return 'other';
+        }
+        if (preg_match('/trade\s*licen[cs]e|commercial\s*licen[cs]e|رخصة\s*تجارية/u', $t)) {
+            return 'trade_licence';
+        }
+        if (preg_match('/\b784[\s\-.]?\d{4}\b/', $text) || preg_match('/emirates\s*id|identity\s*card|هوية/u', $t)) {
+            return 'emirates_id';
+        }
+        if (preg_match('/\bpassport\b|جواز/u', $t) || preg_match('/P\s*[<K][A-Z]{3}/', $text)) {
+            return 'passport';
+        }
+        if (preg_match('/international\s+driving|international\s+permit/u', $t)) {
+            return 'international_licence';
+        }
+        if (preg_match('/driving\s*licen[cs]e|driver.?s?\s*licen[cs]e|رخصة\s*قيادة/u', $t)) {
+            return 'driving_licence';
+        }
+        if (preg_match('/\bvisa\b|residence\s*permit|إقامة/u', $t)) {
+            return 'visa';
+        }
+
+        return 'other';
     }
 
     /**

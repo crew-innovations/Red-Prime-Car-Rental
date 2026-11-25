@@ -491,7 +491,8 @@ class RentalContractsTest extends TestCase
         $this->assertStringContainsString('col-ur', $html);
         $this->assertStringContainsString('4242', $html);
         $this->assertStringContainsString('EE-98399', $html);
-        $this->assertSame(2, substr_count($html, 'class="page-break"'), 'exact 3 pages (2 page breaks)');
+        $this->assertStringContainsString('car-top', $html);
+        $this->assertSame(3, substr_count($html, 'class="page-break"'), 'tables+car, then conditions, then terms, then attachments');
     }
 
     public function test_contract_pdf_includes_uploaded_attachment_images(): void
