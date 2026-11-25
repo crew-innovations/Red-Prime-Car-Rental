@@ -482,11 +482,16 @@ class RentalContractsTest extends TestCase
     {
         $c = $this->readyContract();
         $html = view('pdf.contract', ['c' => $c, 'b' => $c->booking, 'version' => 1, 'asPdf' => false])->render();
-        foreach (['Driver Details', 'Hirer Details', 'Vehicle Details', 'Charge Details', 'Signature Hirer', 'Signature Driver', 'Signature Company', 'Document Images', 'OUT', 'IN', 'My Credit Card No', 'TERMS AND CONDITIONS', 'Car structure', 'Before (OUT)', 'After (IN)', 'شرائط و ضوابط', 'الشروط والأحكام'] as $needle) {
+        foreach (['Driver Details', 'Hirer Details', 'Vehicle Details', 'Charge Details', 'Signature Hirer', 'Signature Driver', 'Signature Company', 'Document Images', 'OUT', 'IN', 'My Credit Card No', 'TERMS AND CONDITIONS', 'Car structure', 'Before (OUT)', 'After (IN)', 'شرائط و ضوابط', 'Vehicle Check Out', 'Vehicle Check In', 'Conditions'] as $needle) {
             $this->assertStringContainsString($needle, $html, $needle);
         }
+        // Page 2: English and Urdu terms side by side (not stacked).
+        $this->assertStringContainsString('terms-parallel', $html);
+        $this->assertStringContainsString('col-en', $html);
+        $this->assertStringContainsString('col-ur', $html);
         $this->assertStringContainsString('4242', $html);
         $this->assertStringContainsString('EE-98399', $html);
+        $this->assertSame(2, substr_count($html, 'class="page-break"'), 'exact 3 pages (2 page breaks)');
     }
 
     public function test_contract_pdf_includes_uploaded_attachment_images(): void
@@ -498,9 +503,17 @@ class RentalContractsTest extends TestCase
             ->usingFileName('licence-scan.jpg')
             ->toMediaCollection('attachments');
 
+        // Even if Spatie stores a non-image mime, extension must still embed the picture.
+        $media = $c->getFirstMedia('attachments');
+        if ($media) {
+            $media->mime_type = 'application/octet-stream';
+            $media->save();
+        }
+
         $html = view('pdf.contract', ['c' => $c->fresh(), 'b' => $c->booking, 'version' => 1, 'asPdf' => false])->render();
         $this->assertStringContainsString('Attachment: licence-scan.jpg', $html);
         $this->assertStringContainsString('data:image/', $html);
+        $this->assertStringNotContainsString('Other attachments', $html);
     }
 
     public function test_missing_licence_place_and_card_block_hirer_sign(): void

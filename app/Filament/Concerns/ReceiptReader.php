@@ -27,23 +27,10 @@ class ReceiptReader
                     ->icon('heroicon-o-sparkles')
                     ->color('gray')
                     ->action(function (Get $get, Set $set, $livewire, $component) use ($uploadField, $referenceField) {
-                        $files = self::files($get, $uploadField);
-                        if (! DocumentReader::ready()) {
-                            LocalOcr::start($livewire, $component->getContainer()->getStatePath().'.receipt_ocr_text', $files);
-
-                            return;
-                        }
-                        try {
-                            $r = DocumentReader::readReceipt($files);
-                        } catch (\Throwable $e) {
-                            Notification::make()->warning()->title('Could not read the receipt')->body($e->getMessage())->send();
-
-                            return;
-                        }
-                        self::apply($get, $set, $r, $referenceField);
+                        self::run($get, $set, $livewire, $component, $uploadField, $referenceField);
                     }),
             ]),
-            Forms\Components\Hidden::make('receipt_ocr_text')->dehydrated(false)
+            Forms\Components\Hidden::make('receipt_ocr_text')->dehydrated(false)->live()
                 ->afterStateUpdated(function (?string $state, Get $get, Set $set) use ($referenceField) {
                     if (blank($state)) {
                         return;
@@ -53,6 +40,38 @@ class ReceiptReader
                     self::apply($get, $set, TextParser::receipt($texts), $referenceField, $texts === [] ? 'No text could be read. Try a sharper photo.' : null);
                 }),
         ]);
+    }
+
+    /** Wire on a receipt FileUpload so Scan / Choose file auto-fills empty amount, date, vendor… */
+    public static function autoReadOn(Forms\Components\FileUpload $upload, string $uploadField = 'receipt', string $referenceField = 'reference'): Forms\Components\FileUpload
+    {
+        return $upload->live()->afterStateUpdated(function ($state, Get $get, Set $set, $livewire, $component) use ($uploadField, $referenceField) {
+            if (blank($state)) {
+                return;
+            }
+            self::run($get, $set, $livewire, $component, $uploadField, $referenceField);
+        });
+    }
+
+    protected static function run(Get $get, Set $set, $livewire, $component, string $uploadField, string $referenceField): void
+    {
+        $files = self::files($get, $uploadField);
+        if ($files === []) {
+            return;
+        }
+        if (! DocumentReader::ready()) {
+            LocalOcr::start($livewire, $component->getContainer()->getStatePath().'.receipt_ocr_text', $files);
+
+            return;
+        }
+        try {
+            $r = DocumentReader::readReceipt($files);
+        } catch (\Throwable $e) {
+            Notification::make()->warning()->title('Could not read the receipt')->body($e->getMessage())->send();
+
+            return;
+        }
+        self::apply($get, $set, $r, $referenceField);
     }
 
     protected static function files(Get $get, string $uploadField): array

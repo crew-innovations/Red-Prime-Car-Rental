@@ -1,10 +1,9 @@
 @extends('pdf.layout')
 @php
     /**
-     * 25 Nov 2026: reference Vehicle Rental Agreement layout (Shahem-style sample).
-     * Page 1: Driver | Hirer, Vehicle | Charges, OUT/IN, card, three signatures.
-     * Page 2+: terms + the same signature blocks. Final page: document images.
-     * $c = RentalContract, $b = Booking, $version = version number being saved.
+     * 25 Nov 2026: reference Vehicle Rental Agreement (Shahem-style sample, RED PRIME brand).
+     * Exact 3 pages: (1) Driver|Hirer, Vehicle|Charges, OUT/IN + car diagrams, Conditions EN|AR, card, signatures;
+     * (2) Terms EN|UR side-by-side + signatures; (3) Document images / attachments.
      */
     $pdfText = new \App\Support\Documents\PdfText('both');
     $t = fn (string $key) => $pdfText->t('contract.'.$key);
@@ -22,31 +21,46 @@
     $termsUr = filled($c->terms_ur) ? $c->terms_ur : ($s['contract_terms_ur'] ?? null);
     $policies = collect(['policy_fuel' => 'Fuel', 'policy_late_return' => 'Late return', 'policy_fines' => 'Fines, Salik and tolls', 'policy_cancellation' => 'Cancellation and changes'])
         ->filter(fn ($label, $key) => filled($s[$key] ?? null));
+    /** First N numbered clauses for the short Conditions box on page 1. */
+    $firstClauses = function (?string $text, int $n = 3): string {
+        $text = trim((string) $text);
+        if ($text === '') {
+            return '';
+        }
+        if (preg_match_all('/(?:^|\n)\s*((?:\d+|[\x{0660}-\x{0669}\x{06F0}-\x{06F9}]+|[۱۲۳۴۵۶۷۸۹۰]+)[\-\.\)]\s*.+?)(?=(?:\n\s*(?:\d+|[\x{0660}-\x{0669}\x{06F0}-\x{06F9}]+|[۱۲۳۴۵۶۷۸۹۰]+)[\-\.\)])|\z)/su', $text, $m)) {
+            return trim(implode("\n\n", array_slice($m[1], 0, $n)));
+        }
+        $paras = preg_split('/\n{2,}/', $text) ?: [];
+
+        return trim(implode("\n\n", array_slice(array_values(array_filter(array_map('trim', $paras))), 0, $n)));
+    };
+    $condEn = $firstClauses($termsEn, 3);
+    $condAr = $firstClauses($termsAr, 3);
+    if ($condEn === '' && $policies->isNotEmpty()) {
+        $condEn = $policies->map(fn ($label, $key) => $label.'. '.$s[$key])->take(3)->implode("\n\n");
+    }
     $outNotes = $b?->delivery_notes;
     $inNotes = $b?->return_notes;
     $inCondition = $b?->return_condition ? (\App\Models\Booking::CONDITIONS[$b->return_condition] ?? $b->return_condition) : null;
     $outPhotos = collect();
     $inPhotos = collect();
+    $pushPhoto = function ($media, $bag) {
+        $name = $media->file_name ?: $media->name;
+        if (! \App\Support\MediaImage::isImage($media->mime_type, $name, $media->getPathRelativeToRoot())) {
+            return;
+        }
+        $mime = \App\Support\MediaImage::mime($media->mime_type, $name);
+        $bytes = rescue(fn () => \Illuminate\Support\Facades\Storage::disk($media->disk)->get($media->getPathRelativeToRoot()), null, false);
+        if ($bytes) {
+            $bag->push('data:'.$mime.';base64,'.base64_encode($bytes));
+        }
+    };
     if ($b) {
         foreach ($b->getMedia('delivery')->take(4) as $media) {
-            $mime = (string) ($media->mime_type ?: '');
-            if (! str_starts_with($mime, 'image/')) {
-                continue;
-            }
-            $bytes = rescue(fn () => \Illuminate\Support\Facades\Storage::disk($media->disk)->get($media->getPathRelativeToRoot()), null, false);
-            if ($bytes) {
-                $outPhotos->push('data:'.$mime.';base64,'.base64_encode($bytes));
-            }
+            $pushPhoto($media, $outPhotos);
         }
         foreach ($b->getMedia('return')->take(4) as $media) {
-            $mime = (string) ($media->mime_type ?: '');
-            if (! str_starts_with($mime, 'image/')) {
-                continue;
-            }
-            $bytes = rescue(fn () => \Illuminate\Support\Facades\Storage::disk($media->disk)->get($media->getPathRelativeToRoot()), null, false);
-            if ($bytes) {
-                $inPhotos->push('data:'.$mime.';base64,'.base64_encode($bytes));
-            }
+            $pushPhoto($media, $inPhotos);
         }
     }
     $hirerSig = $c->getFirstMedia('signature');
@@ -59,6 +73,9 @@
     $inAt = $b?->returned_at ?? $b?->end_at;
     $fuelOut = \App\Support\Fuel\Fuel::percentLabel($b?->delivery_fuel_8 ?? $b?->delivery_fuel);
     $fuelIn = \App\Support\Fuel\Fuel::percentLabel($b?->return_fuel_8 ?? $b?->return_fuel);
+    $fuelOutEighth = \App\Support\Fuel\Fuel::eighth($b?->delivery_fuel_8 ?? $b?->delivery_fuel);
+    $fuelInEighth = \App\Support\Fuel\Fuel::eighth($b?->return_fuel_8 ?? $b?->return_fuel);
+    $fuelBar = fn (?int $eighth) => max(0, min(100, $eighth === null ? 0 : (int) round($eighth / 8 * 100)));
     $idOrPass = $cust?->id_number ?: $cust?->passport_number;
     $idIssue = $cust?->id_number ? $cust?->id_issued_on : $cust?->passport_issued_on;
     $idExpiry = $cust?->id_number ? $cust?->id_expires_on : $cust?->passport_expires_on;
@@ -80,57 +97,101 @@
         if (! $doc->path) {
             continue;
         }
-        $mime = rescue(fn () => \Illuminate\Support\Facades\Storage::disk('private')->mimeType($doc->path), null, false) ?: '';
-        if (! str_starts_with($mime, 'image/')) {
+        $mime = rescue(fn () => \Illuminate\Support\Facades\Storage::disk('private')->mimeType($doc->path), null, false) ?: ($doc->mime ?? '');
+        if (! \App\Support\MediaImage::isImage($mime, $doc->original_name, $doc->path)) {
             continue;
         }
+        $mime = \App\Support\MediaImage::mime($mime, $doc->original_name, $doc->path);
         $data = rescue(fn () => 'data:'.$mime.';base64,'.base64_encode(\Illuminate\Support\Facades\Storage::disk('private')->get($doc->path)), null, false);
         if ($data) {
-            $label = \App\Support\Options::documentLabel($doc->type);
-            $docImages->push(['label' => $label, 'src' => $data]);
+            $docImages->push(['label' => \App\Support\Options::documentLabel($doc->type), 'src' => $data]);
         }
         if ($docImages->count() >= 12) {
             break;
         }
     }
-    // Contract attachments uploaded on the contract (Add attachment) — images on the PDF; PDFs listed by name.
     foreach ($c->getMedia('attachments') as $media) {
-        $mime = (string) ($media->mime_type ?: '');
-        $label = 'Attachment: '.($media->file_name ?: $media->name ?: 'file');
-        if (str_starts_with($mime, 'image/')) {
+        $name = $media->file_name ?: $media->name ?: 'file';
+        $label = 'Attachment: '.$name;
+        if (\App\Support\MediaImage::isImage($media->mime_type, $name, $media->getPathRelativeToRoot())) {
+            $mime = \App\Support\MediaImage::mime($media->mime_type, $name);
             $bytes = rescue(fn () => \Illuminate\Support\Facades\Storage::disk($media->disk)->get($media->getPathRelativeToRoot()), null, false);
             if ($bytes) {
                 $docImages->push(['label' => $label, 'src' => 'data:'.$mime.';base64,'.base64_encode($bytes)]);
             }
         } else {
-            $attachmentNotes->push($label.($mime ? ' ('.$mime.')' : ''));
+            $attachmentNotes->push($label.($media->mime_type ? ' ('.$media->mime_type.')' : ''));
         }
     }
+    // DomPDF-safe top-view car outline (no SVG transforms).
+    $carOutline = <<<'HTML'
+<table class="car-outline" style="width:150px;margin:0 auto;border-collapse:collapse;font-size:5.5px;color:#444">
+  <tr><td colspan="3" style="border:1px solid #333;height:12px;text-align:center">BUMPER</td></tr>
+  <tr><td colspan="3" style="border:1px solid #333;height:36px;text-align:center">BONNET</td></tr>
+  <tr>
+    <td style="border:1px solid #333;width:18%;height:52px;text-align:center">W<br>I<br>N<br>G</td>
+    <td style="border:1px solid #333;height:52px;text-align:center">WINDSCREEN<br><br>ROOF</td>
+    <td style="border:1px solid #333;width:18%;height:52px;text-align:center">W<br>I<br>N<br>G</td>
+  </tr>
+  <tr>
+    <td style="border:1px solid #333;height:48px;text-align:center">D<br>O<br>O<br>R</td>
+    <td style="border:1px solid #333;height:48px;text-align:center">ROOF</td>
+    <td style="border:1px solid #333;height:48px;text-align:center">D<br>O<br>O<br>R</td>
+  </tr>
+  <tr>
+    <td style="border:1px solid #333;height:40px;text-align:center">D<br>O<br>O<br>R</td>
+    <td style="border:1px solid #333;height:40px;text-align:center">REAR WINDOW</td>
+    <td style="border:1px solid #333;height:40px;text-align:center">D<br>O<br>O<br>R</td>
+  </tr>
+  <tr><td colspan="3" style="border:1px solid #333;height:32px;text-align:center">BOOT</td></tr>
+  <tr><td colspan="3" style="border:1px solid #333;height:12px;text-align:center">BUMPER</td></tr>
+</table>
+HTML;
 @endphp
 @section('title', 'Rental agreement '.$c->number)
 @section('doc-title'){!! $t('title') !!}@endsection
 @section('styles')
-    .ra-grid td { width: 50%; vertical-align: top; padding: 0 4px; }
-    .ra-box { border: 1px solid #d4d4d8; border-radius: 4px; padding: 8px 10px; min-height: 118px; }
-    .ra-box .label { font-size: 7.2px; letter-spacing: .8px; text-transform: uppercase; color: #a8781a; font-weight: bold; margin-bottom: 5px; border-bottom: 1px solid #f0e6d4; padding-bottom: 3px; }
-    .ra-row { padding: 2.5px 0; border-bottom: 1px dotted #e4e4e7; font-size: 7.6px; }
-    .ra-row .k { color: #71717a; display: inline-block; min-width: 42%; }
+    .gold { color: #a8781a; }
+    .ra-grid td { width: 50%; vertical-align: top; padding: 0 3px; }
+    .ra-box { border: 1.5px solid #d4a62a; border-radius: 2px; padding: 0; min-height: 100px; overflow: hidden; }
+    .ra-box .label { font-size: 7.4px; letter-spacing: .4px; text-transform: uppercase; color: #111; font-weight: bold; margin: 0; padding: 4px 8px; background: #e8d48b; border-bottom: 1px solid #d4a62a; }
+    .ra-box .body { padding: 5px 8px 7px; }
+    .ra-row { padding: 2px 0; border-bottom: 1px solid #eee8d4; font-size: 7.4px; }
+    .ra-row .k { color: #52525b; display: inline-block; min-width: 42%; }
     .ra-row .v { font-weight: 600; color: #111; }
     .ra-charges .ra-row .k { min-width: 55%; }
-    .ra-outin td { width: 50%; vertical-align: top; padding: 0 4px; }
-    .ra-fuel { font-size: 16px; font-weight: bold; color: #d7141a; margin-top: 6px; }
-    .ra-car-photos { margin-top: 6px; }
-    .ra-car-photos img { width: 48%; max-height: 70px; margin: 1%; border: 1px solid #e4e4e7; object-fit: cover; }
-    .sig3 td { width: 33%; vertical-align: bottom; padding: 18px 6px 0; }
-    .sig3 .sig-img { height: 42px; max-width: 140px; }
-    .sig3 .stamp { height: 48px; }
-    .sig3 .line { border-top: 1px solid #a1a1aa; padding-top: 3px; font-size: 7px; color: #71717a; }
-    .terms { font-size: 7.4px; line-height: 1.45; color: #3f3f46; }
-    .terms-ur, .terms-ar { direction: rtl; text-align: right; font-family: DejaVu Sans, sans-serif; }
+    .ra-outin-mini { width: 100%; margin-top: 4px; }
+    .ra-outin-mini td { width: 50%; vertical-align: top; padding: 0 2px; }
+    .ra-out-box, .ra-in-box { border: 1px solid #d4a62a; background: #faf6e8; padding: 4px 6px; font-size: 7px; }
+    .ra-out-box .ttl, .ra-in-box .ttl { font-weight: bold; color: #a8781a; font-size: 7.2px; margin-bottom: 2px; }
+    .ra-diagrams td { width: 50%; vertical-align: top; text-align: center; padding: 4px; }
+    .ra-diagram-title { font-size: 8px; font-weight: bold; color: #111; margin-bottom: 3px; }
+    .ra-fuel-wrap { margin: 0 auto 4px; width: 88%; text-align: left; }
+    .ra-fuel-track { height: 8px; background: #e4e4e7; border: 1px solid #a1a1aa; border-radius: 2px; overflow: hidden; }
+    .ra-fuel-fill { height: 8px; background: #d7141a; }
+    .ra-fuel-lbl { font-size: 7px; font-weight: bold; color: #d7141a; margin-top: 2px; }
+    .ra-car-photos img { width: 46%; max-height: 48px; margin: 1%; border: 1px solid #e4e4e7; }
+    .cond-grid td { width: 50%; vertical-align: top; padding: 0; }
+    .cond-box { border: 1.5px solid #d4a62a; min-height: 72px; }
+    .cond-box .label { font-size: 7.4px; font-weight: bold; padding: 3px 8px; background: #e8d48b; border-bottom: 1px solid #d4a62a; }
+    .cond-box .body { padding: 5px 7px; font-size: 6.4px; line-height: 1.35; color: #3f3f46; max-height: 78px; overflow: hidden; }
+    .cond-ar { direction: rtl; text-align: right; font-family: DejaVu Sans, sans-serif; }
+    .card-row { border: 1px solid #d4a62a; padding: 5px 8px; margin-top: 6px; font-size: 7.4px; }
+    .sig3 td { width: 33%; vertical-align: bottom; padding: 12px 6px 0; }
+    .sig3 .sig-img { height: 36px; max-width: 130px; }
+    .sig3 .stamp { height: 42px; }
+    .sig3 .line { border-top: 1px solid #a1a1aa; padding-top: 3px; font-size: 6.8px; color: #71717a; }
+    .terms-parallel { width: 100%; table-layout: fixed; }
+    .terms-parallel td { width: 50%; vertical-align: top; padding: 0 6px; }
+    .terms-parallel .col-en { border-right: 1px solid #e8d48b; padding-right: 8px; }
+    .terms-parallel .col-ur { direction: rtl; text-align: right; font-family: DejaVu Sans, sans-serif; padding-left: 8px; }
+    .terms-parallel .col-title { font-size: 9px; font-weight: bold; color: #a8781a; margin-bottom: 6px; border-bottom: 1.5px solid #d4a62a; padding-bottom: 3px; }
+    .terms { font-size: 6.6px; line-height: 1.38; color: #3f3f46; }
+    .terms-ur { direction: rtl; text-align: right; font-family: DejaVu Sans, sans-serif; }
     .doc-grid td { width: 50%; vertical-align: top; padding: 6px; }
     .doc-grid img { max-width: 100%; max-height: 220px; border: 1px solid #e4e4e7; }
     .page-break { page-break-before: always; }
-    .ra-section-title { font-size: 8px; font-weight: bold; letter-spacing: .6px; text-transform: uppercase; color: #d7141a; margin: 10px 4px 4px; }
+    .ra-section-title { font-size: 8px; font-weight: bold; letter-spacing: .5px; text-transform: uppercase; color: #a8781a; margin: 8px 2px 3px; }
 @endsection
 
 @section('meta')
@@ -142,115 +203,169 @@
 @endsection
 
 @section('content')
-    {{-- Page 1: agreement body --}}
-    <table class="ra-grid" style="margin-top:12px">
+    {{-- ========== PAGE 1 ========== --}}
+    <table class="ra-grid" style="margin-top:8px">
         <tr>
             <td>
                 <div class="ra-box">
                     <div class="label">{!! $t('driver_details') !!}</div>
-                    <div class="ra-row"><span class="k">{!! $t('name') !!}</span><span class="v">{{ $x($driverName) }}</span></div>
-                    <div class="ra-row"><span class="k">{!! $t('nationality') !!}</span><span class="v">{{ $x($driverNat ?: '—') }}</span></div>
-                    <div class="ra-row"><span class="k">{!! $t('driving_lic') !!}</span><span class="v">{{ $x($licNo ?: '—') }}</span></div>
-                    <div class="ra-row"><span class="k">{!! $t('place_of_issue') !!}</span><span class="v">{{ $x($licPlace ?: '—') }}</span></div>
-                    <div class="ra-row"><span class="k">{!! $t('date_of_issue') !!}</span><span class="v">{{ $d($licIssue) }}</span></div>
-                    <div class="ra-row"><span class="k">{!! $t('date_of_expiry') !!}</span><span class="v">{{ $d($licExpiry) }}</span></div>
+                    <div class="body">
+                        <div class="ra-row"><span class="k">{!! $t('name') !!}</span><span class="v">{{ $x($driverName) }}</span></div>
+                        <div class="ra-row"><span class="k">{!! $t('nationality') !!}</span><span class="v">{{ $x($driverNat ?: '—') }}</span></div>
+                        <div class="ra-row"><span class="k">{!! $t('driving_lic') !!}</span><span class="v">{{ $x($licNo ?: '—') }}</span></div>
+                        <div class="ra-row"><span class="k">{!! $t('place_of_issue') !!}</span><span class="v">{{ $x($licPlace ?: '—') }}</span></div>
+                        <div class="ra-row"><span class="k">{!! $t('date_of_issue') !!}</span><span class="v">{{ $d($licIssue) }}</span></div>
+                        <div class="ra-row"><span class="k">{!! $t('date_of_expiry') !!}</span><span class="v">{{ $d($licExpiry) }}</span></div>
+                    </div>
                 </div>
             </td>
             <td>
                 <div class="ra-box">
                     <div class="label">{!! $t('hirer_details') !!}</div>
-                    <div class="ra-row"><span class="k">{!! $t('name') !!}</span><span class="v">{{ $x($cust?->name) }}</span></div>
-                    <div class="ra-row"><span class="k">{!! $t('nationality') !!}</span><span class="v">{{ $x($cust?->nationality ?: '—') }}</span></div>
-                    <div class="ra-row"><span class="k">{!! $t('passport_or_id') !!}</span><span class="v">{{ $x($idOrPass ?: '—') }}</span></div>
-                    <div class="ra-row"><span class="k">{!! $t('date_of_issue') !!}</span><span class="v">{{ $d($idIssue) }}</span></div>
-                    <div class="ra-row"><span class="k">{!! $t('expiry_date') !!}</span><span class="v">{{ $d($idExpiry) }}</span></div>
-                    <div class="ra-row"><span class="k">{!! $t('address') !!}</span><span class="v">{{ $x($cust?->address ?: '—') }}</span></div>
-                    <div class="ra-row"><span class="k">{!! $t('mobile') !!}</span><span class="v">{{ $x($cust?->phone ?: '—') }}</span></div>
+                    <div class="body">
+                        <div class="ra-row"><span class="k">{!! $t('name') !!}</span><span class="v">{{ $x($cust?->name) }}</span></div>
+                        <div class="ra-row"><span class="k">{!! $t('nationality') !!}</span><span class="v">{{ $x($cust?->nationality ?: '—') }}</span></div>
+                        <div class="ra-row"><span class="k">{!! $t('passport_or_id') !!}</span><span class="v">{{ $x($idOrPass ?: '—') }}</span></div>
+                        <div class="ra-row"><span class="k">{!! $t('date_of_issue') !!}</span><span class="v">{{ $d($idIssue) }}</span></div>
+                        <div class="ra-row"><span class="k">{!! $t('expiry_date') !!}</span><span class="v">{{ $d($idExpiry) }}</span></div>
+                        <div class="ra-row"><span class="k">{!! $t('address') !!}</span><span class="v">{{ $x($cust?->address ?: '—') }}</span></div>
+                        <div class="ra-row"><span class="k">{!! $t('mobile') !!}</span><span class="v">{{ $x($cust?->phone ?: '—') }}</span></div>
+                    </div>
                 </div>
             </td>
         </tr>
     </table>
 
-    <table class="ra-grid" style="margin-top:8px">
+    <table class="ra-grid" style="margin-top:6px">
         <tr>
             <td>
                 <div class="ra-box">
                     <div class="label">{!! $t('vehicle_details') !!}</div>
-                    <div class="ra-row"><span class="k">{!! $t('plate') !!}</span><span class="v">{{ $x($car?->registration_number ?: '—') }}</span></div>
-                    <div class="ra-row"><span class="k">{!! $t('vehicle_type') !!}</span><span class="v">{{ $x($vehicleType) }}</span></div>
-                    <div class="ra-row"><span class="k">{!! $t('colour') !!}</span><span class="v">{{ $x($car?->colour ?: '—') }}</span></div>
-                    <div class="ra-row"><span class="k">{!! $t('model') !!}</span><span class="v">{{ $x($vehicleModel) }}</span></div>
+                    <div class="body">
+                        <div class="ra-row"><span class="k">{!! $t('plate') !!}</span><span class="v">{{ $x($car?->registration_number ?: '—') }}</span></div>
+                        <div class="ra-row"><span class="k">{!! $t('vehicle_type') !!}</span><span class="v">{{ $x($vehicleType) }}</span></div>
+                        <div class="ra-row"><span class="k">{!! $t('colour') !!}</span><span class="v">{{ $x($car?->colour ?: '—') }}</span></div>
+                        <div class="ra-row"><span class="k">{!! $t('model') !!}</span><span class="v">{{ $x($vehicleModel) }}</span></div>
+                        <table class="ra-outin-mini">
+                            <tr>
+                                <td>
+                                    <div class="ra-out-box">
+                                        <div class="ttl">{!! $t('out') !!}</div>
+                                        <div>{!! $t('date') !!}: {{ $d($outAt) }}</div>
+                                        <div>{!! $t('time') !!}: {{ $tm($outAt) }}</div>
+                                        <div>{!! $t('km') !!}: {{ $b?->delivery_km !== null ? number_format($b->delivery_km) : '—' }}</div>
+                                    </div>
+                                </td>
+                                <td>
+                                    <div class="ra-in-box">
+                                        <div class="ttl">{!! $t('in') !!}</div>
+                                        <div>{!! $t('date') !!}: {{ $d($inAt) }}</div>
+                                        <div>{!! $t('time') !!}: {{ $tm($inAt) }}</div>
+                                        <div>{!! $t('km') !!}: {{ $b?->return_km !== null ? number_format($b->return_km) : '—' }}</div>
+                                    </div>
+                                </td>
+                            </tr>
+                        </table>
+                    </div>
                 </div>
             </td>
             <td>
                 <div class="ra-box ra-charges">
                     <div class="label">{!! $t('charge_details') !!}</div>
-                    <div class="ra-row"><span class="k">{!! $t('base_rental') !!}</span><span class="v">{{ $aed($sheet['base']) }}</span></div>
-                    <div class="ra-row"><span class="k">{!! $t('discount') !!}</span><span class="v">{{ $aed($sheet['discount']) }}</span></div>
-                    <div class="ra-row"><span class="k">{!! $t('no_of_days') !!}</span><span class="v">{{ $sheet['days'] }}</span></div>
-                    <div class="ra-row"><span class="k">{!! $t('advance_paid') !!}</span><span class="v">{{ $aed($sheet['advance']) }}</span></div>
-                    <div class="ra-row"><span class="k">{!! $t('traffic_fines') !!}</span><span class="v">{{ $aed($sheet['fines']) }}</span></div>
-                    <div class="ra-row"><span class="k">{!! $t('deposit') !!}</span><span class="v">{{ $aed($sheet['deposit']) }}</span></div>
-                    <div class="ra-row"><span class="k">{!! $t('add_charges') !!}</span><span class="v">{{ $aed($sheet['extras']) }}</span></div>
-                    <div class="ra-row"><span class="k">{!! $t('total') !!}</span><span class="v">{{ $aed($sheet['total']) }}</span></div>
-                    <div class="ra-row"><span class="k">{!! $t('paid') !!}</span><span class="v">{{ $aed($sheet['paid']) }}</span></div>
-                    <div class="ra-row"><span class="k">{!! $t('balance') !!}</span><span class="v"><strong>{{ $aed($sheet['balance']) }}</strong></span></div>
+                    <div class="body">
+                        <div class="ra-row"><span class="k">{!! $t('base_rental') !!}</span><span class="v">{{ $aed($sheet['base']) }}</span></div>
+                        <div class="ra-row"><span class="k">{!! $t('discount') !!}</span><span class="v">{{ $aed($sheet['discount']) }}</span></div>
+                        <div class="ra-row"><span class="k">{!! $t('no_of_days') !!}</span><span class="v">{{ $sheet['days'] }}</span></div>
+                        <div class="ra-row"><span class="k">{!! $t('advance_paid') !!}</span><span class="v">{{ $aed($sheet['advance']) }}</span></div>
+                        <div class="ra-row"><span class="k">{!! $t('traffic_fines') !!}</span><span class="v">{{ $aed($sheet['fines']) }}</span></div>
+                        <div class="ra-row"><span class="k">{!! $t('deposit') !!}</span><span class="v">{{ $aed($sheet['deposit']) }}</span></div>
+                        <div class="ra-row"><span class="k">{!! $t('add_charges') !!}</span><span class="v">{{ $aed($sheet['extras']) }}</span></div>
+                        <div class="ra-row"><span class="k">{!! $t('total') !!}</span><span class="v">{{ $aed($sheet['total']) }}</span></div>
+                        <div class="ra-row"><span class="k">{!! $t('paid') !!}</span><span class="v">{{ $aed($sheet['paid']) }}</span></div>
+                        <div class="ra-row"><span class="k">{!! $t('balance') !!}</span><span class="v"><strong>{{ $aed($sheet['balance']) }}</strong></span></div>
+                    </div>
                 </div>
             </td>
         </tr>
     </table>
 
-    <div class="ra-section-title">{!! $t('car_structure') !!}</div>
-    <table class="ra-outin" style="margin-top:2px">
+    <div class="ra-section-title">{!! $t('car_structure') !!} · {!! $t('before') !!} / {!! $t('after') !!}</div>
+    <table class="ra-diagrams">
         <tr>
             <td>
-                <div class="ra-box">
-                    <div class="label">{!! $t('out') !!} · {!! $t('before') !!}</div>
-                    <div class="ra-row"><span class="k">{!! $t('date') !!}</span><span class="v">{{ $d($outAt) }}</span></div>
-                    <div class="ra-row"><span class="k">{!! $t('time') !!}</span><span class="v">{{ $tm($outAt) }}</span></div>
-                    <div class="ra-row"><span class="k">{!! $t('km') !!}</span><span class="v">{{ $b?->delivery_km !== null ? number_format($b->delivery_km) : '—' }}</span></div>
-                    <div class="label" style="margin-top:8px">{!! $t('check_out') !!}</div>
-                    <div class="ra-fuel">{{ $fuelOut }}</div>
-                    @if (filled($outNotes))
-                        <div class="ra-row" style="margin-top:6px;border:0"><span class="k">{!! $t('notes') !!}</span><span class="v">{{ $x($outNotes) }}</span></div>
-                    @endif
-                    @if ($outPhotos->isNotEmpty())
-                        <div class="ra-car-photos">
-                            @foreach ($outPhotos as $src)
-                                <img src="{{ $src }}" alt="">
-                            @endforeach
-                        </div>
-                    @endif
+                <div class="ra-diagram-title">{!! $t('check_out') !!}</div>
+                <div class="ra-fuel-wrap">
+                    <div class="ra-fuel-track"><div class="ra-fuel-fill" style="width:{{ $fuelBar($fuelOutEighth) }}%"></div></div>
+                    <div class="ra-fuel-lbl">{{ $fuelOut }}</div>
                 </div>
+                {!! $carOutline !!}
+                @if (filled($outNotes))
+                    <div class="terms" style="text-align:left;margin-top:2px"><strong>{!! $t('notes') !!}:</strong> {{ $x($outNotes) }}</div>
+                @endif
+                @if ($outPhotos->isNotEmpty())
+                    <div class="ra-car-photos">
+                        @foreach ($outPhotos as $src)
+                            <img src="{{ $src }}" alt="">
+                        @endforeach
+                    </div>
+                @endif
             </td>
             <td>
-                <div class="ra-box">
-                    <div class="label">{!! $t('in') !!} · {!! $t('after') !!}</div>
-                    <div class="ra-row"><span class="k">{!! $t('date') !!}</span><span class="v">{{ $d($inAt) }}</span></div>
-                    <div class="ra-row"><span class="k">{!! $t('time') !!}</span><span class="v">{{ $tm($inAt) }}</span></div>
-                    <div class="ra-row"><span class="k">{!! $t('km') !!}</span><span class="v">{{ $b?->return_km !== null ? number_format($b->return_km) : '—' }}</span></div>
-                    @if ($inCondition)
-                        <div class="ra-row"><span class="k">{!! $t('condition') !!}</span><span class="v">{{ $x($inCondition) }}</span></div>
-                    @endif
-                    <div class="label" style="margin-top:8px">{!! $t('check_in') !!}</div>
-                    <div class="ra-fuel">{{ $fuelIn }}</div>
-                    @if (filled($inNotes))
-                        <div class="ra-row" style="margin-top:6px;border:0"><span class="k">{!! $t('notes') !!}</span><span class="v">{{ $x($inNotes) }}</span></div>
-                    @endif
-                    @if ($inPhotos->isNotEmpty())
-                        <div class="ra-car-photos">
-                            @foreach ($inPhotos as $src)
-                                <img src="{{ $src }}" alt="">
-                            @endforeach
-                        </div>
-                    @endif
+                <div class="ra-diagram-title">{!! $t('check_in') !!}</div>
+                <div class="ra-fuel-wrap">
+                    <div class="ra-fuel-track"><div class="ra-fuel-fill" style="width:{{ $fuelBar($fuelInEighth) }}%"></div></div>
+                    <div class="ra-fuel-lbl">{{ $fuelIn }}</div>
+                </div>
+                {!! $carOutline !!}
+                @if ($inCondition)
+                    <div class="terms" style="text-align:left;margin-top:2px"><strong>{!! $t('condition') !!}:</strong> {{ $x($inCondition) }}</div>
+                @endif
+                @if (filled($inNotes))
+                    <div class="terms" style="text-align:left"><strong>{!! $t('notes') !!}:</strong> {{ $x($inNotes) }}</div>
+                @endif
+                @if ($inPhotos->isNotEmpty())
+                    <div class="ra-car-photos">
+                        @foreach ($inPhotos as $src)
+                            <img src="{{ $src }}" alt="">
+                        @endforeach
+                    </div>
+                @endif
+            </td>
+        </tr>
+    </table>
+
+    <table class="cond-grid" style="margin-top:6px">
+        <tr>
+            <td style="padding-right:3px">
+                <div class="cond-box">
+                    <div class="label">Conditions</div>
+                    <div class="body">
+                        @if ($condEn !== '')
+                            {!! nl2br(e($condEn)) !!}
+                        @else
+                            The rental terms of {{ $companyName }} on page 2 apply.
+                        @endif
+                    </div>
+                </div>
+            </td>
+            <td style="padding-left:3px">
+                <div class="cond-box">
+                    <div class="label">{!! $t('conditions') !!}</div>
+                    <div class="body cond-ar">
+                        @if ($condAr !== '')
+                            {{ \App\Support\Documents\PdfText::paragraph($condAr, 90) }}
+                        @else
+                            {{ \App\Support\Documents\PdfText::paragraph('تُطبَّق شروط الشركة في الصفحة الثانية.', 90) }}
+                        @endif
+                    </div>
                 </div>
             </td>
         </tr>
     </table>
 
-    <div class="ra-box" style="margin-top:8px; min-height:0">
-        <div class="ra-row"><span class="k">{!! $t('credit_card') !!}</span><span class="v">{{ $x($cardLine) }}</span></div>
+    <div class="card-row">
+        <span class="k">{!! $t('credit_card') !!}:</span>
+        <strong style="margin-left:8px">{{ $x($cardLine) }}</strong>
     </div>
 
     @include('pdf.partials.contract-signatures', [
@@ -258,28 +373,32 @@
         'stamp' => $stamp, 'c' => $c, 'companyName' => $companyName,
     ])
 
-    {{-- Page 2: Terms EN+UR and Conditions AR (reference bilingual) --}}
+    {{-- ========== PAGE 2: Terms EN | UR parallel ========== --}}
     <div class="page-break">
-        <h3><span class="rule"></span>{!! $t('terms') !!}</h3>
-        @if (filled($termsEn) || filled($termsUr) || filled($termsAr) || $policies->isNotEmpty())
-            @if (filled($termsEn))
-                <div class="label" style="margin-top:4px">English</div>
-                <div class="terms">{!! nl2br(e($termsEn)) !!}</div>
-            @endif
-            @if (filled($termsUr))
-                <div class="label" style="margin-top:10px">اردو · Urdu</div>
-                <div class="terms terms-ur">{!! nl2br(e($termsUr)) !!}</div>
-            @endif
-            @if (filled($termsAr))
-                <div class="label" style="margin-top:10px">{!! $t('conditions') !!}</div>
-                <div class="terms terms-ar">{{ \App\Support\Documents\PdfText::paragraph($termsAr, 110) }}</div>
-            @endif
-            @if (! filled($termsEn) && ! filled($termsUr) && ! filled($termsAr) && $policies->isNotEmpty())
-                @foreach ($policies as $key => $label)<div class="terms"><strong>{{ $label }}.</strong> {{ $s[$key] }}</div>@endforeach
-            @endif
-        @else
-            <div class="terms muted">The rental terms of {{ $companyName }} apply.</div>
-        @endif
+        <table class="terms-parallel">
+            <tr>
+                <td class="col-en">
+                    <div class="col-title">{!! $t('terms') !!} · English</div>
+                    @if (filled($termsEn))
+                        <div class="terms">{!! nl2br(e($termsEn)) !!}</div>
+                    @elseif ($policies->isNotEmpty())
+                        @foreach ($policies as $key => $label)
+                            <div class="terms"><strong>{{ $label }}.</strong> {{ $s[$key] }}</div>
+                        @endforeach
+                    @else
+                        <div class="terms muted">The rental terms of {{ $companyName }} apply.</div>
+                    @endif
+                </td>
+                <td class="col-ur">
+                    <div class="col-title">شرائط و ضوابط · Urdu</div>
+                    @if (filled($termsUr))
+                        <div class="terms terms-ur">{!! nl2br(e($termsUr)) !!}</div>
+                    @else
+                        <div class="terms terms-ur muted">اردو شرائط Contract settings میں شامل کریں۔</div>
+                    @endif
+                </td>
+            </tr>
+        </table>
 
         @include('pdf.partials.contract-signatures', [
             't' => $t, 'x' => $x, 'sigData' => $sigData, 'driverSigData' => $driverSigData,
@@ -287,9 +406,9 @@
         ])
     </div>
 
-    {{-- Page 3: customer document images + contract attachments --}}
+    {{-- ========== PAGE 3: document images ========== --}}
     <div class="page-break">
-        <h3><span class="rule"></span>{!! $t('document_images') !!} · {!! $t('attachments') !!}</h3>
+        <h3><span class="rule"></span>{!! $t('document_images') !!}</h3>
         @if ($docImages->isEmpty() && $attachmentNotes->isEmpty())
             <div class="terms muted">No document images or contract attachments yet.</div>
         @else
@@ -310,7 +429,7 @@
             @endif
             @if ($attachmentNotes->isNotEmpty())
                 <div class="terms" style="margin-top:10px">
-                    <strong>Other attachments (file kept with the contract; not an image for this page):</strong>
+                    <strong>Other attachments (kept with the contract; not an image for this page):</strong>
                     <ul style="margin:4px 0 0;padding-left:16px">
                         @foreach ($attachmentNotes as $note)
                             <li>{{ $note }}</li>
