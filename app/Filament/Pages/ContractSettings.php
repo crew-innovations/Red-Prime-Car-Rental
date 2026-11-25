@@ -98,7 +98,7 @@ class ContractSettings extends Page implements HasForms
                     Forms\Components\Toggle::make('contract_required_for_handover')->label('Hand over the car only with a fully signed contract')->inline(false)->columnSpanFull()
                         ->helperText('Needs both the hirer\'s and the driver\'s signatures on the rental agreement. Switch on once the contract terms below are in.'),
                     Forms\Components\Textarea::make('contract_terms_en')->label('Contract terms (English)')->rows(14)->columnSpanFull()
-                        ->helperText('RED PRIME\'s own terms. Printed on every contract; a signed contract keeps the terms as they were when signed.'),
+                        ->helperText('Printed on page 2 of every rental agreement PDF. Default text matches the reference Vehicle Rental Agreement style (no invented fee amounts — those stay on page 1). A signed contract keeps the terms as they were when signed. Replace with lawyer-approved wording when ready.'),
                     Forms\Components\Textarea::make('contract_terms_ar')->label('Contract terms (Arabic)')->rows(14)->columnSpanFull()->extraInputAttributes(['dir' => 'rtl']),
                     Forms\Components\Textarea::make('borrow_terms')->label('Terms on borrow agreements with suppliers')->rows(5)->columnSpanFull()
                         ->helperText('Printed on "Borrow agreement with the supplier" (bookings of cars hired from a supplier).'),

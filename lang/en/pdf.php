@@ -137,7 +137,7 @@ return [
         'total' => 'Total',
         'paid' => 'Paid',
         'balance' => 'Balance',
-        'terms' => 'Terms and conditions',
+        'terms' => 'Terms and Conditions',
         'document_images' => 'Document Images',
         'sign_hirer' => 'Signature Hirer',
         'sign_driver' => 'Signature Driver',

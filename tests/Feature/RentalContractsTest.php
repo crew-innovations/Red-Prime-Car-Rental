@@ -482,11 +482,25 @@ class RentalContractsTest extends TestCase
     {
         $c = $this->readyContract();
         $html = view('pdf.contract', ['c' => $c, 'b' => $c->booking, 'version' => 1, 'asPdf' => false])->render();
-        foreach (['Driver Details', 'Hirer Details', 'Vehicle Details', 'Charge Details', 'Signature Hirer', 'Signature Driver', 'Signature Company', 'Document Images', 'OUT', 'IN', 'My Credit Card No'] as $needle) {
+        foreach (['Driver Details', 'Hirer Details', 'Vehicle Details', 'Charge Details', 'Signature Hirer', 'Signature Driver', 'Signature Company', 'Document Images', 'OUT', 'IN', 'My Credit Card No', 'TERMS AND CONDITIONS'] as $needle) {
             $this->assertStringContainsString($needle, $html, $needle);
         }
         $this->assertStringContainsString('4242', $html);
         $this->assertStringContainsString('EE-98399', $html);
+    }
+
+    public function test_contract_pdf_includes_uploaded_attachment_images(): void
+    {
+        $c = $this->readyContract();
+        $path = 'contract-files/licence-scan.jpg';
+        Storage::disk('private')->put($path, base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='));
+        $c->addMediaFromDisk($path, 'private')
+            ->usingFileName('licence-scan.jpg')
+            ->toMediaCollection('attachments');
+
+        $html = view('pdf.contract', ['c' => $c->fresh(), 'b' => $c->booking, 'version' => 1, 'asPdf' => false])->render();
+        $this->assertStringContainsString('Attachment: licence-scan.jpg', $html);
+        $this->assertStringContainsString('data:image/', $html);
     }
 
     public function test_missing_licence_place_and_card_block_hirer_sign(): void
