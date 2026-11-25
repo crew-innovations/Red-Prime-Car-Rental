@@ -134,9 +134,10 @@ class Setting extends Model
         // 25 Nov: reference contract PDF fields (issue dates, place of issue, address) added to the default list.
         'confirm_required_fields' => ['name', 'phone', 'nationality', 'residency', 'address', 'id_or_passport', 'id_or_passport_issued', 'id_or_passport_expiry', 'licence_number', 'licence_place_of_issue', 'licence_issued_on', 'licence_expires_on'],
         'contract_number_prefix' => 'RC',    // C-8: RC-2026-00001
-        // 25 Nov: English default loaded from database/data/contract-terms-en.php in values() when empty.
+        // 25 Nov: defaults loaded from database/data/contract-terms-{en,ar,ur}.php in values() when empty.
         'contract_terms_en' => null,
-        'contract_terms_ar' => null,         // Arabic: paste in Contract settings when ready
+        'contract_terms_ar' => null,
+        'contract_terms_ur' => null,
         'contract_required_for_handover' => false, // hand over only with a signed contract (off until terms are in)
         'contract_sign_link_hours' => 48,
         'driver_min_age' => null,            // C-4: empty = not checked
@@ -233,10 +234,12 @@ class Setting extends Model
 
                 return array_replace(self::DEFAULTS, $stored);
             }));
-            // 25 Nov: reference-style T&Cs when Contract settings has no English terms yet.
-            if (! filled($values['contract_terms_en'] ?? null)) {
-                $file = database_path('data/contract-terms-en.php');
-                $values['contract_terms_en'] = is_file($file) ? (string) require $file : null;
+            // 25 Nov: reference-style T&Cs / conditions when Contract settings fields are empty.
+            foreach (['en' => 'contract_terms_en', 'ar' => 'contract_terms_ar', 'ur' => 'contract_terms_ur'] as $lang => $key) {
+                if (! filled($values[$key] ?? null)) {
+                    $file = database_path('data/contract-terms-'.$lang.'.php');
+                    $values[$key] = is_file($file) ? (string) require $file : null;
+                }
             }
 
             return $values;

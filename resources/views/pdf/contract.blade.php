@@ -19,8 +19,36 @@
     $sheet = \App\Support\Contracts\Contracts::chargeSheet($c);
     $termsEn = filled($c->terms_en) ? $c->terms_en : ($s['contract_terms_en'] ?? null);
     $termsAr = filled($c->terms_ar) ? $c->terms_ar : ($s['contract_terms_ar'] ?? null);
+    $termsUr = filled($c->terms_ur) ? $c->terms_ur : ($s['contract_terms_ur'] ?? null);
     $policies = collect(['policy_fuel' => 'Fuel', 'policy_late_return' => 'Late return', 'policy_fines' => 'Fines, Salik and tolls', 'policy_cancellation' => 'Cancellation and changes'])
         ->filter(fn ($label, $key) => filled($s[$key] ?? null));
+    $outNotes = $b?->delivery_notes;
+    $inNotes = $b?->return_notes;
+    $inCondition = $b?->return_condition ? (\App\Models\Booking::CONDITIONS[$b->return_condition] ?? $b->return_condition) : null;
+    $outPhotos = collect();
+    $inPhotos = collect();
+    if ($b) {
+        foreach ($b->getMedia('delivery')->take(4) as $media) {
+            $mime = (string) ($media->mime_type ?: '');
+            if (! str_starts_with($mime, 'image/')) {
+                continue;
+            }
+            $bytes = rescue(fn () => \Illuminate\Support\Facades\Storage::disk($media->disk)->get($media->getPathRelativeToRoot()), null, false);
+            if ($bytes) {
+                $outPhotos->push('data:'.$mime.';base64,'.base64_encode($bytes));
+            }
+        }
+        foreach ($b->getMedia('return')->take(4) as $media) {
+            $mime = (string) ($media->mime_type ?: '');
+            if (! str_starts_with($mime, 'image/')) {
+                continue;
+            }
+            $bytes = rescue(fn () => \Illuminate\Support\Facades\Storage::disk($media->disk)->get($media->getPathRelativeToRoot()), null, false);
+            if ($bytes) {
+                $inPhotos->push('data:'.$mime.';base64,'.base64_encode($bytes));
+            }
+        }
+    }
     $hirerSig = $c->getFirstMedia('signature');
     $driverSig = $c->getFirstMedia('driver_signature');
     $sigData = $hirerSig ? rescue(fn () => 'data:image/png;base64,'.base64_encode(\Illuminate\Support\Facades\Storage::disk($hirerSig->disk)->get($hirerSig->getPathRelativeToRoot())), null, false) : null;
@@ -91,14 +119,18 @@
     .ra-charges .ra-row .k { min-width: 55%; }
     .ra-outin td { width: 50%; vertical-align: top; padding: 0 4px; }
     .ra-fuel { font-size: 16px; font-weight: bold; color: #d7141a; margin-top: 6px; }
+    .ra-car-photos { margin-top: 6px; }
+    .ra-car-photos img { width: 48%; max-height: 70px; margin: 1%; border: 1px solid #e4e4e7; object-fit: cover; }
     .sig3 td { width: 33%; vertical-align: bottom; padding: 18px 6px 0; }
     .sig3 .sig-img { height: 42px; max-width: 140px; }
     .sig3 .stamp { height: 48px; }
     .sig3 .line { border-top: 1px solid #a1a1aa; padding-top: 3px; font-size: 7px; color: #71717a; }
     .terms { font-size: 7.4px; line-height: 1.45; color: #3f3f46; }
+    .terms-ur, .terms-ar { direction: rtl; text-align: right; font-family: DejaVu Sans, sans-serif; }
     .doc-grid td { width: 50%; vertical-align: top; padding: 6px; }
     .doc-grid img { max-width: 100%; max-height: 220px; border: 1px solid #e4e4e7; }
     .page-break { page-break-before: always; }
+    .ra-section-title { font-size: 8px; font-weight: bold; letter-spacing: .6px; text-transform: uppercase; color: #d7141a; margin: 10px 4px 4px; }
 @endsection
 
 @section('meta')
@@ -168,26 +200,50 @@
         </tr>
     </table>
 
-    <table class="ra-outin" style="margin-top:8px">
+    <div class="ra-section-title">{!! $t('car_structure') !!}</div>
+    <table class="ra-outin" style="margin-top:2px">
         <tr>
             <td>
                 <div class="ra-box">
-                    <div class="label">{!! $t('out') !!}</div>
+                    <div class="label">{!! $t('out') !!} · {!! $t('before') !!}</div>
                     <div class="ra-row"><span class="k">{!! $t('date') !!}</span><span class="v">{{ $d($outAt) }}</span></div>
                     <div class="ra-row"><span class="k">{!! $t('time') !!}</span><span class="v">{{ $tm($outAt) }}</span></div>
                     <div class="ra-row"><span class="k">{!! $t('km') !!}</span><span class="v">{{ $b?->delivery_km !== null ? number_format($b->delivery_km) : '—' }}</span></div>
                     <div class="label" style="margin-top:8px">{!! $t('check_out') !!}</div>
                     <div class="ra-fuel">{{ $fuelOut }}</div>
+                    @if (filled($outNotes))
+                        <div class="ra-row" style="margin-top:6px;border:0"><span class="k">{!! $t('notes') !!}</span><span class="v">{{ $x($outNotes) }}</span></div>
+                    @endif
+                    @if ($outPhotos->isNotEmpty())
+                        <div class="ra-car-photos">
+                            @foreach ($outPhotos as $src)
+                                <img src="{{ $src }}" alt="">
+                            @endforeach
+                        </div>
+                    @endif
                 </div>
             </td>
             <td>
                 <div class="ra-box">
-                    <div class="label">{!! $t('in') !!}</div>
+                    <div class="label">{!! $t('in') !!} · {!! $t('after') !!}</div>
                     <div class="ra-row"><span class="k">{!! $t('date') !!}</span><span class="v">{{ $d($inAt) }}</span></div>
                     <div class="ra-row"><span class="k">{!! $t('time') !!}</span><span class="v">{{ $tm($inAt) }}</span></div>
                     <div class="ra-row"><span class="k">{!! $t('km') !!}</span><span class="v">{{ $b?->return_km !== null ? number_format($b->return_km) : '—' }}</span></div>
+                    @if ($inCondition)
+                        <div class="ra-row"><span class="k">{!! $t('condition') !!}</span><span class="v">{{ $x($inCondition) }}</span></div>
+                    @endif
                     <div class="label" style="margin-top:8px">{!! $t('check_in') !!}</div>
                     <div class="ra-fuel">{{ $fuelIn }}</div>
+                    @if (filled($inNotes))
+                        <div class="ra-row" style="margin-top:6px;border:0"><span class="k">{!! $t('notes') !!}</span><span class="v">{{ $x($inNotes) }}</span></div>
+                    @endif
+                    @if ($inPhotos->isNotEmpty())
+                        <div class="ra-car-photos">
+                            @foreach ($inPhotos as $src)
+                                <img src="{{ $src }}" alt="">
+                            @endforeach
+                        </div>
+                    @endif
                 </div>
             </td>
         </tr>
@@ -202,14 +258,25 @@
         'stamp' => $stamp, 'c' => $c, 'companyName' => $companyName,
     ])
 
-    {{-- Page 2: terms (default = reference-style T&Cs from Contract settings) --}}
+    {{-- Page 2: Terms EN+UR and Conditions AR (reference bilingual) --}}
     <div class="page-break">
         <h3><span class="rule"></span>{!! $t('terms') !!}</h3>
-        @if (filled($termsEn) || filled($termsAr))
-            @if (filled($termsEn))<div class="terms">{!! nl2br(e($termsEn)) !!}</div>@endif
-            @if (filled($termsAr))<div class="terms" style="margin-top:8px">{{ \App\Support\Documents\PdfText::paragraph($termsAr, 110) }}</div>@endif
-        @elseif ($policies->isNotEmpty())
-            @foreach ($policies as $key => $label)<div class="terms"><strong>{{ $label }}.</strong> {{ $s[$key] }}</div>@endforeach
+        @if (filled($termsEn) || filled($termsUr) || filled($termsAr) || $policies->isNotEmpty())
+            @if (filled($termsEn))
+                <div class="label" style="margin-top:4px">English</div>
+                <div class="terms">{!! nl2br(e($termsEn)) !!}</div>
+            @endif
+            @if (filled($termsUr))
+                <div class="label" style="margin-top:10px">اردو · Urdu</div>
+                <div class="terms terms-ur">{!! nl2br(e($termsUr)) !!}</div>
+            @endif
+            @if (filled($termsAr))
+                <div class="label" style="margin-top:10px">{!! $t('conditions') !!}</div>
+                <div class="terms terms-ar">{{ \App\Support\Documents\PdfText::paragraph($termsAr, 110) }}</div>
+            @endif
+            @if (! filled($termsEn) && ! filled($termsUr) && ! filled($termsAr) && $policies->isNotEmpty())
+                @foreach ($policies as $key => $label)<div class="terms"><strong>{{ $label }}.</strong> {{ $s[$key] }}</div>@endforeach
+            @endif
         @else
             <div class="terms muted">The rental terms of {{ $companyName }} apply.</div>
         @endif
@@ -222,7 +289,7 @@
 
     {{-- Page 3: customer document images + contract attachments --}}
     <div class="page-break">
-        <h3><span class="rule"></span>{!! $t('document_images') !!}</h3>
+        <h3><span class="rule"></span>{!! $t('document_images') !!} · {!! $t('attachments') !!}</h3>
         @if ($docImages->isEmpty() && $attachmentNotes->isEmpty())
             <div class="terms muted">No document images or contract attachments yet.</div>
         @else

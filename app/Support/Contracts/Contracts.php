@@ -233,6 +233,7 @@ class Contracts
                 // The terms as they were when signed, so a later change in settings does not change this contract.
                 'terms_en' => filled($contract->terms_en) ? $contract->terms_en : (string) Setting::read('contract_terms_en'),
                 'terms_ar' => filled($contract->terms_ar) ? $contract->terms_ar : (string) Setting::read('contract_terms_ar'),
+                'terms_ur' => filled($contract->terms_ur) ? $contract->terms_ur : (string) Setting::read('contract_terms_ur'),
             ])->save();
             self::savePdf($contract, 'Signed by the hirer ('.$via.')');
         });
@@ -259,6 +260,7 @@ class Contracts
                 'driver_signed_via' => mb_substr($via, 0, 24),
                 'terms_en' => filled($contract->terms_en) ? $contract->terms_en : (string) Setting::read('contract_terms_en'),
                 'terms_ar' => filled($contract->terms_ar) ? $contract->terms_ar : (string) Setting::read('contract_terms_ar'),
+                'terms_ur' => filled($contract->terms_ur) ? $contract->terms_ur : (string) Setting::read('contract_terms_ur'),
             ])->save();
             self::savePdf($contract, 'Signed by the driver ('.$via.')');
         });

@@ -420,12 +420,12 @@ class HelpGuides
                     'Card for deposit' => 'Stores last 4 digits for the PDF only.',
                     'Make the PDF again' => 'A new PDF version after a change (versions are kept).',
                     'Scan with camera' => 'On attachments, damage photos and fine notice: take a photo, or still Choose file / PDF.',
-                    'Add attachment' => 'Files on the contract also print on the PDF Document Images page (photos as images; PDFs listed by name).',
+                    'Add attachment' => 'Files show on the contract screen (Attachments) and on the PDF Document Images page (photos as images; PDFs listed by name).',
                 ],
                 'after' => ['Each change makes a new PDF version. Monthly contracts invoice each period by themselves.'],
                 'tips' => [
-                    'The PDF matches the reference Vehicle Rental Agreement: Driver | Hirer, Vehicle | Charges, OUT/IN with fuel %, three signature lines, terms page, document images page.',
-                    'Terms and conditions come from Contract settings (English default is the reference-style T&Cs). Edit there for lawyer-approved text; a signed contract keeps the terms as at signing.',
+                    'The PDF has Driver / Hirer / Vehicle / Charge tables, car structure before & after (OUT/IN), terms in English + Urdu, Arabic conditions, signatures, and document images.',
+                    'Terms: Contract settings › English + Urdu. Conditions: Arabic. A signed contract freezes the text as at signing.',
                 ],
             ],
 
