@@ -120,6 +120,10 @@ class Contracts
             foreach (\App\Support\PrivateFiles::freshUploads((array) ($d['scan'] ?? []), 'contract-files') as $path) {
                 $contract->addMediaFromDisk($path, 'private')->toMediaCollection('attachments');
             }
+            if ($contract->getMedia('attachments')->isNotEmpty()) {
+                $contract->unsetRelation('media');
+                self::savePdf($contract, 'Scanned copy attached');
+            }
             AuditLog::note($contract, 'contract', 'Old paper contract '.($d['paper_number'] ?? '').' entered');
 
             return $contract->fresh();
@@ -605,6 +609,12 @@ class Contracts
     public static function savePdf(RentalContract $contract, string $reason): ?ContractVersion
     {
         $contract->refresh();
+        // refresh() keeps relations already loaded in this request. Attachments added
+        // after that load would be missing from the first PDF and only show on the next one.
+        $contract->unsetRelation('media');
+        $contract->unsetRelation('customer');
+        $contract->unsetRelation('booking');
+        $contract->load(['media', 'customer.documents', 'booking']);
         $version = (int) $contract->version + 1;
         $data = ['c' => $contract, 'b' => $contract->booking, 'version' => $version];
         try {

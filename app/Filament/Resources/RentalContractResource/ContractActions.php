@@ -280,14 +280,17 @@ class ContractActions
                             ->withCustomProperties(['source' => 'attach'])
                             ->toMediaCollection('attachments');
                         // Spatie may leave mime empty on some hosts — fix from extension / sniffed type.
-                        if ($media = $contract()->getMedia('attachments')->last()) {
+                        if ($media = $contract()->fresh()->getMedia('attachments')->last()) {
                             if (! str_starts_with((string) $media->mime_type, 'image/') && \App\Support\MediaImage::isImage($mime, $media->file_name, $path)) {
                                 $media->mime_type = $mime;
                                 $media->save();
                             }
                         }
                     }
-                    Notification::make()->success()->title('Saved')->send();
+                    $saved = $contract()->fresh();
+                    $saved->unsetRelation('media');
+                    Contracts::savePdf($saved, 'Attachment added');
+                    Notification::make()->success()->title('Saved')->body('The contract PDF now includes this file.')->send();
                 })->after($after),
             Action::make('editDetails')
                 ->label('Edit contract details')

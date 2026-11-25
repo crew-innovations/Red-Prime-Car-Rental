@@ -420,7 +420,7 @@ class HelpGuides
                     'Card for deposit' => 'Stores last 4 digits for the PDF only.',
                     'Make the PDF again' => 'A new PDF version after a change (versions are kept).',
                     'Scan with camera' => 'On attachments, damage photos and fine notice: take a photo, or still Choose file / PDF. Attachments show as pictures on the contract and on the PDF Document Images page.',
-                    'Contract PDF' => 'Page 1: details and the car check drawing. Page 2: short conditions and signatures. Page 3: English | Urdu terms side by side. Page 4: document images.',
+                    'Contract PDF' => 'Opens the contract as it is now, including attachments just added. Older copies stay under Versions.',
                     'Add attachment' => 'Files show on the contract screen (Attachments) and on the PDF Document Images page (photos as images; PDFs listed by name).',
                 ],
                 'after' => ['Each change makes a new PDF version. Monthly contracts invoice each period by themselves.'],
