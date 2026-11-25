@@ -482,7 +482,7 @@ class RentalContractsTest extends TestCase
     {
         $c = $this->readyContract();
         $html = view('pdf.contract', ['c' => $c, 'b' => $c->booking, 'version' => 1, 'asPdf' => false])->render();
-        foreach (['Driver Details', 'Hirer Details', 'Vehicle Details', 'Charge Details', 'Signature Hirer', 'Signature Driver', 'Signature Company', 'Document Images', 'OUT', 'IN', 'My Credit Card No', 'TERMS AND CONDITIONS'] as $needle) {
+        foreach (['Driver Details', 'Hirer Details', 'Vehicle Details', 'Charge Details', 'Signature Hirer', 'Signature Driver', 'Signature Company', 'Document Images', 'OUT', 'IN', 'My Credit Card No', 'TERMS AND CONDITIONS', 'Car structure', 'Before (OUT)', 'After (IN)', 'شرائط و ضوابط', 'الشروط والأحكام'] as $needle) {
             $this->assertStringContainsString($needle, $html, $needle);
         }
         $this->assertStringContainsString('4242', $html);

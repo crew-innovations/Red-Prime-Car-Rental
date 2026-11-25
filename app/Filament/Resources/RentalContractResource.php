@@ -221,11 +221,37 @@ class RentalContractResource extends Resource
                                 .$v->created_at->format('d M Y H:i').' · '.e($v->creator?->name ?? 'System').'<div style="opacity:.75;font-size:.85em">'.e($v->reason).'</div></div>')->implode('') ?: 'No PDF yet'),
                 ]),
                 Infolists\Components\Section::make('Attachments')->icon('heroicon-o-paper-clip')->collapsible()
-                    ->visible(fn (RentalContract $r): bool => $r->getMedia('attachments')->isNotEmpty())
+                    ->description('Files from Add attachment. Shown here and on the contract PDF Document Images page.')
                     ->schema([
                         Infolists\Components\TextEntry::make('attachments_list')->hiddenLabel()->html()
-                            ->state(fn (RentalContract $r): string => $r->getMedia('attachments')
-                                ->map(fn ($m) => '<div><a target="_blank" style="text-decoration:underline" href="'.e($m->getTemporaryUrl(now()->addMinutes(30))).'">'.e($m->file_name).'</a></div>')->implode('')),
+                            ->state(function (RentalContract $r): string {
+                                $items = $r->getMedia('attachments');
+                                if ($items->isEmpty()) {
+                                    return '<span style="opacity:.7">No attachments yet. Use More › Add attachment.</span>';
+                                }
+
+                                return $items->map(function ($m) {
+                                    $url = rescue(fn () => $m->getTemporaryUrl(now()->addMinutes(60)), null, false);
+                                    if (! $url) {
+                                        $path = $m->getPathRelativeToRoot();
+                                        $url = \Illuminate\Support\Facades\URL::temporarySignedRoute(
+                                            'private-file',
+                                            now()->addMinutes(60),
+                                            ['path' => $path],
+                                            absolute: false
+                                        );
+                                    }
+                                    $name = e($m->file_name ?: $m->name ?: 'file');
+                                    $isImage = str_starts_with((string) $m->mime_type, 'image/');
+                                    $thumb = $isImage
+                                        ? '<div style="margin:.4rem 0"><a target="_blank" href="'.e($url).'"><img src="'.e($url).'" alt="" style="max-width:100%;max-height:160px;border-radius:8px;border:1px solid #e4e4e7"></a></div>'
+                                        : '';
+
+                                    return '<div style="margin-bottom:.75rem">'.$thumb
+                                        .'<a target="_blank" style="font-weight:600;text-decoration:underline" href="'.e($url).'">'.$name.'</a>'
+                                        .'<div style="opacity:.7;font-size:.85em">'.e((string) $m->mime_type).'</div></div>';
+                                })->implode('');
+                            }),
                     ]),
             ]),
         ]);

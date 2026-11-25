@@ -40,7 +40,7 @@ class ContractSettings extends Page implements HasForms
         'delivery_fee_default', 'no_deposit_allowed', 'no_deposit_fee_mode', 'no_deposit_fee_amount',
         'confirm_requires_details', 'confirm_required_fields', 'driver_min_age', 'licence_min_years',
         'contract_number_prefix', 'contract_required_for_handover', 'contract_sign_link_hours', 'additional_driver_charge',
-        'contract_terms_en', 'contract_terms_ar', 'contract_invoice_mode', 'contract_invoice_due_days', 'contract_renewal_days',
+        'contract_terms_en', 'contract_terms_ar', 'contract_terms_ur', 'contract_invoice_mode', 'contract_invoice_due_days', 'contract_renewal_days',
         'contract_sign_otp', 'borrow_terms', 'block_expired_car_papers',
     ];
 
@@ -97,9 +97,12 @@ class ContractSettings extends Page implements HasForms
                         ->helperText('A manager can still hand over anyway; it is recorded.'),
                     Forms\Components\Toggle::make('contract_required_for_handover')->label('Hand over the car only with a fully signed contract')->inline(false)->columnSpanFull()
                         ->helperText('Needs both the hirer\'s and the driver\'s signatures on the rental agreement. Switch on once the contract terms below are in.'),
-                    Forms\Components\Textarea::make('contract_terms_en')->label('Contract terms (English)')->rows(14)->columnSpanFull()
-                        ->helperText('Printed on page 2 of every rental agreement PDF. Default text matches the reference Vehicle Rental Agreement style (no invented fee amounts — those stay on page 1). A signed contract keeps the terms as they were when signed. Replace with lawyer-approved wording when ready.'),
-                    Forms\Components\Textarea::make('contract_terms_ar')->label('Contract terms (Arabic)')->rows(14)->columnSpanFull()->extraInputAttributes(['dir' => 'rtl']),
+                    Forms\Components\Textarea::make('contract_terms_en')->label('Terms and conditions (English)')->rows(12)->columnSpanFull()
+                        ->helperText('Printed on the rental agreement PDF with Urdu. Defaults match the reference style (no invented fee amounts). A signed contract freezes the text.'),
+                    Forms\Components\Textarea::make('contract_terms_ur')->label('Terms and conditions (Urdu)')->rows(12)->columnSpanFull()->extraInputAttributes(['dir' => 'rtl'])
+                        ->helperText('Same clauses as English, in Urdu. Printed on the PDF terms page.'),
+                    Forms\Components\Textarea::make('contract_terms_ar')->label('Conditions (Arabic)')->rows(12)->columnSpanFull()->extraInputAttributes(['dir' => 'rtl'])
+                        ->helperText('Arabic conditions printed on the PDF with the English/Urdu terms (reference bilingual conditions).'),
                     Forms\Components\Textarea::make('borrow_terms')->label('Terms on borrow agreements with suppliers')->rows(5)->columnSpanFull()
                         ->helperText('Printed on "Borrow agreement with the supplier" (bookings of cars hired from a supplier).'),
                 ]),
@@ -137,6 +140,7 @@ class ContractSettings extends Page implements HasForms
             'additional_driver_charge' => $num($d['additional_driver_charge'] ?? null),
             'contract_terms_en' => filled($d['contract_terms_en'] ?? null) ? trim($d['contract_terms_en']) : null,
             'contract_terms_ar' => filled($d['contract_terms_ar'] ?? null) ? trim($d['contract_terms_ar']) : null,
+            'contract_terms_ur' => filled($d['contract_terms_ur'] ?? null) ? trim($d['contract_terms_ur']) : null,
             'contract_invoice_mode' => ($d['contract_invoice_mode'] ?? 'advance') === 'arrears' ? 'arrears' : 'advance',
             'contract_invoice_due_days' => max(0, (int) ($d['contract_invoice_due_days'] ?? 7)),
             'contract_renewal_days' => max(0, (int) ($d['contract_renewal_days'] ?? 7)),
@@ -150,8 +154,8 @@ class ContractSettings extends Page implements HasForms
         AuditLog::create([
             'user_id' => auth()->id(),
             'event' => 'settings',
-            'old_values' => collect($before)->only($changed)->except(['contract_terms_en', 'contract_terms_ar'])->all() ?: null,
-            'new_values' => collect($out)->only($changed)->except(['contract_terms_en', 'contract_terms_ar'])->all() ?: null,
+            'old_values' => collect($before)->only($changed)->except(['contract_terms_en', 'contract_terms_ar', 'contract_terms_ur'])->all() ?: null,
+            'new_values' => collect($out)->only($changed)->except(['contract_terms_en', 'contract_terms_ar', 'contract_terms_ur'])->all() ?: null,
             'note' => $changed ? 'Rental contract settings changed: '.implode(', ', $changed) : 'Rental contract settings saved (no changes)',
         ]);
         $this->mount();
