@@ -258,8 +258,8 @@ class HelpGuides
                         'Press "Add customer".',
                         'Fill in the customer form (same as New Booking): Contact (type, full name as on ID, phone, WhatsApp, email, residency, nationality, date of birth, company and TRN for companies, address).',
                         'ID and driving licence: Emirates ID and expiry, passport and expiry, licence number, country, issue and expiry dates.',
-                        'Documents: upload photos / PDFs, or press "Scan with camera" to take a photo on the phone or webcam; tick "I checked these against the originals" to approve them now.',
-                        'After a scan or upload, empty name / ID / licence fields fill in automatically from the photo. Check them. "Read the documents (OCR)" runs the reader again if needed.',
+                        'Documents: one "Scan with camera" for the whole form. A passport fills passport fields, an Emirates ID fills ID fields, a licence fills licence fields. Fields that do not belong to that document stay empty. You can still choose a file on each document. Tick "I checked these against the originals" to approve them now.',
+                        'Check the filled fields, then save. "Read the documents (OCR)" reads the attached files again if you need to.',
                         'Preferences (contact preference, language, marketing, tags), Account (VIP, source, account manager, follow-up) and notes.',
                         'Press Create. A phone or email already used by another customer is refused, so there are no duplicates.',
                     ],
@@ -289,7 +289,7 @@ class HelpGuides
                 'after' => ['Approving the last required document opens the customer\'s account and tells them.', 'Rejected: the customer is asked to send it again.'],
                 'tips' => [
                     'Files are private: they open only for logged-in staff allowed to see that customer.',
-                    'On every document upload use "Scan with camera" or Choose file — same private storage either way.',
+                    'Customer form: one "Scan with camera" reads the photo and fills only the matching fields. Other uploads on that form are choose-file.',
                 ],
             ],
 
@@ -420,7 +420,7 @@ class HelpGuides
                     'Card for deposit' => 'Stores last 4 digits for the PDF only.',
                     'Make the PDF again' => 'A new PDF version after a change (versions are kept).',
                     'Scan with camera' => 'On attachments, damage photos and fine notice: take a photo, or still Choose file / PDF. Attachments show as pictures on the contract and on the PDF Document Images page.',
-                    'Contract PDF' => 'Three pages like the paper agreement: details + car check + short conditions; English | Urdu terms side by side; document images.',
+                    'Contract PDF' => 'Page 1: details and the car check drawing. Page 2: short conditions and signatures. Page 3: English | Urdu terms side by side. Page 4: document images.',
                     'Add attachment' => 'Files show on the contract screen (Attachments) and on the PDF Document Images page (photos as images; PDFs listed by name).',
                 ],
                 'after' => ['Each change makes a new PDF version. Monthly contracts invoice each period by themselves.'],

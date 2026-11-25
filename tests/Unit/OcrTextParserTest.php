@@ -69,4 +69,17 @@ class OcrTextParserTest extends TestCase
         $this->assertSame(132.0, $r['amount']);
         $this->assertSame(6.29, $r['vat_amount']);
     }
+
+    public function test_one_scan_fills_only_the_matching_document_fields(): void
+    {
+        $this->assertSame('passport', TextParser::guessType("PASSPORT\nPassport No: AB1234567"));
+        $this->assertSame('emirates_id', TextParser::guessType('Emirates ID 784-1990-1234567-1'));
+        $this->assertSame('driving_licence', TextParser::guessType("Driving Licence\nLicence No: 12345678"));
+
+        $r = TextParser::customer([['type' => 'scan', 'text' => "PASSPORT\nName: Salim Hasson\nPassport No: AB1234567\nNationality: Israel"]]);
+        $this->assertSame('AB1234567', $r['passport_number']);
+        $this->assertSame('Salim Hasson', $r['name']);
+        $this->assertArrayNotHasKey('licence_number', $r);
+        $this->assertArrayNotHasKey('id_number', $r);
+    }
 }

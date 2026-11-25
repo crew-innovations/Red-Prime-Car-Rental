@@ -26,13 +26,13 @@ class CameraUpload
      *
      * @return array{0: FileUpload, 1: Forms\Components\ViewField}
      */
-    public static function withScan(FileUpload $upload, ?string $target = null): array
+    public static function withScan(FileUpload $upload, ?string $target = null, ?string $hint = null): array
     {
         $name = $upload->getName();
         $key = $target ?: (string) $name;
         self::decorate($upload, $key);
 
-        return [$upload, self::button($key)];
+        return [$upload, self::button($key, $hint)];
     }
 
     /** Apply camera target attributes to an existing FileUpload (when the button is added separately). */
@@ -47,12 +47,12 @@ class CameraUpload
         ]));
     }
 
-    public static function button(string $target): Forms\Components\ViewField
+    public static function button(string $target, ?string $hint = null): Forms\Components\ViewField
     {
         return Forms\Components\ViewField::make('_camera_'.preg_replace('/[^A-Za-z0-9_]/', '_', $target))
             ->label('')
             ->dehydrated(false)
             ->view('filament.forms.camera-scan')
-            ->viewData(['target' => $target]);
+            ->viewData(['target' => $target, 'hint' => $hint]);
     }
 }

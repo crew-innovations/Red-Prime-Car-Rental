@@ -95,27 +95,35 @@ class CustomerDetails
                     $date('trade_licence_expires_on', 'Trade licence expiry')->visible($company)->columnSpan(2),
                 ]),
             Forms\Components\Section::make('Documents')
-                ->description('Photos or PDFs (Scan with camera or Choose file). After a photo lands, empty fields above are filled automatically — check them before saving. "Read the documents" runs OCR again if needed.')
+                ->description('One scan for the whole form. Photograph the passport, Emirates ID or licence: only the fields that belong to that document are filled. The others stay empty. You can still choose a file on each document below.')
                 ->columns(2)
                 ->schema([
-                    ...collect(self::uploads())->flatMap(function ($meta, $key) use ($customer, $company) {
-                        $upload = Forms\Components\FileUpload::make('upload_'.$key)
+                    ...CameraUpload::withScan(
+                        Forms\Components\FileUpload::make('upload_scan')
+                            ->label('Scan a document')
+                            ->disk('private')->directory('customers/'.($customer?->id ?? 'new'))->visibility('private')
+                            ->acceptedFileTypes(['image/jpeg', 'image/png', 'image/webp', 'application/pdf'])
+                            ->maxSize(10240)->imagePreviewHeight('120')
+                            ->helperText('One photo fills the matching fields on this form.')
+                            ->columnSpanFull()
+                            ->live()
+                            ->afterStateUpdated(function ($state, Get $get, Set $set, $livewire, $component) {
+                                if (blank($state)) {
+                                    return;
+                                }
+                                self::autoReadUploads($get, $set, $livewire, $component, '', true);
+                            }),
+                        'upload_scan',
+                        'Scan once for this form. Name, ID, passport or licence fields that match the photo are filled. Anything that does not belong to this document stays empty.'
+                    ),
+                    ...collect(self::uploads())->map(function ($meta, $key) use ($customer, $company) {
+                        return Forms\Components\FileUpload::make('upload_'.$key)
                             ->label($meta[0])
                             ->disk('private')->directory('customers/'.($customer?->id ?? 'new'))->visibility('private')
                             ->acceptedFileTypes(['image/jpeg', 'image/png', 'image/webp', 'application/pdf'])
                             ->maxSize(10240)->multiple()->maxFiles(4)->imagePreviewHeight('80')
                             ->visible($key === 'trade_licence' ? $company : true)
-                            ->helperText(fn () => self::onFile($customer, $key))
-                            ->live()
-                            ->afterStateUpdated(function ($state, Get $get, Set $set, $livewire, $component) {
-                                // Camera or Choose file: once the file is on disk, read it and fill empty fields.
-                                if (! is_array($state) || $state === []) {
-                                    return;
-                                }
-                                self::autoReadUploads($get, $set, $livewire, $component);
-                            });
-
-                        return CameraUpload::withScan($upload, 'upload_'.$key);
+                            ->helperText(fn () => self::onFile($customer, $key));
                     })->values()->all(),
                     Forms\Components\Toggle::make('documents_checked')
                         ->label('I checked these against the originals')
@@ -134,6 +142,7 @@ class CustomerDetails
                                 : LocalOcr::start($livewire, $component->getContainer()->getStatePath().'.ocr_text', self::uploadedFiles($get))),
                     ])->columnSpanFull(),
                     Forms\Components\Hidden::make('ocr_result'),
+                    Forms\Components\Hidden::make('scan_doc_type'),
                     // 19 Nov: the text read on this computer comes back here and is matched to the fields.
                     Forms\Components\Hidden::make('ocr_text')->dehydrated(false)->live()
                         ->afterStateUpdated(function (?string $state, Get $get, Set $set) {
@@ -142,7 +151,27 @@ class CustomerDetails
                             }
                             $docs = LocalOcr::texts($state);
                             $set('ocr_text', null);
-                            self::applyFound($get, $set, \App\Support\Ocr\TextParser::customer($docs), $docs === [] ? 'No text could be read. Try a sharper photo.' : null);
+                            $types = [];
+                            foreach ($docs as $i => $doc) {
+                                $type = (string) ($doc['type'] ?? '');
+                                if ($type === '' || $type === 'scan') {
+                                    $type = \App\Support\Ocr\TextParser::guessType((string) ($doc['text'] ?? ''));
+                                    $docs[$i]['type'] = $type;
+                                }
+                                if ($type !== '' && $type !== 'other') {
+                                    $types[$type] = true;
+                                }
+                            }
+                            self::fileScan($get, $set, array_keys($types));
+                            $label = self::typeLabels(array_keys($types));
+                            self::applyFound(
+                                $get,
+                                $set,
+                                \App\Support\Ocr\TextParser::customer($docs),
+                                $docs === []
+                                    ? 'No text could be read. Try a sharper photo.'
+                                    : ($label ? 'Read as '.$label.'. Only matching fields were filled; the rest were left empty.' : 'Could not tell which document this is. Check the photo and type the fields.')
+                            );
                         }),
                 ]),
         ];
@@ -245,8 +274,15 @@ class CustomerDetails
         $approve = ! empty($data['documents_checked']) && Access::allows('review-documents');
         $ocr = filled($data['ocr_result'] ?? null) ? json_decode((string) $data['ocr_result'], true) : null;
         foreach (self::UPLOADS as $type => [, $numberField, $expiryField, $issueField]) {
-            // Only files just uploaded into the customers folder (never a path of another file sent by the browser).
-            foreach (\App\Support\PrivateFiles::freshUploads(array_values(array_filter((array) ($data['upload_'.$type] ?? []), 'is_string')), 'customers') as $path) {
+            $paths = \App\Support\PrivateFiles::freshUploads(array_values(array_filter((array) ($data['upload_'.$type] ?? []), 'is_string')), 'customers');
+            // A scan that was recognised as this document, if it was not moved into the field yet.
+            if (($data['scan_doc_type'] ?? null) === $type) {
+                $paths = array_values(array_unique(array_merge(
+                    $paths,
+                    \App\Support\PrivateFiles::freshUploads(array_values(array_filter((array) ($data['upload_scan'] ?? []), 'is_string')), 'customers')
+                )));
+            }
+            foreach ($paths as $path) {
                 $disk = Storage::disk('private');
                 CustomerDocument::create([
                     'customer_id' => $customer->id,
@@ -270,17 +306,31 @@ class CustomerDetails
     }
 
     /**
-     * 25 Nov: after Scan with camera / Choose file, read the uploads and fill empty fields
-     * (same path as the "Read the documents" button — no second click needed).
+     * 25 Nov: the one "Scan a document" photo is read and only the matching fields are filled.
      */
-    public static function autoReadUploads(Get $get, Set $set, $livewire, $component, string $prefix = ''): void
+    public static function autoReadUploads(Get $get, Set $set, $livewire, $component, string $prefix = '', bool $scanOnly = false): void
     {
         $files = self::uploadedFiles($get, $prefix);
+        if ($scanOnly) {
+            $files = array_values(array_filter($files, fn ($f) => ($f['key'] ?? '') === 'scan'));
+        }
         if ($files === []) {
             return;
         }
         if (DocumentReader::ready()) {
-            self::fillFromDocuments($get, $set, $prefix);
+            try {
+                $found = DocumentReader::readCustomer($files);
+            } catch (\Throwable $e) {
+                Notification::make()->warning()->title('Could not read the documents')->body($e->getMessage())->send();
+
+                return;
+            }
+            $type = self::typeFromFound($found);
+            if ($scanOnly && $type) {
+                self::fileScan($get, $set, [$type]);
+            }
+            $label = $type ? self::typeLabels([$type]) : '';
+            self::applyFound($get, $set, $found, $label ? 'Read as '.$label.'. Only matching fields were filled; the rest were left empty.' : null, $prefix);
 
             return;
         }
@@ -288,11 +338,49 @@ class CustomerDetails
         LocalOcr::start($livewire, $ocrPath, $files);
     }
 
+    /** Which document the found fields belong to, so the scan photo is filed once. */
+    protected static function typeFromFound(array $found): ?string
+    {
+        return match (true) {
+            filled($found['passport_number'] ?? null) => 'passport',
+            filled($found['id_number'] ?? null) => 'emirates_id',
+            filled($found['licence_number'] ?? null) => 'driving_licence',
+            filled($found['trade_licence_number'] ?? null) => 'trade_licence',
+            default => null,
+        };
+    }
+
+    /** Put the single scan photo on the document it was recognised as. */
+    protected static function fileScan(Get $get, Set $set, array $types): void
+    {
+        $scan = array_values(array_filter((array) $get('upload_scan'), fn ($f) => is_string($f) && $f !== ''));
+        if ($scan === []) {
+            return;
+        }
+        $type = collect($types)->first(fn ($t) => isset(self::UPLOADS[$t]));
+        if (! is_string($type)) {
+            return;
+        }
+        $existing = array_values(array_filter((array) $get('upload_'.$type), fn ($f) => is_string($f) && $f !== ''));
+        $set('upload_'.$type, array_values(array_unique(array_merge($existing, $scan))));
+        $set('scan_doc_type', $type);
+        $set('upload_scan', null);
+    }
+
+    protected static function typeLabels(array $types): string
+    {
+        return collect($types)
+            ->filter(fn ($t) => isset(self::UPLOADS[$t]))
+            ->map(fn ($t) => self::UPLOADS[$t][0])
+            ->implode(', ');
+    }
+
     /** Uploaded and stored files of the document fields, with their upload key. */
     public static function uploadedFiles(Get $get, string $prefix = ''): array
     {
         $files = [];
-        foreach (array_keys(self::UPLOADS) as $type) {
+        $slots = self::UPLOADS + ['scan' => ['Scan', null, null, null]];
+        foreach ($slots as $type => $meta) {
             foreach ((array) ($get($prefix.'upload_'.$type) ?? []) as $file) {
                 $path = match (true) {
                     is_object($file) && method_exists($file, 'getRealPath') => $file->getRealPath(),
@@ -300,7 +388,7 @@ class CustomerDetails
                     default => null,
                 };
                 if ($path) {
-                    $files[] = ['path' => $path, 'mime' => is_object($file) && method_exists($file, 'getMimeType') ? $file->getMimeType() : null, 'type' => self::UPLOADS[$type][0], 'key' => $type];
+                    $files[] = ['path' => $path, 'mime' => is_object($file) && method_exists($file, 'getMimeType') ? $file->getMimeType() : null, 'type' => $meta[0], 'key' => $type];
                 }
             }
         }

@@ -123,61 +123,46 @@
             $attachmentNotes->push($label.($media->mime_type ? ' ('.$media->mime_type.')' : ''));
         }
     }
-    // DomPDF-safe top-view car outline (no SVG transforms).
-    $carOutline = <<<'HTML'
-<table class="car-outline" style="width:150px;margin:0 auto;border-collapse:collapse;font-size:5.5px;color:#444">
-  <tr><td colspan="3" style="border:1px solid #333;height:12px;text-align:center">BUMPER</td></tr>
-  <tr><td colspan="3" style="border:1px solid #333;height:36px;text-align:center">BONNET</td></tr>
-  <tr>
-    <td style="border:1px solid #333;width:18%;height:52px;text-align:center">W<br>I<br>N<br>G</td>
-    <td style="border:1px solid #333;height:52px;text-align:center">WINDSCREEN<br><br>ROOF</td>
-    <td style="border:1px solid #333;width:18%;height:52px;text-align:center">W<br>I<br>N<br>G</td>
-  </tr>
-  <tr>
-    <td style="border:1px solid #333;height:48px;text-align:center">D<br>O<br>O<br>R</td>
-    <td style="border:1px solid #333;height:48px;text-align:center">ROOF</td>
-    <td style="border:1px solid #333;height:48px;text-align:center">D<br>O<br>O<br>R</td>
-  </tr>
-  <tr>
-    <td style="border:1px solid #333;height:40px;text-align:center">D<br>O<br>O<br>R</td>
-    <td style="border:1px solid #333;height:40px;text-align:center">REAR WINDOW</td>
-    <td style="border:1px solid #333;height:40px;text-align:center">D<br>O<br>O<br>R</td>
-  </tr>
-  <tr><td colspan="3" style="border:1px solid #333;height:32px;text-align:center">BOOT</td></tr>
-  <tr><td colspan="3" style="border:1px solid #333;height:12px;text-align:center">BUMPER</td></tr>
-</table>
-HTML;
+    $carPng = 'data:image/png;base64,'.base64_encode((string) file_get_contents(resource_path('views/pdf/partials/car-top.png')));
 @endphp
 @section('title', 'Rental agreement '.$c->number)
 @section('doc-title'){!! $t('title') !!}@endsection
 @section('styles')
     .gold { color: #a8781a; }
+    .doc-title { font-size: 15px; margin: 0 0 2px; }
+    .logo { height: 30px; }
+    .bar { margin: -30px -36px 8px; }
+    .co-name { margin-top: 2px; font-size: 8.5px; }
+    .co { font-size: 6.8px; line-height: 1.25; }
+    .ra-grid { margin-top: 4px; }
     .ra-grid td { width: 50%; vertical-align: top; padding: 0 3px; }
-    .ra-box { border: 1.5px solid #d4a62a; border-radius: 2px; padding: 0; min-height: 100px; overflow: hidden; }
-    .ra-box .label { font-size: 7.4px; letter-spacing: .4px; text-transform: uppercase; color: #111; font-weight: bold; margin: 0; padding: 4px 8px; background: #e8d48b; border-bottom: 1px solid #d4a62a; }
-    .ra-box .body { padding: 5px 8px 7px; }
-    .ra-row { padding: 2px 0; border-bottom: 1px solid #eee8d4; font-size: 7.4px; }
-    .ra-row .k { color: #52525b; display: inline-block; min-width: 42%; }
+    .ra-box { border: 1.5px solid #d4a62a; border-radius: 2px; padding: 0; min-height: 0; overflow: hidden; }
+    .ra-box .label { font-size: 7px; letter-spacing: .3px; text-transform: uppercase; color: #111; font-weight: bold; margin: 0; padding: 2px 6px; background: #e8d48b; border-bottom: 1px solid #d4a62a; }
+    .ra-box .body { padding: 2px 6px 3px; }
+    .ra-row { padding: 0; border-bottom: 1px solid #f3ead2; font-size: 6.7px; line-height: 1.2; }
+    .ra-row .k { color: #52525b; display: inline; }
+    .ra-row .k .ar-sub { font-size: 6px; white-space: normal; }
     .ra-row .v { font-weight: 600; color: #111; }
     .ra-charges .ra-row .k { min-width: 55%; }
     .ra-outin-mini { width: 100%; margin-top: 4px; }
     .ra-outin-mini td { width: 50%; vertical-align: top; padding: 0 2px; }
     .ra-out-box, .ra-in-box { border: 1px solid #d4a62a; background: #faf6e8; padding: 4px 6px; font-size: 7px; }
     .ra-out-box .ttl, .ra-in-box .ttl { font-weight: bold; color: #a8781a; font-size: 7.2px; margin-bottom: 2px; }
-    .ra-diagrams td { width: 50%; vertical-align: top; text-align: center; padding: 4px; }
-    .ra-diagram-title { font-size: 8px; font-weight: bold; color: #111; margin-bottom: 3px; }
+    .ra-diagrams td { width: 50%; vertical-align: top; text-align: center; padding: 2px 6px; }
+    .ra-diagram-title { font-size: 8px; font-weight: bold; color: #111; margin-bottom: 2px; }
+    .car-top { width: 168px; height: auto; }
     .ra-fuel-wrap { margin: 0 auto 4px; width: 88%; text-align: left; }
     .ra-fuel-track { height: 8px; background: #e4e4e7; border: 1px solid #a1a1aa; border-radius: 2px; overflow: hidden; }
     .ra-fuel-fill { height: 8px; background: #d7141a; }
     .ra-fuel-lbl { font-size: 7px; font-weight: bold; color: #d7141a; margin-top: 2px; }
     .ra-car-photos img { width: 46%; max-height: 48px; margin: 1%; border: 1px solid #e4e4e7; }
     .cond-grid td { width: 50%; vertical-align: top; padding: 0; }
-    .cond-box { border: 1.5px solid #d4a62a; min-height: 72px; }
+    .cond-box { border: 1.5px solid #d4a62a; min-height: 0; }
     .cond-box .label { font-size: 7.4px; font-weight: bold; padding: 3px 8px; background: #e8d48b; border-bottom: 1px solid #d4a62a; }
-    .cond-box .body { padding: 5px 7px; font-size: 6.4px; line-height: 1.35; color: #3f3f46; max-height: 78px; overflow: hidden; }
+    .cond-box .body { padding: 6px 8px; font-size: 7px; line-height: 1.35; color: #3f3f46; }
     .cond-ar { direction: rtl; text-align: right; font-family: DejaVu Sans, sans-serif; }
     .card-row { border: 1px solid #d4a62a; padding: 5px 8px; margin-top: 6px; font-size: 7.4px; }
-    .sig3 td { width: 33%; vertical-align: bottom; padding: 12px 6px 0; }
+    .sig3 td { width: 33%; vertical-align: bottom; padding: 8px 6px 0; }
     .sig3 .sig-img { height: 36px; max-width: 130px; }
     .sig3 .stamp { height: 42px; }
     .sig3 .line { border-top: 1px solid #a1a1aa; padding-top: 3px; font-size: 6.8px; color: #71717a; }
@@ -298,7 +283,7 @@ HTML;
                     <div class="ra-fuel-track"><div class="ra-fuel-fill" style="width:{{ $fuelBar($fuelOutEighth) }}%"></div></div>
                     <div class="ra-fuel-lbl">{{ $fuelOut }}</div>
                 </div>
-                {!! $carOutline !!}
+                <img class="car-top" src="{{ $carPng }}" alt="Vehicle check out">
                 @if (filled($outNotes))
                     <div class="terms" style="text-align:left;margin-top:2px"><strong>{!! $t('notes') !!}:</strong> {{ $x($outNotes) }}</div>
                 @endif
@@ -316,7 +301,7 @@ HTML;
                     <div class="ra-fuel-track"><div class="ra-fuel-fill" style="width:{{ $fuelBar($fuelInEighth) }}%"></div></div>
                     <div class="ra-fuel-lbl">{{ $fuelIn }}</div>
                 </div>
-                {!! $carOutline !!}
+                <img class="car-top" src="{{ $carPng }}" alt="Vehicle check in">
                 @if ($inCondition)
                     <div class="terms" style="text-align:left;margin-top:2px"><strong>{!! $t('condition') !!}:</strong> {{ $x($inCondition) }}</div>
                 @endif
@@ -334,7 +319,9 @@ HTML;
         </tr>
     </table>
 
-    <table class="cond-grid" style="margin-top:6px">
+    {{-- Page 2: conditions, card, signatures (page 1 is the tables + car diagrams). --}}
+    <div class="page-break"></div>
+    <table class="cond-grid" style="margin-top:4px">
         <tr>
             <td style="padding-right:3px">
                 <div class="cond-box">
@@ -373,7 +360,7 @@ HTML;
         'stamp' => $stamp, 'c' => $c, 'companyName' => $companyName,
     ])
 
-    {{-- ========== PAGE 2: Terms EN | UR parallel ========== --}}
+    {{-- Page 3: Terms EN | UR side by side. Signatures stay on page 2 so they do not open a blank page. --}}
     <div class="page-break">
         <table class="terms-parallel">
             <tr>
@@ -399,14 +386,9 @@ HTML;
                 </td>
             </tr>
         </table>
-
-        @include('pdf.partials.contract-signatures', [
-            't' => $t, 'x' => $x, 'sigData' => $sigData, 'driverSigData' => $driverSigData,
-            'stamp' => $stamp, 'c' => $c, 'companyName' => $companyName,
-        ])
     </div>
 
-    {{-- ========== PAGE 3: document images ========== --}}
+    {{-- Page 4: document images / attachments --}}
     <div class="page-break">
         <h3><span class="rule"></span>{!! $t('document_images') !!}</h3>
         @if ($docImages->isEmpty() && $attachmentNotes->isEmpty())
