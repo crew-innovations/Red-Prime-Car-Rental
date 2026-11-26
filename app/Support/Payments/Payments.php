@@ -426,7 +426,9 @@ class Payments
             $notify = $second
                 ? ['Paid twice: '.$r->number, 'A second online payment arrived for the same link. Refund one of them.', 'danger']
                 : ['Online payment received: AED '.number_format((float) $r->amount, 2), $r->number.' · '.$r->forLabel().' · '.$gateway->label()
-                    .($booking && $booking->status === BookingStatus::PendingPayment ? ' · The booking is still "Waiting for payment": confirm it if this was the advance.' : ''), 'success'];
+                    .($booking && $booking->fresh()->statusLabel() === 'Paid, documents pending'
+                        ? ' · Paid, documents pending: confirm it once the documents are approved.'
+                        : ($booking && $booking->status === BookingStatus::PendingPayment ? ' · The booking is still "Waiting for payment": confirm it if this was the advance.' : '')), 'success'];
 
             return ['ok', $r->number.' paid'];
         });

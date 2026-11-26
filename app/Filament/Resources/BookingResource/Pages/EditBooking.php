@@ -34,7 +34,7 @@ class EditBooking extends EditRecord
         /** @var Booking $b */
         $b = $this->getRecord();
 
-        return collect([$b->customer?->name, $b->bookable?->name, $b->drive_mode?->getLabel(), $b->status?->getLabel(),
+        return collect([$b->customer?->name, $b->bookable?->name, $b->drive_mode?->getLabel(), $b->statusLabel(),
             // 5 Nov (S3): an agent asked to cancel; Admin decides from the menu.
             $b->cancel_requested_at ? 'Cancellation asked by '.(\App\Models\User::find($b->cancel_requested_by)?->name ?? 'an agent').': '.$b->cancel_request_reason : null,
         ])->filter()->implode(' · ');

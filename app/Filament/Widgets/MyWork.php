@@ -49,7 +49,7 @@ class MyWork extends Widget
 
         $counts = [];
         $take = fn ($q) => [(clone $q)->limit(5)->get(), (clone $q)->reorder()->count()];
-        [$toAccept, $counts['toAccept']] = $take(Lead::query()->where('assigned_to', $me)->where('assignment_status', 'pending')->open()->latest());
+        [$toAccept, $counts['toAccept']] = $take(Lead::query()->where('assigned_to', $me)->where('assignment_status', 'pending')->open()->withoutLiveBooking()->latest());
         [$followUps, $counts['followUps']] = $take(Lead::query()->where('assigned_to', $me)->open()->followUpDue()->orderBy('next_follow_up_at'));
         [$drafts, $counts['drafts']] = $take($mine(Quotation::query())->where('status', QuotationStatus::Draft)->with(['customer', 'lead', 'bookable'])->latest());
         [$waiting, $counts['waiting']] = $take($mine(Quotation::query())->whereIn('status', [QuotationStatus::Sent, QuotationStatus::Negotiation])->with(['customer', 'lead', 'bookable'])->orderBy('valid_until'));
@@ -74,7 +74,9 @@ class MyWork extends Widget
                 'items' => $accepted->map(fn (Quotation $q) => $quote($q, 'accepted '.$q->accepted_at?->diffForHumans()))->all(),
                 'more' => QuotationResource::getUrl('index', ['activeTab' => 'accepted'])],
             ['key' => 'pay', 'count' => $counts['unpaid'], 'title' => 'Waiting for payment', 'hint' => 'Your bookings not paid yet', 'tone' => 'warning',
-                'items' => $unpaid->map(fn (Booking $b) => $booking($b, 'starts '.$b->start_at?->format('d M, H:i').' · AED '.number_format((float) $b->balance).' due'))->all(),
+                'items' => $unpaid->map(fn (Booking $b) => $booking($b, $b->statusLabel() === 'Paid, documents pending'
+                    ? 'Paid · documents still needed before it can be confirmed'
+                    : 'starts '.$b->start_at?->format('d M, H:i').' · AED '.number_format((float) $b->balance).' due'))->all(),
                 'more' => BookingResource::getUrl('index', ['activeTab' => 'waiting'])],
             ['key' => 'soon', 'count' => $counts['soon'], 'title' => 'Your bookings this week', 'hint' => 'Confirmed, starting in 7 days', 'tone' => '',
                 'items' => $soon->map(fn (Booking $b) => $booking($b, $b->start_at?->format('D d M, H:i').((float) $b->balance > 0 ? ' · AED '.number_format((float) $b->balance).' due' : '')))->all(),

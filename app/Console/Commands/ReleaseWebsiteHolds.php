@@ -34,6 +34,7 @@ class ReleaseWebsiteHolds extends Command
                     $booking->cancel_reason = 'Not paid within '.($hours ? $hours.' hours' : 'the time allowed').' (website booking)';
                     $booking->save();
                     AuditLog::note($booking, 'status', 'Cancelled by the system: website booking not paid in time.');
+                    $this->reopenLead($booking);
                     $n++;
                 } catch (\Throwable $e) {
                     report($e);
@@ -43,5 +44,23 @@ class ReleaseWebsiteHolds extends Command
         $this->info("{$n} website booking(s) cancelled.");
 
         return self::SUCCESS;
+    }
+
+    /** The lead was left on Payment Pending. Bring it back so staff can follow up. Not Lost. */
+    protected function reopenLead(Booking $booking): void
+    {
+        $lead = $booking->lead;
+        if (! $lead || $lead->liveBookingsQuery()->exists()) {
+            return;
+        }
+        $stage = match (true) {
+            $lead->pipeline?->hasStage('contacted') => 'contacted',
+            $lead->pipeline?->hasStage('requirements_confirmed') => 'requirements_confirmed',
+            default => $lead->pipeline?->firstStage(),
+        };
+        if ($stage) {
+            $lead->forceFill(['stage' => $stage, 'next_follow_up_at' => now()])->save();
+        }
+        $lead->activities()->create(['type' => 'note', 'body' => 'Website hold ended, not paid.']);
     }
 }

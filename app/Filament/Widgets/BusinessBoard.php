@@ -80,9 +80,9 @@ class BusinessBoard extends Widget
         ]];
 
         $panels[] = ['title' => 'Sales', 'icon' => 'heroicon-o-chat-bubble-left-right', 'rows' => array_values(array_filter([
-            $row('New enquiries not contacted', $leads()->where('status', LeadStatus::New)->count(), LeadResource::getUrl('index', ['activeTab' => 'new'])),
+            $row('New enquiries not contacted', $leads()->withoutLiveBooking()->where('status', LeadStatus::New)->count(), LeadResource::getUrl('index', ['activeTab' => 'new'])),
             Access::allows('assign-leads')
-                ? $row('Enquiries with no agent', Lead::query()->whereNull('assigned_to')->whereNotIn('status', [LeadStatus::Converted, LeadStatus::Lost])->count(), LeadResource::getUrl('index', ['activeTab' => 'unassigned']))
+                ? $row('Enquiries with no agent', Lead::query()->withoutLiveBooking()->whereNull('assigned_to')->whereNotIn('status', [LeadStatus::Converted, LeadStatus::Lost])->count(), LeadResource::getUrl('index', ['activeTab' => 'unassigned']))
                 : null,
             $row('Follow-ups due', $leads()->followUpDue()->count(), LeadResource::getUrl('index', ['activeTab' => 'follow_up'])),
             $row('Quotations waiting for the customer', $quotes()->whereIn('status', [QuotationStatus::Sent, QuotationStatus::Negotiation])->count(), QuotationResource::getUrl('index', ['activeTab' => 'open'])),

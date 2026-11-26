@@ -219,14 +219,14 @@ class EditLead extends EditRecord
                 ->icon('heroicon-o-document-text')
                 ->color('gray')
                 ->url(fn (): string => \App\Filament\Resources\QuotationResource::getUrl('create', ['lead' => $this->getRecord()->id]))
-                ->visible(fn (): bool => $this->getRecord()->stage !== Pipeline::LOST),
+                ->visible(fn (): bool => $this->getRecord()->stage !== Pipeline::LOST && ! $this->getRecord()->hasLiveBooking()),
             Actions\Action::make('book')
                 ->label('Create booking')
                 ->authorize('manage-bookings')
                 ->icon('heroicon-o-calendar-days')
                 ->color('primary')
                 ->url(fn (): string => BookingResource::getUrl('create', ['lead' => $this->getRecord()->id]))
-                ->visible(fn (): bool => $this->getRecord()->pipeline !== Pipeline::B2b && $this->getRecord()->stage !== Pipeline::LOST),
+                ->visible(fn (): bool => $this->getRecord()->pipeline !== Pipeline::B2b && $this->getRecord()->stage !== Pipeline::LOST && ! $this->getRecord()->hasLiveBooking()),
             LeadResource::customerProfileAction(Actions\Action::make('convert')) // 20 Nov (item 9): same customer form as New Booking
                 ->color('gray')
                 ->record(fn () => $this->getRecord())
