@@ -166,6 +166,7 @@ class HelpGuides
                         'Open the lead and press "Create quotation" or "Create booking".',
                         'The customer, service, car and dates are filled in from the lead; you do not pick the customer again.',
                         'If the lead has no customer profile yet, it is made from the lead\'s details when you save.',
+                        'A website "Book now" already has a booking. That lead sits on Payment Pending and these buttons are hidden. Do not send another quotation.',
                     ],
                     'Give a lead to an agent (Admin)' => [
                         'Open the lead and use "Assign to salesperson" (or select several in the list).',
@@ -320,6 +321,8 @@ class HelpGuides
                 ],
                 'after' => [
                     'A new car booking for a customer with missing details is saved as "Waiting for payment" with a message saying what is missing to confirm it. Making the booking is never blocked.',
+                    'A website "Book now" is a booking waiting for payment, not a lead waiting for a quotation. Once it is paid and the documents are still missing, the status reads "Paid, documents pending". It is confirmed only after the documents are approved.',
+                    'If a website booking is not paid in time, it is cancelled and the lead comes back to Contacted with a follow-up for today.',
                     'A second click on Create never makes a second booking.',
                     'Drivers get their delivery / collection jobs on their phone automatically.',
                 ],

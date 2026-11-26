@@ -83,7 +83,7 @@ class EventHooks
         Notify::team('manage-finance', 'Advance paid: '.$b->reference, self::money((float) $b->paid_amount).' received of '.self::money((float) $b->total).'.',
             self::bookingUrl($b), $b->assignee, 'success', 'advance_reached', $key);
         Notify::customer($b->customer, 'We received your advance for '.$b->reference,
-            self::money((float) $b->paid_amount).' received.'.((float) $b->balance > 0 && ($due = \App\Support\Pricing\Advance::balanceDue($b)) ? ' Balance '.self::money((float) $b->balance).' due '.$due->format('d M Y').'.' : ''),
+            self::money((float) $b->paid_amount).' received.'.((float) $b->balance > 0 && ($due = \App\Support\Pricing\Advance::balanceDue($b)) ? ' Balance '.self::money((float) $b->balance).' due '.$due->format('d M Y').'.' : '').self::documentsNeeded($b),
             self::accountUrl($b), 'advance_reached', $b, $key, 'success');
     }
 
@@ -106,7 +106,7 @@ class EventHooks
                 ($t->method?->getLabel() ?? 'Payment').($b->balance > 0 ? ' · balance '.self::money((float) $b->balance) : ' · fully paid'),
                 self::bookingUrl($b), $b->assignee, 'success', 'payment_received', $key);
             Notify::customer($b->customer, 'Payment received: '.self::money((float) $t->amount).' for '.$b->reference,
-                'Thank you. Your receipt is ready.'.((float) $b->fresh()->balance > 0 ? ' Balance: '.self::money((float) $b->fresh()->balance).'.' : ''),
+                'Thank you. Your receipt is ready.'.((float) $b->fresh()->balance > 0 ? ' Balance: '.self::money((float) $b->fresh()->balance).'.' : '').self::documentsNeeded($b->fresh()),
                 route('pdf.receipt', $t), 'payment_received', $t, $key, 'success');
         } elseif ($t->type === TransactionType::Expense && $t->category === 'deposit_refund' && ! str_contains((string) $t->description, 'applied to balance')) {
             $key = 'deposit_refunded:transaction:'.$t->id;
@@ -115,6 +115,16 @@ class EventHooks
             Notify::customer($b->customer, 'Your deposit refund for '.$b->reference, self::money((float) $t->amount).' has been refunded.',
                 self::accountUrl($b), 'deposit_refunded', $t, $key, 'success');
         }
+    }
+
+    /** Paid, but the car still cannot be confirmed until the customer's documents are in. */
+    protected static function documentsNeeded(Booking $b): string
+    {
+        if ($b->statusLabel() !== 'Paid, documents pending' || \App\Support\Contracts\ConfirmCheck::missing($b) === []) {
+            return '';
+        }
+
+        return ' Please upload your documents in your account. The booking is not confirmed yet.';
     }
 
     /** A quotation accepted by the customer (QuotationDecision::accept). */

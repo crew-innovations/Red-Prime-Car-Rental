@@ -23,7 +23,7 @@ class LeadOverview extends StatsOverviewWidget
 
         $today = \App\Support\Access::scopeOwn(\App\Models\Lead::query(), 'lead')->whereDate('created_at', today())->count();
         $yesterday = \App\Support\Access::scopeOwn(\App\Models\Lead::query(), 'lead')->whereDate('created_at', today()->subDay())->count();
-        $open = \App\Support\Access::scopeOwn(\App\Models\Lead::query(), 'lead')->open()->count();
+        $open = \App\Support\Access::scopeOwn(\App\Models\Lead::query(), 'lead')->open()->withoutLiveBooking()->count();
         $due = \App\Support\Access::scopeOwn(\App\Models\Lead::query(), 'lead')->followUpDue()->count();
 
         $last30 = \App\Support\Access::scopeOwn(\App\Models\Lead::query(), 'lead')->where('created_at', '>=', $since);

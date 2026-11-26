@@ -45,7 +45,7 @@ class ListLeads extends ListRecords
     /** Leads nobody has accepted yet (sent to every agent), as this person may see them. */
     protected function waitingQuery(): Builder
     {
-        return LeadResource::getEloquentQuery()->withoutTrashed()->open()->whereNull('assigned_to')->whereNotNull('broadcast_at');
+        return LeadResource::getEloquentQuery()->withoutTrashed()->open()->withoutLiveBooking()->whereNull('assigned_to')->whereNotNull('broadcast_at');
     }
 
     public function getTabs(): array
@@ -57,24 +57,24 @@ class ListLeads extends ListRecords
                 ->icon('heroicon-o-hand-raised')
                 ->badge(fn () => $this->waitingQuery()->count() ?: null)
                 ->badgeColor('danger')
-                ->modifyQueryUsing(fn (Builder $query) => $query->open()->whereNull('assigned_to')->whereNotNull('broadcast_at')),
+                ->modifyQueryUsing(fn (Builder $query) => $query->open()->withoutLiveBooking()->whereNull('assigned_to')->whereNotNull('broadcast_at')),
             'open' => Tab::make(\App\Support\Access::agentScoped() ? 'My open leads' : 'Open')
                 ->icon('heroicon-o-inbox')
-                ->modifyQueryUsing(fn (Builder $query) => $query->open()),
+                ->modifyQueryUsing(fn (Builder $query) => $query->open()->withoutLiveBooking()),
             'new' => Tab::make('New')
-                ->badge(fn () => $scoped()->where('status', LeadStatus::New)->count() ?: null)
+                ->badge(fn () => $scoped()->withoutLiveBooking()->where('status', LeadStatus::New)->count() ?: null)
                 ->badgeColor('info')
-                ->modifyQueryUsing(fn (Builder $query) => $query->where('status', LeadStatus::New)),
+                ->modifyQueryUsing(fn (Builder $query) => $query->withoutLiveBooking()->where('status', LeadStatus::New)),
             'mine' => Tab::make('My leads')
                 ->icon('heroicon-o-user')
-                ->modifyQueryUsing(fn (Builder $query) => $query->open()->where('assigned_to', auth()->id())),
+                ->modifyQueryUsing(fn (Builder $query) => $query->open()->withoutLiveBooking()->where('assigned_to', auth()->id())),
             'follow_up' => Tab::make('Follow-up due')
                 ->icon('heroicon-o-clock')
                 ->badge(fn () => $scoped()->followUpDue()->count() ?: null)
                 ->badgeColor('danger')
                 ->modifyQueryUsing(fn (Builder $query) => $query->followUpDue()),
             'unassigned' => Tab::make('Unassigned')
-                ->modifyQueryUsing(fn (Builder $query) => $query->open()->whereNull('assigned_to')),
+                ->modifyQueryUsing(fn (Builder $query) => $query->open()->withoutLiveBooking()->whereNull('assigned_to')),
             'converted' => Tab::make('Won')
                 ->icon('heroicon-o-trophy')
                 ->modifyQueryUsing(fn (Builder $query) => $query->where('status', LeadStatus::Converted)),

@@ -115,7 +115,19 @@ class BookingRequestController extends Controller
                 ->latest()
                 ->first();
             if ($recent) {
-                return [$recent, $item, $type, $guests, $departure ?? $tripDate, true, 200, [], $type === 'booking' ? $recent->bookings()->latest('id')->first() : null, false];
+                $booking = null;
+                $made = false;
+                $estimate = [];
+                if ($type === 'booking') {
+                    $booking = $recent->liveBookingsQuery()->latest('id')->first();
+                    if (! $booking) {
+                        $estimate = $this->estimate($item, $guests, $departure, $data);
+                        $booking = \App\Support\Site\WebsiteBooking::make($recent, $item, $data, $departure, $tripDate, $start, $end, $guests, $estimate);
+                        $made = (bool) $booking;
+                    }
+                }
+
+                return [$recent, $item, $type, $guests, $departure ?? $tripDate, ! $made, $made ? 201 : 200, $estimate, $booking, $made];
             }
 
             $estimate = $this->estimate($item, $guests, $departure, $data);
@@ -143,11 +155,13 @@ class BookingRequestController extends Controller
                 'priority' => in_array($type, ['booking_request', 'booking'], true) ? 'hot' : 'warm',
             ]);
 
-            \App\Support\Leads\Assignment::auto($lead); // business settings: manual (default) does nothing
-
             $booking = $type === 'booking'
                 ? \App\Support\Site\WebsiteBooking::make($lead, $item, $data, $departure, $tripDate, $start, $end, $guests, $estimate)
                 : null;
+            // A real booking is followed from the booking ("waiting for payment"), not as a new lead to quote.
+            if (! $booking) {
+                \App\Support\Leads\Assignment::auto($lead);
+            }
 
             return [$lead, $item, $type, $guests, $departure ?? $tripDate, false, 201, $estimate, $booking, (bool) $booking];
         });

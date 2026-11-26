@@ -537,14 +537,14 @@ class LeadResource extends Resource
                         ->authorize('manage-quotations')
                         ->icon('heroicon-o-document-text')
                         ->url(fn (Lead $record): string => QuotationResource::getUrl('create', ['lead' => $record->id]))
-                        ->visible(fn (Lead $record): bool => $record->stage !== Pipeline::LOST && ! $record->trashed()),
+                        ->visible(fn (Lead $record): bool => $record->stage !== Pipeline::LOST && ! $record->trashed() && ! $record->hasLiveBooking()),
                     Tables\Actions\Action::make('book')
                         ->label('Create booking')
                         ->authorize('manage-bookings')
                         ->icon('heroicon-o-calendar-days')
                         ->color('success')
                         ->url(fn (Lead $record): string => BookingResource::getUrl('create', ['lead' => $record->id]))
-                        ->visible(fn (Lead $record): bool => $record->pipeline !== Pipeline::B2b && $record->stage !== Pipeline::LOST && ! $record->trashed()),
+                        ->visible(fn (Lead $record): bool => $record->pipeline !== Pipeline::B2b && $record->stage !== Pipeline::LOST && ! $record->trashed() && ! $record->hasLiveBooking()),
                     self::convertAction(),
                     self::markLostAction(),
                     Tables\Actions\DeleteAction::make(),

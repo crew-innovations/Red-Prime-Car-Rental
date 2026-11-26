@@ -1101,6 +1101,7 @@ class BookingResource extends Resource
                 ->color(fn (Booking $record): ?string => $record->status === BookingStatus::InProgress && $record->end_at->isPast() ? 'danger' : null),
             Tables\Columns\TextColumn::make('status')
                 ->badge()
+                ->formatStateUsing(fn (Booking $record): string => $record->statusLabel())
                 ->description(fn (Booking $record): ?string => $record->source === 'website'
                     ? ($record->hold_until ? 'Website · pay by '.$record->hold_until->format('j M H:i') : 'Website')
                     : null)

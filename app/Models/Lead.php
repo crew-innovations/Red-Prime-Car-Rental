@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\BookingStatus;
 use App\Enums\CustomerType;
 use App\Enums\LeadPriority;
 use App\Enums\LeadStatus;
@@ -141,6 +142,32 @@ class Lead extends Model
     public function bookings(): HasMany
     {
         return $this->hasMany(Booking::class);
+    }
+
+    /** A website Book now (or any booking that is no longer just a price inquiry). */
+    public function hasLiveBooking(): bool
+    {
+        if ($this->relationLoaded('bookings')) {
+            return $this->bookings->contains(fn (Booking $b) => self::isLiveBooking($b));
+        }
+
+        return $this->liveBookingsQuery()->exists();
+    }
+
+    /** Leads that still need a quotation: no held or confirmed booking yet. */
+    public function scopeWithoutLiveBooking(Builder $query): Builder
+    {
+        return $query->whereDoesntHave('bookings', fn (Builder $q) => $q->whereNotIn('status', [BookingStatus::Cancelled->value, BookingStatus::Inquiry->value]));
+    }
+
+    public function liveBookingsQuery(): HasMany
+    {
+        return $this->bookings()->whereNotIn('status', [BookingStatus::Cancelled->value, BookingStatus::Inquiry->value]);
+    }
+
+    public static function isLiveBooking(Booking $booking): bool
+    {
+        return ! in_array($booking->status, [BookingStatus::Cancelled, BookingStatus::Inquiry], true);
     }
 
     public function quotations(): HasMany

@@ -692,6 +692,16 @@ class Booking extends Model implements HasMedia
         return trim(($this->reference ? $this->reference.' · ' : '').($this->bookable?->name ?? $this->service_type?->getLabel()));
     }
 
+    /** What staff see. The stored status stays Pending payment; a paid one is not "waiting for money". */
+    public function statusLabel(): string
+    {
+        if ($this->status === BookingStatus::PendingPayment && ($this->payment_status === PaymentStatus::Paid || $this->advance_reached_at)) {
+            return 'Paid, documents pending';
+        }
+
+        return $this->status?->getLabel() ?? '';
+    }
+
     public function isCar(): bool
     {
         return $this->service_type === ServiceType::Car;
