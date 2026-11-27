@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>RED PRIME — Payments and Google Maps</title>
+<style>
+  @page { margin: 14mm 13mm 16mm; }
+  body { font-family: DejaVu Sans, sans-serif; font-size: 11px; color: #1c1c1c; line-height: 1.42; }
+  h1 { font-size: 17px; color: #d7141a; margin: 0 0 2px; }
+  h2 { font-size: 13px; color: #8f0b0f; margin: 14px 0 5px; border-bottom: 1px solid #e6d3a2; padding-bottom: 2px; }
+  h3 { font-size: 11.5px; margin: 10px 0 3px; }
+  p { margin: 0 0 6px; }
+  .sub { color: #555; font-size: 10px; margin-bottom: 8px; }
+  table { width: 100%; border-collapse: collapse; margin: 4px 0 8px; }
+  th, td { border: 1px solid #ddd; padding: 3px 5px; vertical-align: top; text-align: left; }
+  th { background: #faf6ee; font-size: 10px; }
+  ul, ol { margin: 2px 0 7px; padding-left: 16px; }
+  li { margin-bottom: 2px; }
+  code { font-family: DejaVu Sans Mono, monospace; font-size: 9px; }
+  .box { background: #fff8f8; border-left: 3px solid #d7141a; padding: 6px 8px; margin: 0 0 8px; }
+</style>
+</head>
+<body>
+<h1>Payments and Google Maps</h1>
+<p class="sub">RED PRIME RENTALS · What the program does · Live CRM checked 26 November 2026 at https://redprimerentals.com/crm · No API key is written here.</p>
+
+<div class="box">
+<p><b>On the website, while the customer is booking, no payment method is shown.</b> Stripe, Tabby, Tamara, Paymob and PayPal are not on the car page, the yacht page, the trip page, the limousine page, or the enquiry form. Connecting them in Settings › Integrations does not add them there. The Book now form has no card button and no instalment button.</p>
+<p>Those names appear only later, on <code>https://redprimerentals.com/pay/…</code>, after a staff member sends a payment link, or after the customer presses “Pay the balance” or “Pay the advance” in their account. The buttons on that page are the five text buttons in section 1. Only gateways whose card says Connected are in the list.</p>
+<p><b>The car price is shown when the customer picks dates.</b> The security deposit saved on the car by the admin is shown as its own line, “Refundable deposit”. It is not added into “Estimated total”. The same deposit line is shown for a yacht that has a deposit. A trip, a package and a limousine do not show a deposit line. The email after Book now prints the booking total and does not print the deposit. The booking saved from the website stores the rental total. Its security-deposit field stays 0 until a staff member sets it. The deposit amount is kept inside the price calculation on that booking.</p>
+</div>
+
+<h2>Website flows</h2>
+<p>Every public form does one of two things. A form marked enquiry creates a lead only. A form marked quote sends <code>request_type: booking</code>. Neither form takes a card.</p>
+
+<h3>1. Enquiry and the quick-quote popup</h3>
+<p>Contact pages and the popup use <code>form[data-enquiry]</code>. Submit goes to <code>/api/v1/enquiries</code>. The program creates a lead. It does not create a booking, does not show a price total, and does not show a payment method. The customer sees the success state of that form and a reference.</p>
+
+<h3>2. Car — Book now</h3>
+<p>The car page shows the admin’s daily price in the panel (“from AED … per day”), or “Price on request” when that rate is empty. Before dates are chosen the panel also shows “Security deposit: AED [amount]” when the car’s Security deposit field is filled, or “Security deposit: —” when it is empty. The same amount is in the car facts when it is filled.</p>
+<p>After pickup and return are chosen, the page calls <code>/api/v1/price-estimate</code>. The answer is drawn as:</p>
+<ul>
+<li>“Available for your dates”, or “Not available for these dates.”, or “Availability confirmed by our team”.</li>
+<li>The rental line, then each extra or delivery line.</li>
+<li>“Subtotal” and “VAT [rate]%” when VAT is on and not included. When VAT is included, a note “incl. VAT [rate]%”.</li>
+<li>“Estimated total”. This total is rental + extras − discount + VAT. The deposit is not in this number.</li>
+<li>“Refundable deposit” and the car’s deposit, only when that amount is above 0.</li>
+<li>“Estimate only. Nothing is booked or charged yet. Our team confirms availability and the final price.”</li>
+</ul>
+<p>Ticked add-ons are lines inside the total. They are not the security deposit. The admin field on the car is labelled “Security deposit”. There is no second field called “extra security deposit”.</p>
+<p>Book now then asks for name, mobile and email. Under the button: “Nothing is charged now. Our team sends you a payment link.” Submit goes to <code>/api/v1/booking-requests</code> with <code>request_type: booking</code>. When the price exists, the program saves a booking with status Pending payment, holds the car for the hours in Business settings (default 24), and emails the customer. The email lines are: the booking title, the dates, “Total: AED [booking total]”, “Our team will contact you shortly and send you the payment link.”, and the hold sentence when a hold is set. The email does not name a gateway and does not print the deposit.</p>
+<p>On screen the customer then sees “Booking received” and “Your booking [ref] is saved and waiting for payment. We sent the details and your account login to your email. Our team will send you the payment link shortly.” Plus “We keep it for you for [hours] hours.”</p>
+<p>The website does not copy the car deposit into the booking’s security-deposit field. That field is stored as 0. The price calculation saved on the booking does include <code>deposit</code> equal to the car’s amount. In the CRM, changing the car on the booking form writes that amount into Security deposit. The price form also writes it when the field is still 0 and the calculation has a deposit.</p>
+<p>If the engine has no price, no booking is created. The lead stays, and the customer sees the request-received text, not “waiting for payment”.</p>
+
+<h3>3. Yacht — Book now</h3>
+<p>Same steps as the car: dates, then the estimate, then name, phone and email, then Book now. “Refundable deposit” is shown when the yacht’s deposit is above 0, on its own line, not inside the total. The yacht page does not print the deposit in the side panel before dates are chosen. The booking’s security-deposit field is stored as 0, the same as a car.</p>
+
+<h3>4. Trip and package — Book now</h3>
+<p>The page shows the published price, or “Price on request”. The estimate uses the same total lines. <code>deposit</code> in the price engine is only for a car or a yacht, so the deposit row is not shown. A trip needs an available date. A package that uses departures needs a bookable departure. Book now creates a Pending payment booking when a price exists, and holds the seats. No payment method is on the page.</p>
+
+<h3>5. Limousine — Book now</h3>
+<p>The customer picks a class, pickup, destination, date and time. The page calls the transfer quote. A distance ride with Google Maps connected shows kilometres, minutes and a total on the class cards. Without a server key the quote returns no price and the note “Price on request. Our team will send you a quotation.” The transfer quote does not send <code>security_deposit</code>, so no deposit line is drawn.</p>
+<p>Submit still uses <code>request_type: booking</code>. When the business setting says an agent confirms the limousine price, the booking is saved as Inquiry, nothing is held, and the screen says “Ride request received” and “Your request [ref] is with our team. We confirm the final price shortly, then you accept and pay on your ride page.” The API message is the same. No gateway is listed on that page.</p>
+
+<h3>6. After the booking exists</h3>
+<ol>
+<li>Staff see the booking as Waiting for payment, unless it is a limousine inquiry. The lead sits on Payment Pending. Create quotation is hidden while that booking is live.</li>
+<li>Staff press Payment link and choose advance, balance, or refundable security deposit, and the amount. The link does not name a gateway.</li>
+<li>The customer opens the link and sees every Connected gateway as the text buttons in section 1. Nothing is charged on the website booking form.</li>
+<li>In the customer account, “Pay the advance (AED …)” and “Pay the balance (AED …)” open that same page. They are absent while no gateway is Connected.</li>
+<li>If the hold ends unpaid, the booking is cancelled and the lead returns to Contacted with the note “Website hold ended, not paid” and a follow-up for today.</li>
+</ol>
+
+<h2>1. The pay page, word for word</h2>
+<div class="box">
+<p><b>Logos.</b> The program does not show a Stripe, Tabby, Tamara, Paymob or PayPal logo. There is no image file for those brands. The website text does not name them. It says “Pay safely with a secure payment link” and “Once your booking is confirmed we send you a secure online payment link.”</p>
+<p><b>The payment link does not name the gateway.</b> The address is <code>https://redprimerentals.com/pay/…</code>. WhatsApp is sent with this exact sentence: “Payment for [booking or quote number]: AED [amount] · [that address]”. The gateway name is not in that sentence. The customer opens the page and then sees the buttons below. The customer account button is “Pay the balance (AED …)” or “Pay the advance (AED …)”. Those words do not include Stripe, Tabby or Tamara. An open link already made shows “Pay AED [amount] online · [Advance to confirm / Balance / Refundable security deposit]”.</p>
+</div>
+
+<p>One button per gateway that is Connected and allowed on that link. The button text is fixed:</p>
+<table>
+<tr><th>Gateway</th><th>Button the customer presses</th><th>Line stored on the Integrations card</th></tr>
+<tr><td>Stripe</td><td>Pay by card / Apple Pay</td><td>Card, Apple Pay and Google Pay on Stripe's hosted checkout.</td></tr>
+<tr><td>Paymob</td><td>Pay by card (Paymob)</td><td>Cards and local wallets on Paymob's Unified Checkout (UAE).</td></tr>
+<tr><td>Tabby</td><td>Split in 4 with Tabby</td><td>Pay in 4 instalments. Tabby decides per customer; staff never see the decision reason beyond "not available".</td></tr>
+<tr><td>Tamara</td><td>Pay later with Tamara</td><td>Pay later / in instalments. Tamara decides per customer.</td></tr>
+<tr><td>PayPal</td><td>Pay with PayPal</td><td>PayPal checkout. PayPal does not accept AED: the amount is converted at the rate you set.</td></tr>
+</table>
+<p>Under the buttons the page prints: “You pay on the provider's secure page. RED PRIME RENTALS never sees or stores your card details.” If Tabby or Tamara is in the list it adds: “Instalment plans are approved by Tabby / Tamara.”</p>
+<p>The page also shows: amount in AED, the payment description, reference PR-00001, booking or quotation number, customer name, and “Link valid until” when a number of days is set. A security-deposit link adds: “Refundable security deposit: it is not a charge and is returned as agreed in your rental terms.”</p>
+<p>After they press a button, the browser goes to that provider’s own page. The program does not draw the card form.</p>
+<p>After the money is recorded, the customer’s payment row says method “Online / link” and “ref stripe [id]”, “ref tabby [id]”, “ref tamara [id]”, “ref paymob [id]” or “ref paypal [id]”. The gateway name is in that reference. It is not on the link they were sent.</p>
+<p>Staff see the gateway in Accounts › Online payments (column Gateway) and in the payment description: “Online payment · Stripe · PR-00001 · [booking]”.</p>
+
+<h2>2. When a pay button is shown</h2>
+<p>A gateway is offered only when all of these are true: Switched on, every required key is saved, and the card status is <b>Connected</b>. Connected is set only by a successful Test connection.</p>
+<p>Pressing Save does not set Connected. Save sets “Details saved, not tested” when the required keys are filled, or “Not set up” when one is still empty. In that state the customer has no pay button. Staff who press Payment link get: “No payment gateway is connected yet (Settings › Integrations).”</p>
+<p>Empty tick-boxes on the payment link mean every Connected gateway is offered. Ticked boxes limit the page to those. The customer account always offers every Connected gateway. It does not let the customer pick before the pay page.</p>
+<p>The pay buttons on a booking are inside the price card. That card is shown only when the customer account is allowed to see payments. With no Connected gateway, <code>onlinePayment()</code> returns no amount and no buttons.</p>
+<p>Other blocks, exact messages:</p>
+<table>
+<tr><th>Situation</th><th>Message</th></tr>
+<tr><td>Amount is 0</td><td>Enter an amount above zero.</td></tr>
+<tr><td>Booking cancelled or no-show</td><td>This booking is [status].</td></tr>
+<tr><td>Price waiting for a manager</td><td>The price is waiting for a manager's approval.</td></tr>
+<tr><td>Quote not accepted</td><td>The customer must accept the quotation first.</td></tr>
+<tr><td>Quote already turned into a booking</td><td>This quotation is already a booking: ask for the payment on booking [reference].</td></tr>
+<tr><td>Deposit asked on a quote</td><td>The security deposit is asked for on the booking.</td></tr>
+<tr><td>Amount higher than what is left</td><td>At most AED [n] can be asked for now (open links count). Or: Nothing is left to pay for this.</td></tr>
+<tr><td>No Connected gateway passes the link’s rules</td><td>On the pay page: Online payment is not available right now. Please contact RED PRIME RENTALS to pay another way.</td></tr>
+<tr><td>Link cancelled or expired</td><td>This payment link is closed. Please contact RED PRIME RENTALS for a new link.</td></tr>
+<tr><td>Button pressed for a gateway that is not in the list</td><td>This payment method is not available.</td></tr>
+<tr><td>Provider did not return a checkout address</td><td>The payment page could not be opened.</td></tr>
+</table>
+<p>Opening the thank-you page does not record money. Money is recorded when the provider’s signed webhook is accepted, or when the server asks the provider on the way back and the amount and currency match. A mismatch is not recorded. Status becomes “Needs checking” and the note is: “Paid [currency] [amount] but [asked currency] [asked amount] was asked”.</p>
+
+<h2>3. What is on the live Integrations page</h2>
+<p>Read from the signed-in screen on 26 November 2026. Keys are not shown.</p>
+<table>
+<tr><th>Card</th><th>Status</th><th>On</th><th>Mode</th><th>Last test</th><th>Still needed / last error</th></tr>
+<tr><td>Google Maps</td><td>Error</td><td>Yes</td><td>—</td><td>26 Nov 2026 08:40</td><td>Server key. Last error: Save the server key first.</td></tr>
+<tr><td>Stripe</td><td>Error</td><td>Yes</td><td>Test</td><td>25 Nov 15:28</td><td>Secret key not saved. Webhook signing secret also missing.</td></tr>
+<tr><td>Paymob</td><td>Error</td><td>Yes</td><td>Test</td><td>25 Nov 15:29</td><td>API key not saved. Secret, public key and HMAC also missing.</td></tr>
+<tr><td>Tabby</td><td>Not set up</td><td>No</td><td>Test</td><td>Never</td><td>Public key, secret key, webhook header value.</td></tr>
+<tr><td>Tamara</td><td>Error</td><td>Yes</td><td>Test</td><td>25 Nov 15:57</td><td>API token not saved. Notification token also missing.</td></tr>
+<tr><td>PayPal</td><td>Not set up</td><td>No</td><td>Test</td><td>Never</td><td>Client ID, client secret.</td></tr>
+</table>
+<p>Google Maps recent activity on that card:</p>
+<ul>
+<li>25 Nov 15:53 — Failed. Sent route. “API key not valid. Please pass a valid API key.”</li>
+<li>29 Oct 11:29 and 11:27 — Failed. Sent route. “Routes API has not been used in project 115481714969 before or it is disabled.”</li>
+</ul>
+<p>Meta, TikTok, Snapchat, Instagram / Messenger / WhatsApp, and the document reader are Not set up. They are not used by the pay page or by the route price.</p>
+<p>Leads on the same login: 17 open, 6 follow-ups due, 3 waiting for an agent. The first 10 open rows are source Website. Two of those are limousine. Phone numbers stay in the CRM.</p>
+
+<h2>4. Pasting payment keys — the message you get</h2>
+<p>Settings › Integrations is Admin only. The key box is a password field. Placeholder when a key exists: “Saved · leave empty to keep”. An empty box does not delete the saved key. Test and Live are separate stores. A live key saved while Mode is Test fails the test with the mode message below.</p>
+<p>Webhook addresses on this CRM:</p>
+<ul>
+<li>Stripe <code>https://redprimerentals.com/api/webhooks/payments/stripe</code></li>
+<li>Paymob <code>https://redprimerentals.com/api/webhooks/payments/paymob</code></li>
+<li>Tabby <code>https://redprimerentals.com/api/webhooks/payments/tabby</code></li>
+<li>Tamara <code>https://redprimerentals.com/api/webhooks/payments/tamara</code></li>
+<li>PayPal <code>https://redprimerentals.com/api/webhooks/payments/paypal</code></li>
+</ul>
+
+<h3>Stripe</h3>
+<p>Test calls Stripe <code>GET /v1/balance</code> with the secret key. It does not take a payment.</p>
+<table>
+<tr><th>Test result text</th><th>Cause in the program</th></tr>
+<tr><td>Secret key not saved</td><td>The secret box for this mode is empty.</td></tr>
+<tr><td>Could not reach Stripe: [class name]</td><td>The server got no HTTP answer.</td></tr>
+<tr><td>[Stripe’s own error.message]</td><td>Stripe refused the key. The program prints Stripe’s sentence.</td></tr>
+<tr><td>This is a live key but the mode is set to test.</td><td>The key’s livemode does not match the Mode switch. Same sentence the other way around.</td></tr>
+<tr><td>API key works. Add the webhook signing secret so payments can be confirmed.</td><td>Balance call succeeded. <code>whsec_…</code> is empty. Status stays Error. Pay buttons stay off.</td></tr>
+<tr><td>Stripe · test mode</td><td>Both keys match the mode. Status becomes Connected.</td></tr>
+</table>
+<p>Events the webhook must subscribe to, as written on the card: <code>checkout.session.completed</code>, <code>checkout.session.async_payment_succeeded</code>, <code>checkout.session.async_payment_failed</code>, <code>checkout.session.expired</code>. A webhook with a bad signature is rejected. Recent activity stores “rejected” and the money is not recorded from that call. The return from Stripe’s page asks Stripe for the session again with the secret key, so a test payment can still be recorded when the customer comes back, if the secret key is valid.</p>
+
+<h3>Tabby</h3>
+<p>The checkout sent to Tabby is the instalments product (<code>/api/v2/checkout</code>), currency AED. Test reads Tabby’s webhook list. Connected only when that list contains a URL with <code>/webhooks/payments/tabby</code>.</p>
+<table>
+<tr><th>Text</th><th>Cause</th></tr>
+<tr><td>Public key not saved / Secret key not saved / Webhook header value not saved</td><td>That box is empty.</td></tr>
+<tr><td>Merchant code not set</td><td>Merchant code box is empty. It is not a secret. It is required for the test.</td></tr>
+<tr><td>Secret key refused (HTTP [code])</td><td>Tabby rejected the secret key.</td></tr>
+<tr><td>Keys work, but the CRM webhook is not registered with Tabby yet (https://redprimerentals.com/api/webhooks/payments/tabby).</td><td>Keys are accepted. The webhook is not in Tabby’s list. Status stays Error. The Tabby button is not shown.</td></tr>
+<tr><td>Tabby · [merchant code] · test</td><td>Connected.</td></tr>
+<tr><td>Tabby is not available for this payment ([reason]).</td><td>Shown on the pay page when Tabby’s checkout status is not “created”. The reason is Tabby’s <code>rejection_reason</code> with underscores turned into spaces.</td></tr>
+</table>
+<p>The webhook is trusted only when the header value matches. Default header name is <code>X-RP-Webhook</code>. A mismatch is stored as “Webhook header does not match” and the money is not recorded from that webhook. Coming back from Tabby still reads the payment with the secret key when the payment id matches.</p>
+
+<h3>Tamara</h3>
+<p>Test mode calls <code>https://api-sandbox.tamara.co</code>. Live mode calls <code>https://api.tamara.co</code>. The checkout body sets <code>payment_type</code> to <code>PAY_BY_INSTALMENTS</code>, country AE, currency AED. The button still says “Pay later with Tamara”.</p>
+<table>
+<tr><th>Text</th><th>Cause</th></tr>
+<tr><td>API token not saved</td><td>Current live error.</td></tr>
+<tr><td>Notification token not saved</td><td>Second box empty. Test stops before calling Tamara.</td></tr>
+<tr><td>API token refused (HTTP [code])</td><td>Tamara rejected the token. A sandbox token with Mode = Live (or the reverse) calls the wrong host and fails here.</td></tr>
+<tr><td>Tamara · sandbox</td><td>Connected. The test does not check the notification token against Tamara. A wrong notification token still gets Connected.</td></tr>
+<tr><td>Tamara needs the customer's mobile number.</td><td>Pay page, before Tamara is called. The number used is the customer <b>phone</b> field. WhatsApp alone is not read.</td></tr>
+</table>
+<p>A notification with a token that does not match is stored as “Notification token does not match”. The payment is not recorded from that notification. The return URL still reads the order with the API token.</p>
+
+<h3>Paymob and PayPal</h3>
+<table>
+<tr><th>Text</th><th>Cause</th></tr>
+<tr><td>API key not saved (then Secret key, Public key, HMAC secret)</td><td>Paymob. First empty box stops the test. This is the current live error.</td></tr>
+<tr><td>Add the integration ID(s) (card, Apple Pay…) from the Paymob dashboard.</td><td>Integration ID box empty.</td></tr>
+<tr><td>The secret key does not look like a test key.</td><td>The secret must contain <code>sk_test</code> in Test mode, or <code>sk_live</code> in Live mode.</td></tr>
+<tr><td>API key refused (HTTP [code])</td><td>Paymob auth call failed.</td></tr>
+<tr><td>Paymob: add the integration ID(s) in Settings › Integrations.</td><td>Customer pressed Pay by card (Paymob) and the IDs are empty.</td></tr>
+<tr><td>Client ID and secret not saved</td><td>PayPal.</td></tr>
+<tr><td>PayPal does not take AED: set the PayPal currency and the AED rate first.</td><td>Currency or rate empty. The program does not fill a rate.</td></tr>
+<tr><td>PayPal: client ID / secret refused (HTTP [code]).</td><td>Sandbox and Live hosts differ. Mode picks the host.</td></tr>
+<tr><td>PayPal currency and AED rate not set</td><td>PayPal is Connected but the rate was cleared. The PayPal button is removed from that link.</td></tr>
+</table>
+<p>Paymob’s “Transaction processed callback” has to be the Paymob webhook address above. The program checks Paymob’s HMAC with the HMAC secret. A bad HMAC is rejected and the payment is not recorded from that callback.</p>
+<p>Below a gateway’s minimum or above its maximum (only if you typed a number in Smallest amount / Largest amount), that gateway is left off the pay page. Empty means no limit in the program.</p>
+
+<h2>5. Google Maps — what the program calls</h2>
+<p>Two keys. The server key stays on the server. The browser key is written into the page.</p>
+<table>
+<tr><th>Call</th><th>Key</th><th>Google API</th><th>What you see when it works</th></tr>
+<tr><td>Test connection, and Calculate route, and the website distance price</td><td>Server</td><td>Routes API <code>directions/v2:computeRoutes</code>, mode DRIVE</td><td>Kilometres and minutes. Test route is Dubai Mall, Dubai → Dubai International Airport Terminal 3.</td></tr>
+<tr><td>Address suggestions while typing</td><td>Server</td><td>Places API (New) autocomplete, region from the card (default <code>ae</code>)</td><td>Up to 8 addresses. Typing under 3 letters returns nothing.</td></tr>
+<tr><td>“My location” and moving the pin</td><td>Server</td><td>Geocoding API</td><td>An address for the pin, or a pin for a typed address.</td></tr>
+<tr><td>Route preview inside a quotation / booking</td><td>Browser</td><td>Maps Embed API</td><td>An embedded directions map.</td></tr>
+<tr><td>Public limousine “On map”, Live drivers, customer track map</td><td>Browser</td><td>Maps JavaScript API</td><td>A Google map in the page.</td></tr>
+<tr><td>Open in Google Maps on the driver’s phone</td><td>None</td><td>A normal Google Maps link</td><td>Works with Maps switched off.</td></tr>
+</table>
+<p>The Integrations card text lists Routes, Places API (New) and Maps Embed. The program also calls Geocoding and Maps JavaScript. Those two are not named on the card.</p>
+
+<h3>Maps does not wait for Connected</h3>
+<p>Payments wait for status Connected. Maps does not. <code>isReady()</code> is true when the card is switched on and the server key is saved. The public limousine page then calls Google, including before Test connection.</p>
+<p>A failed test sets status to Error and does not switch the card off. The next price request calls Google again.</p>
+<p>The public “On map” button is added only when the server key is saved and a browser key is saved. Live drivers and the customer track map use the browser key whenever the card is switched on, even if the server key is missing.</p>
+<p>With no server key, a distance ride on the website returns price empty and the note “Price on request. Our team will send you a quotation.” Hourly hire does not call Routes. In the CRM the distance box says “Google Maps is not set up: type the road distance.” Calculate route is disabled. On a lead, Quick limousine price says “No price yet: Google Maps is not connected (Settings › Integrations), so the road distance is unknown.” and still offers “Send booking link on WhatsApp”.</p>
+
+<h3>What Test connection checks, and what it does not</h3>
+<p>It checks the server key with one Routes call. Success text: “Routes API working ([n] km test route)”. If the browser key box is empty it adds “ · no browser key: map preview off”. If a browser key is saved, the test does not call Google with it. A wrong browser key still produces a successful test.</p>
+<p>The test does not call Places, Geocoding, Maps Embed or Maps JavaScript.</p>
+<p>Places and Geocoding failures return no rows and no error on the form. The address box still accepts what was typed. The map script’s load error sets the pin address line to “—”.</p>
+<p>On the public site, every failed route (bad key, API disabled, no road) is replaced with one sentence: “We could not find a road route for these addresses. Please check them.” The Google sentence is kept on the Integrations card only when Google answers 401 or 403. That also sets Last error and status Error. Other failures are under Recent activity as “Google Maps error: [Google’s message]” or one of the sentences below.</p>
+
+<h3>Exact Maps messages</h3>
+<table>
+<tr><th>Where</th><th>Text</th></tr>
+<tr><td>Test, no server key</td><td>Save the server key first. This is the current live error.</td></tr>
+<tr><td>Test or Calculate route, Google 401/403</td><td>Google Maps error: [Google’s message]. Seen on this CRM: “API key not valid. Please pass a valid API key.” and “Routes API has not been used in project 115481714969 before or it is disabled.”</td></tr>
+<tr><td>Google HTTP 400</td><td>Google could not find one of these addresses. Check them, or type the distance by hand.</td></tr>
+<tr><td>No route in the answer</td><td>No road route found between these addresses. Check them, or type the distance by hand.</td></tr>
+<tr><td>Route with 0 metres</td><td>Google returned a route without a distance. Check the addresses, or type the distance by hand.</td></tr>
+<tr><td>No HTTP answer, including one retry</td><td>Google Maps did not answer. Try again, or type the distance by hand. Recent activity starts with “Could not reach Google:”.</td></tr>
+<tr><td>Card off, or server key missing, inside the CRM</td><td>Google Maps is not set up (Settings › Integrations). Type the distance by hand.</td></tr>
+<tr><td>Pickup or drop-off blank</td><td>Enter the pickup and the destination address first.</td></tr>
+</table>
+<p>The server sends the key in the header <code>X-Goog-Api-Key</code>. It does not send a website address. A server key restricted in Google to “HTTP referrers” is refused by Google, and the test shows “Google Maps error:” plus Google’s sentence. Restrict that key by IP, to the Hostinger server IP, and to Routes API, Places API (New) and Geocoding API.</p>
+<p>The browser key is in the page, so Google’s referrer check applies. The live CRM and the public site both use <code>https://redprimerentals.com</code>. Add these referrers on the browser key: <code>https://redprimerentals.com/*</code>, <code>https://www.redprimerentals.com/*</code>, <code>https://crm.redprimerentals.com/*</code>. Limit that key to Maps Embed API and Maps JavaScript API. A browser key limited only to <code>crm.redprimerentals.com</code> does not match the pages that are open today.</p>
+<p>Country code on the card is sent as <code>regionCode</code> and as Places <code>includedRegionCodes</code>. The field help says two letters, for example <code>ae</code>. A wrong code limits the address list to that country. It does not stop the Routes test between Dubai Mall and the airport.</p>
+<p>A successful route is reused for 30 minutes. A geocode result is reused for 1 day. A failed call is not stored in that cache. Kilometres are rounded with Business settings “Road distance rounding”. The default in code is 0.1 km (28.64 becomes 28.6).</p>
+
+<h2>6. Do this on their computer, in this order</h2>
+<ol>
+<li>Sign in to the CRM as Admin. Open Settings › Integrations. Confirm the table in section 3 before pasting anything.</li>
+<li>On the client’s Google account, open their project. Billing has to be on or Google returns the “API has not been used or it is disabled” class of error. Enable five APIs: Routes, Places API (New), Geocoding, Maps Embed, Maps JavaScript.</li>
+<li>Create the server key. IP restriction: Hostinger server IP. API restriction: Routes, Places API (New), Geocoding.</li>
+<li>Create the browser key. Referrers listed above. API restriction: Maps Embed and Maps JavaScript.</li>
+<li>Google Maps › Set up. Switched on. Country code <code>ae</code>. Paste the server key. Paste the browser key. Save. The toast is “Google Maps saved” and, when the server key is present, “Now press Test connection.”</li>
+<li>Press Test connection. The pass sentence is “Routes API working ([n] km test route)”. Then open a lead › Quick limousine price, type a pickup and a drop-off of at least 3 letters, and read the kilometres under the class list. Then open the public limousine page and press On map.</li>
+<li>Payments, one card at a time. Leave Mode on Test. Paste the keys. Save. Press Test connection. Read the sentence in section 4. Do not switch Mode to Live in this meeting. Live charges real money. The helper text on the switch says that.</li>
+<li>After one card says Connected, open a test booking and press Payment link. Open the link. The buttons on the page are the list in section 1, and only for gateways that are Connected. The WhatsApp sentence does not name the gateway.</li>
+</ol>
+<p>Use the client’s Google account and the client’s payment accounts. The project number 115481714969 in the October error is the project of a key that was tried before. It is not a project to reuse unless they confirm it is theirs and Routes is enabled on it.</p>
+
+<h2>7. What stays the same</h2>
+<ul>
+<li>No new status, price, deposit, VAT figure, or document rule is changed by pasting these keys.</li>
+<li>A card payment does not confirm a car by itself. The confirm rules already in the CRM still apply.</li>
+<li>The website does not charge a card when the customer presses Book now. Staff send the payment link, or the customer presses Pay the balance / Pay the advance in the account after a gateway is Connected.</li>
+<li>An enquiry is a lead. It does not create a payment link.</li>
+</ul>
+</body>
+</html>

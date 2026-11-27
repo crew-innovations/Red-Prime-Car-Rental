@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>RED PRIME — How to set up every integration</title>
+<style>
+  :root { --red:#d7141a; --ink:#1c1c1c; --muted:#5c5c5c; --line:#eadfca; --paper:#fff; --soft:#faf6ee; }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family:"Segoe UI", Calibri, sans-serif; color:var(--ink); background:#f3f0ea; line-height:1.5; }
+  header { background:#1c1c1c; color:#fff; padding:28px 8vw 22px; }
+  header h1 { margin:0 0 6px; font-size:28px; }
+  header p { margin:0; color:#e6d3a2; max-width:820px; }
+  main { max-width:920px; margin:0 auto; padding:22px 18px 70px; }
+  section { background:var(--paper); border:1px solid var(--line); border-radius:12px; padding:16px 18px 8px; margin:0 0 14px; }
+  h2 { margin:0 0 8px; font-size:20px; color:var(--red); }
+  h3 { margin:16px 0 6px; font-size:16px; }
+  p, li { margin:0 0 8px; }
+  ol, ul { margin:0 0 10px; padding-left:22px; }
+  .muted { color:var(--muted); font-size:14px; }
+  table { width:100%; border-collapse:collapse; margin:8px 0 12px; font-size:14px; }
+  th, td { border:1px solid var(--line); padding:6px 8px; text-align:left; vertical-align:top; }
+  th { background:var(--soft); }
+  code { font-family:Consolas, monospace; font-size:13px; background:#f6f1e6; padding:1px 4px; }
+  .warn { background:#fff6df; border:1px solid #e2c56a; border-radius:8px; padding:8px 10px; margin:0 0 10px; }
+  .ok { background:#e8f6ee; border:1px solid #8dccaa; border-radius:8px; padding:8px 10px; margin:0 0 10px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>How to set up every API in Integrations</h1>
+  <p>RED PRIME RENTALS CRM. Open this on the office computer. Do the cards in this order. Test mode first. Live mode charges real money.</p>
+</header>
+<main>
+
+<section>
+  <h2>Before you start</h2>
+  <ol>
+    <li>Sign in to the CRM as an Admin: <code>https://redprimerentals.com/crm</code></li>
+    <li>Open <b>Settings › Integrations</b>. Only an Admin can save keys.</li>
+    <li>On every card the order is the same: fill the fields, switch it <b>On</b>, press <b>Save</b>, then press <b>Test connection</b>.</li>
+    <li>A secret field that says <b>Saved · leave empty to keep</b> already has a key. Leave it blank unless you are replacing it. Typing nothing does not wipe the old key.</li>
+    <li>Payment cards have <b>Test / sandbox</b> and <b>Live</b>. Those are two separate stores. A test key will not work while the card is set to Live, and the other way round.</li>
+    <li>Saving a new key sets the card to <b>Details saved, not tested</b>. It is not in use until Test connection says it is connected. Payments only appear on the website after that.</li>
+    <li>Where a card shows <b>Webhook address</b>, copy that address into the other company’s website. Do not invent one. If the address starts with <code>localhost</code>, stop: the CRM site address is wrong and outside companies cannot reach it. The live addresses are listed under each card below.</li>
+  </ol>
+  <div class="warn">As last checked on 26 November 2026, no card was Connected. Google Maps was On and showing “Save the server key first.” Stripe, Paymob and Tamara were On in Test with keys missing. Tabby, PayPal, messages and the document reader were not set up. Facebook Lead Ads was On with secrets missing. TikTok and Snapchat were On with the shared secret missing.</div>
+</section>
+
+<section>
+  <h2>1. Google Maps</h2>
+  <p>Used for limousine distance and time, address search, and the route map. The CRM works as soon as the card is On and the server key is saved. Test connection is still required, because a bad key only shows up when a route is asked for.</p>
+  <h3>In Google Cloud (use the company Google account)</h3>
+  <ol>
+    <li>Open <code>https://console.cloud.google.com</code> and create a project named for RED PRIME. Do not reuse a personal project.</li>
+    <li>Link a billing account to that project. Routes and Places refuse the key until billing is on. Do not type a card into a personal project.</li>
+    <li>APIs &amp; Services › Library. Enable these five, one by one: <b>Routes API</b>, <b>Places API (New)</b>, <b>Geocoding API</b>, <b>Maps Embed API</b>, <b>Maps JavaScript API</b>.</li>
+    <li>APIs &amp; Services › Credentials › Create credentials › API key. This is the <b>server key</b>.
+      <ul>
+        <li>Application restriction: <b>IP addresses</b>. Add the Hostinger server’s outbound IP. The CRM calls Google from the server, so a browser-only restriction will fail.</li>
+        <li>API restriction: Routes API, Places API (New), Geocoding API.</li>
+      </ul>
+    </li>
+    <li>Create a second key. This is the <b>browser key</b>.
+      <ul>
+        <li>Application restriction: <b>HTTP referrers</b>. Add <code>https://redprimerentals.com/*</code>, <code>https://www.redprimerentals.com/*</code> and <code>https://crm.redprimerentals.com/*</code>.</li>
+        <li>API restriction: Maps Embed API and Maps JavaScript API.</li>
+      </ul>
+    </li>
+  </ol>
+  <h3>In the CRM</h3>
+  <ol>
+    <li>Google Maps card. Switch <b>On</b>. Country code: <code>ae</code>.</li>
+    <li>Paste the server key. Paste the browser key. Save. Test connection.</li>
+  </ol>
+  <div class="ok">Success reads: <b>Routes API working (a number of km, test route)</b>. The test drives Dubai Mall to Dubai International Airport Terminal 3. It does not test the browser key, Places, Geocoding, or the map on the page. If the browser key is missing, the same success line ends with <b>no browser key: map preview off</b>.</div>
+  <table>
+    <tr><th>If the test says this</th><th>What to do</th></tr>
+    <tr><td>Save the server key first.</td><td>The server key box was empty. Paste it and Save, then test again.</td></tr>
+    <tr><td>API key not valid.</td><td>The key is wrong, deleted, or the IP restriction does not include the Hostinger server.</td></tr>
+    <tr><td>Routes API … is disabled / has not been used.</td><td>Enable Routes API on that same project, and confirm billing is on. Wait a minute and test again.</td></tr>
+    <tr><td>Google Maps did not answer.</td><td>The server could not reach Google. Try again. If it stays, the server’s outbound internet is blocked.</td></tr>
+  </table>
+</section>
+
+<section>
+  <h2>2. Stripe</h2>
+  <p>Card, Apple Pay and Google Pay. The website button will say <b>Pay by card / Apple Pay</b>.</p>
+  <ol>
+    <li>Open the Stripe Dashboard for the company. Keep the mode switch on <b>Test</b>.</li>
+    <li>Developers › API keys. Copy the <b>Secret key</b> that starts with <code>sk_test_</code>. Do not use the publishable key.</li>
+    <li>Developers › Webhooks › Add endpoint. Address: <code>https://redprimerentals.com/api/webhooks/payments/stripe</code></li>
+    <li>Select these events only: <code>checkout.session.completed</code>, <code>checkout.session.async_payment_succeeded</code>, <code>checkout.session.async_payment_failed</code>, <code>checkout.session.expired</code>.</li>
+    <li>Open the endpoint and reveal the <b>Signing secret</b>. It starts with <code>whsec_</code>.</li>
+    <li>CRM card: switch <b>On</b>, Mode <b>Test / sandbox</b>, paste both secrets, Save, Test connection.</li>
+  </ol>
+  <div class="ok">Success reads: <b>Stripe · test mode</b>.</div>
+  <table>
+    <tr><th>If the test says this</th><th>What to do</th></tr>
+    <tr><td>Secret key not saved</td><td>Paste the secret key and Save before testing.</td></tr>
+    <tr><td>This is a live key but the mode is set to test. (or the reverse)</td><td>The key and the Mode switch do not match. Use <code>sk_test_</code> with Test, <code>sk_live_</code> with Live.</td></tr>
+    <tr><td>API key works. Add the webhook signing secret so payments can be confirmed.</td><td>Paste the <code>whsec_</code> value and Save, then test again. Without it, a payment is not recorded.</td></tr>
+    <tr><td>Could not reach Stripe</td><td>The server could not open Stripe. Try again.</td></tr>
+    <tr><td>A sentence from Stripe, such as Invalid API Key</td><td>The secret key is wrong or revoked. Copy it again from the same mode.</td></tr>
+  </table>
+  <p>When a real charge is wanted: in Stripe switch to Live, create a <b>separate</b> live webhook to the same address, copy <code>sk_live_</code> and the live <code>whsec_</code>. In the CRM set Mode to <b>Live</b>, paste those, Save, Test. Success reads <b>Stripe · live</b>.</p>
+</section>
+
+<section>
+  <h2>3. Paymob</h2>
+  <p>Cards and UAE wallets. The website button will say <b>Pay by card (Paymob)</b>. Use the UAE dashboard, normally <code>https://uae.paymob.com</code>.</p>
+  <ol>
+    <li>Stay in Paymob’s test environment first.</li>
+    <li>Settings › Account info. Copy four values: <b>API key</b>, <b>Secret key</b>, <b>Public key</b>, <b>HMAC secret</b>.</li>
+    <li>Developers › Payment integrations. Copy each integration ID you want to offer (card, Apple Pay, and so on). Test IDs and live IDs are different.</li>
+    <li>On each of those integrations, set the transaction processed callback to <code>https://redprimerentals.com/api/webhooks/payments/paymob</code></li>
+    <li>CRM card: switch <b>On</b>, Mode <b>Test</b>. API address stays <code>https://uae.paymob.com</code>. Integration ID(s): the numbers, separated by commas. Paste the four secrets. Save. Test connection.</li>
+  </ol>
+  <div class="ok">Success reads: <b>Paymob · the company name · test</b>.</div>
+  <table>
+    <tr><th>If the test says this</th><th>What to do</th></tr>
+    <tr><td>API key not saved / Secret key not saved / Public key not saved / HMAC secret not saved</td><td>That box was empty. Paste it and Save.</td></tr>
+    <tr><td>Add the integration ID(s)…</td><td>The Integration ID field is empty.</td></tr>
+    <tr><td>The secret key does not look like a test key.</td><td>A test secret contains <code>sk_test</code>. A live secret contains <code>sk_live</code>. Match the Mode switch.</td></tr>
+    <tr><td>API key refused (HTTP …)</td><td>The API key was rejected. Copy it again from Account info in the same environment.</td></tr>
+    <tr><td>Could not reach Paymob</td><td>Check the API address is <code>https://uae.paymob.com</code> and try again.</td></tr>
+  </table>
+</section>
+
+<section>
+  <h2>4. Tabby</h2>
+  <p>Split in 4. The button says <b>Split in 4 with Tabby</b>. Tabby must approve the business before live checkout works. The CRM never shows Tabby’s reason when a customer is declined; the button is simply not offered for that payment.</p>
+  <ol>
+    <li>From Tabby, take the test <b>public key</b> (<code>pk_</code>), <b>secret key</b> (<code>sk_</code>), and the <b>merchant code</b> for AED.</li>
+    <li>Choose a long random text. This is the webhook header value. In the CRM the header name defaults to <code>X-RP-Webhook</code>. Keep that name unless Tabby gave you a different header name.</li>
+    <li>In Tabby, register a webhook (their docs: POST <code>/api/v1/webhooks</code>) to <code>https://redprimerentals.com/api/webhooks/payments/tabby</code> and send that header name with the random value.</li>
+    <li>CRM card: switch <b>On</b>, Mode <b>Test</b>, merchant code, header name, the three secrets. Optional: smallest and largest amount in AED, only if Tabby agreed a limit. Save. Test connection.</li>
+  </ol>
+  <div class="ok">Success reads: <b>Tabby · merchant code · test</b>. The test only passes when Tabby’s webhook list already contains the CRM address.</div>
+  <table>
+    <tr><th>If the test says this</th><th>What to do</th></tr>
+    <tr><td>Public key not saved / Secret key not saved / Webhook header value not saved</td><td>Paste that secret and Save.</td></tr>
+    <tr><td>Merchant code not set</td><td>Type the code Tabby gave you.</td></tr>
+    <tr><td>Secret key refused (HTTP …)</td><td>Wrong secret, or it does not belong to that merchant code.</td></tr>
+    <tr><td>Keys work, but the CRM webhook is not registered with Tabby yet…</td><td>Register the webhook in Tabby, then test again. Keys alone are not enough.</td></tr>
+  </table>
+</section>
+
+<section>
+  <h2>5. Tamara</h2>
+  <p>Pay later. The button says <b>Pay later with Tamara</b>. Tamara must approve the business. The booking must have the customer’s mobile number, or Tamara checkout cannot start.</p>
+  <ol>
+    <li>Tamara Partners portal › Integration. Stay on sandbox first.</li>
+    <li>Copy the <b>API token</b> and the <b>Notification token</b>.</li>
+    <li>Point Tamara notifications at <code>https://redprimerentals.com/api/webhooks/payments/tamara</code></li>
+    <li>CRM card: switch <b>On</b>, Mode <b>Test</b>, paste both tokens. Save. Test connection.</li>
+  </ol>
+  <div class="ok">Success reads: <b>Tamara · sandbox</b>. Live mode success reads <b>Tamara · live</b>.</div>
+  <table>
+    <tr><th>If the test says this</th><th>What to do</th></tr>
+    <tr><td>API token not saved</td><td>Paste the API token and Save.</td></tr>
+    <tr><td>Notification token not saved</td><td>Paste the notification token and Save. Without it, a paid order is not confirmed.</td></tr>
+    <tr><td>API token refused (HTTP …)</td><td>Wrong token, or a sandbox token while Mode is Live.</td></tr>
+  </table>
+</section>
+
+<section>
+  <h2>6. PayPal</h2>
+  <p>The button says <b>Pay with PayPal</b>. PayPal does not take AED. You choose USD, EUR or GBP and the AED rate. The CRM converts the booking amount with that rate.</p>
+  <ol>
+    <li>PayPal Developer › Apps. Open the sandbox app first.</li>
+    <li>Copy <b>Client ID</b> and <b>Secret</b>.</li>
+    <li>Add a webhook on that app. Address: <code>https://redprimerentals.com/api/webhooks/payments/paypal</code>. Event: <code>PAYMENT.CAPTURE.COMPLETED</code>. Also add <code>PAYMENT.CAPTURE.DECLINED</code> and <code>PAYMENT.CAPTURE.DENIED</code> if PayPal offers them. Copy the <b>Webhook ID</b>.</li>
+    <li>CRM card: switch <b>On</b>, Mode <b>Test</b>. Currency, for example USD. AED per 1 unit, for example <code>3.6725</code> for USD (you decide the rate; the CRM does not look one up). Webhook ID. Client ID and secret. Save. Test connection.</li>
+  </ol>
+  <div class="ok">Success reads: <b>PayPal · sandbox · USD</b> (or the currency you set). The test only checks the client ID and secret. It does not check the webhook.</div>
+  <table>
+    <tr><th>If the test says this</th><th>What to do</th></tr>
+    <tr><td>Client ID and secret not saved</td><td>Paste both and Save.</td></tr>
+    <tr><td>PayPal does not take AED: set the PayPal currency and the AED rate first.</td><td>Currency and a rate above zero are required before the test will call PayPal.</td></tr>
+    <tr><td>A PayPal error, or Could not reach PayPal</td><td>The ID and secret do not match this mode, or PayPal did not answer.</td></tr>
+  </table>
+  <p>If the Webhook ID box is empty, a PayPal notice arrives and is rejected with <b>Webhook ID not set</b>. The customer can still return from PayPal and the return page can record the payment, but the notice itself will not.</p>
+</section>
+
+<section>
+  <h2>7. Facebook and Instagram Lead Ads</h2>
+  <p>A lead form on Facebook or Instagram becomes a CRM lead. The card must be <b>On and saved before</b> Meta checks the address. If Meta checks first, the event log says <b>Verify token did not match</b>.</p>
+  <ol>
+    <li>In Meta for Developers, use a <b>Business</b> app. Add the Webhooks product.</li>
+    <li>App settings › Basic. Copy the <b>App secret</b>.</li>
+    <li>Make a long random text. That is the <b>verify token</b>. You will type the same text in Meta.</li>
+    <li>Create a long-lived <b>Page access token</b> for the Facebook Page that owns the lead forms. The token needs <code>leads_retrieval</code>, <code>pages_manage_metadata</code>, <code>pages_show_list</code>, <code>pages_read_engagement</code>. Meta must approve <code>leads_retrieval</code> in App Review before live lead forms work.</li>
+    <li>Copy the Facebook Page ID.</li>
+    <li>CRM card: switch <b>On</b>. Page ID. Graph API version <code>v21.0</code> unless Meta tells you a newer one. Service: leave empty unless every lead from this Page is the same service. Paste app secret, page token and verify token. Save.</li>
+    <li>In Meta: Webhooks › Page › subscribe to <b>leadgen</b>. Callback URL: <code>https://redprimerentals.com/api/webhooks/leads/meta</code>. Verify token: the same text you saved. Press Verify and save.</li>
+    <li>Subscribe the app to the Page, and in the Page settings give the CRM access to leads.</li>
+    <li>Back in the CRM, Test connection.</li>
+  </ol>
+  <div class="ok">Success reads: <b>Page: the Page name (Page ID)</b>.</div>
+  <table>
+    <tr><th>If the test says this</th><th>What to do</th></tr>
+    <tr><td>App secret not saved / Page access token not saved / Verify token not saved</td><td>Paste that value and Save.</td></tr>
+    <tr><td>The token belongs to “…”, not the Page ID you set.</td><td>The token is for a different Page. Fix the Page ID or generate the token on the right Page.</td></tr>
+    <tr><td>A Meta error, such as Invalid OAuth access token</td><td>The page token is expired or missing a permission. Generate it again.</td></tr>
+    <tr><td>In the event list: Verify token did not match</td><td>Meta’s verify token and the saved one differ, or the card was Off when Meta checked. Save, switch On, then verify again in Meta.</td></tr>
+    <tr><td>In the event list: Not set up or switched off</td><td>A lead arrived while the card was Off or a required secret was missing.</td></tr>
+  </table>
+</section>
+
+<section>
+  <h2>8. TikTok Lead Generation</h2>
+  <p>Test connection does <b>not</b> call TikTok. It only looks for a lead that already arrived with a valid signature. Until that happens, the test fails even when the secret is correct.</p>
+  <ol>
+    <li>TikTok for Business, with Lead Generation and webhook access.</li>
+    <li>Choose a long random shared secret.</li>
+    <li>CRM card: switch <b>On</b>. Signature header stays <code>X-TikTok-Signature</code> unless TikTok’s form uses another header name. Paste the shared secret. Save.</li>
+    <li>In TikTok, set the webhook to <code>https://redprimerentals.com/api/webhooks/leads/tiktok</code>. TikTok must sign the raw body with HMAC-SHA256 using that secret. The header may be the hex digest or <code>sha256=</code> plus the digest. The CRM accepts both.</li>
+    <li>Send one real test lead from TikTok. Open the card’s recent events. A good lead is direction <b>in</b>, status <b>ok</b>.</li>
+    <li>Press Test connection.</li>
+  </ol>
+  <div class="ok">Success reads: <b>TikTok Lead Generation · last lead received</b> and the date.</div>
+  <table>
+    <tr><th>If you see this</th><th>What it means</th></tr>
+    <tr><td>Shared secret not saved</td><td>Paste the secret and Save before testing.</td></tr>
+    <tr><td>No signed test lead received yet…</td><td>Expected until TikTok has delivered one lead the CRM accepted. Send the test lead, then test again.</td></tr>
+    <tr><td>HTTP 404, event “Not set up or switched off”</td><td>The card was Off or the secret was empty when TikTok called.</td></tr>
+    <tr><td>HTTP 400, the signature header does not match</td><td>The secret in TikTok and the secret in the CRM are different, or TikTok signed a different body.</td></tr>
+  </table>
+  <p>The lead body must include <code>lead_id</code> or <code>id</code>, plus a name and a phone or email. If TikTok’s real payload uses other field names, the lead can be rejected even with a correct signature. That is why one test lead is checked before the card is treated as working.</p>
+</section>
+
+<section>
+  <h2>9. Snapchat Lead Generation</h2>
+  <p>Same rule as TikTok. The test looks for a past accepted lead. It does not call Snapchat.</p>
+  <ol>
+    <li>Snapchat Ads, with Lead Generation and Marketing API access.</li>
+    <li>Choose a long random shared secret.</li>
+    <li>CRM card: switch <b>On</b>. Signature header stays <code>X-Snap-Signature</code>. Paste the secret. Save.</li>
+    <li>In Snapchat, set the webhook to <code>https://redprimerentals.com/api/webhooks/leads/snapchat</code> and sign the raw body with HMAC-SHA256.</li>
+    <li>Send one test lead. Confirm an event with status <b>ok</b>. Then Test connection.</li>
+  </ol>
+  <div class="ok">Success reads: <b>Snapchat Lead Generation · last lead received</b> and the date. The failure sentences are the same as TikTok, with the Snapchat header name.</div>
+</section>
+
+<section>
+  <h2>10. Instagram, Facebook and WhatsApp messages</h2>
+  <p>A customer message becomes a lead, and the reply goes back on the same channel. This is a different card from Lead Ads, with its own verify token. On 26 November 2026 the event log already had five failures: <b>Verify token did not match</b>. That means Meta checked this address and the token did not match what is saved (or nothing was saved).</p>
+  <ol>
+    <li>Instagram professional account linked to the Facebook Page, with “Allow access to messages” on.</li>
+    <li>Meta app, Business type, with Messenger and Instagram. Add WhatsApp only if you will use it. App Review must approve <code>instagram_manage_messages</code> and <code>pages_messaging</code>. The business must be verified.</li>
+    <li>App settings › Basic: copy the <b>App secret</b>. Make a new long <b>verify token</b> (it can differ from the Lead Ads token).</li>
+    <li>For Instagram and Messenger replies: a long-lived <b>Page access token</b> with <code>instagram_manage_messages</code>, <code>pages_messaging</code>, <code>pages_manage_metadata</code>.</li>
+    <li>For WhatsApp: WhatsApp Manager › API setup. Copy the <b>phone number ID</b>. Create a permanent system-user token with <code>whatsapp_business_messaging</code>. Meta charges per WhatsApp conversation.</li>
+    <li>Optional WhatsApp templates, already approved in Meta: contract (three values: name, contract number, link), invoice (name, invoice number and amount, link), and the language code such as <code>en</code>.</li>
+    <li>CRM card: switch <b>On</b>. Fill the WhatsApp phone number ID if you use WhatsApp. Graph version <code>v21.0</code>. Paste app secret and verify token, plus the page token and/or the WhatsApp token. Save.</li>
+    <li>In Meta, subscribe <b>messages</b> for Instagram, the Page, and (if used) the WhatsApp Business Account. Callback: <code>https://redprimerentals.com/api/webhooks/messages/meta</code>. Verify token: the one just saved. Verify only after Save.</li>
+    <li>Test connection.</li>
+  </ol>
+  <div class="ok">Success reads <b>Page: the Page name</b>, and if WhatsApp is set, <b>WhatsApp: the phone number</b>.</div>
+  <table>
+    <tr><th>If the test says this</th><th>What to do</th></tr>
+    <tr><td>App secret not saved / Verify token not saved</td><td>Paste it and Save. The card cannot receive messages without both.</td></tr>
+    <tr><td>Save the Page access token (Instagram / Messenger) or the WhatsApp token…</td><td>At least one reply token is required. The test will not pass on the app secret alone.</td></tr>
+    <tr><td>WhatsApp phone number ID not set</td><td>You pasted a WhatsApp token. Also fill the phone number ID.</td></tr>
+    <tr><td>Page token: … / WhatsApp: …</td><td>Meta rejected that token. The rest of the sentence is Meta’s reason.</td></tr>
+    <tr><td>Verify token did not match</td><td>Seen in events, not as the test title. Save the token, switch On, then press Verify in Meta again.</td></tr>
+  </table>
+</section>
+
+<section>
+  <h2>11. Document reader</h2>
+  <p>Reads an Emirates ID, passport, driving licence, visa, trade licence or receipt and fills the form. Staff still check the fields before saving. The image is sent to Anthropic or OpenAI. Do not switch this on until RED PRIME agrees to that.</p>
+  <ol>
+    <li>Create an API key in the Anthropic console or the OpenAI console, on an account with billing.</li>
+    <li>CRM card: switch <b>On</b>. Service: Anthropic (Claude) or OpenAI (GPT). Model: leave empty to use the default (Anthropic <code>claude-haiku-5-5</code>, OpenAI <code>gpt-4o-mini</code>), or type the model name the account is allowed to use. Paste the API key. Save. Test connection.</li>
+  </ol>
+  <div class="ok">Success reads: <b>The document reader answered</b>. The test sends the sentence “Reply with the JSON object {“ok”: true}” and looks for the word true. It does not upload an ID.</div>
+  <table>
+    <tr><th>If the test says this</th><th>What to do</th></tr>
+    <tr><td>Save the API key first.</td><td>The key box was empty.</td></tr>
+    <tr><td>Unexpected answer: …</td><td>The service replied, but the reply did not contain “true”. Try again, or set the model the account can use.</td></tr>
+    <tr><td>Any other sentence</td><td>That sentence is the service’s error: wrong key, no billing, or a model name it does not have.</td></tr>
+  </table>
+</section>
+
+<section>
+  <h2>After a payment card is connected</h2>
+  <p>On the website Book now form (car, yacht, trip, package), the customer sees <b>Pay now</b> and <b>Pay later</b>. Pay later is already selected.</p>
+  <ul>
+    <li><b>Pay later.</b> The booking is saved as Waiting for payment. The same email that confirms the booking contains the pay link (<code>/pay/…</code>).</li>
+    <li><b>Pay now.</b> The same booking and the same email are created, and the browser opens that pay page. The customer picks whichever connected gateway is on the page.</li>
+    <li>The link asks for the booking total they were shown. It does not charge the security deposit. The deposit stays a separate line for the office.</li>
+    <li>When the gateway confirms the exact amount, the booking’s payment becomes Paid. On the booking screen the status line reads <b>Paid, documents pending</b>. The stored booking status stays Waiting for payment until staff confirm it, because a car still needs its documents when that rule is on. There is no separate status called Paid.</li>
+    <li>A limousine request whose price the agent must still confirm does not show Pay now / Pay later, and no link is emailed. The customer gets the ride page after the agent sets the price.</li>
+    <li>If no gateway is connected, the form does not show the choice. The email says the team will send the payment link, which is the old behaviour.</li>
+  </ul>
+  <p class="muted">Disconnect on a card deletes its saved keys and switches it off. Leads and payments already stored stay.</p>
+</section>
+
+</main>
+</body>
+</html>

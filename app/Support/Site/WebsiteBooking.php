@@ -210,7 +210,7 @@ class WebsiteBooking
      *
      * @return array{account: string} new / existing / none
      */
-    public static function afterCreated(Booking $booking, string $email, string $locale): array
+    public static function afterCreated(Booking $booking, string $email, string $locale, ?string $payUrl = null): array
     {
         $booking->loadMissing('customer', 'bookable');
         $account = 'none';
@@ -231,10 +231,10 @@ class WebsiteBooking
             report($e);
         }
 
-        rescue(function () use ($booking, $user, $email, $loginUrl, $account, $locale) {
+        rescue(function () use ($booking, $user, $email, $loginUrl, $account, $locale, $payUrl) {
             $mail = \App\Support\Transfers\RideFlow::isRequest($booking)
                 ? new \App\Notifications\RideRequestReceived($booking, \App\Support\Transfers\Tracking::link($booking), $loginUrl, $account)
-                : new WebsiteBookingReceived($booking, $loginUrl, $account, $locale, $user?->email ?? $email);
+                : new WebsiteBookingReceived($booking, $loginUrl, $account, $locale, $user?->email ?? $email, $payUrl);
             // 4 Nov: through the routed mailbox, the email log and (when running) the queue.
             $user && $user->email === $email
                 ? \App\Support\Notifications\Notifier::send($user, $mail, $booking)

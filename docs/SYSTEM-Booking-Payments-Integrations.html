@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>RED PRIME — Booking, payments and integrations</title>
+<style>
+  :root { --red:#d7141a; --ink:#1c1c1c; --muted:#5c5c5c; --line:#e4d7b0; --paper:#fff; --soft:#faf6ee; --ok:#1b7f4a; --bad:#9b1c1c; --warn:#8a5a00; }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family: "Segoe UI", Calibri, sans-serif; color:var(--ink); background:#f3f0ea; line-height:1.45; }
+  header { background:#1c1c1c; color:#fff; padding:28px 8vw 22px; }
+  header h1 { margin:0 0 6px; font-size:28px; font-weight:650; }
+  header p { margin:0; color:#e6d3a2; max-width:760px; }
+  main { max-width:980px; margin:0 auto; padding:22px 18px 60px; }
+  section { background:var(--paper); border:1px solid #eadfca; border-radius:12px; padding:18px 18px 8px; margin:0 0 16px; }
+  h2 { margin:0 0 8px; font-size:20px; color:var(--red); }
+  h3 { margin:14px 0 6px; font-size:16px; }
+  p { margin:0 0 8px; }
+  .muted { color:var(--muted); font-size:14px; }
+  table { width:100%; border-collapse:collapse; margin:8px 0 12px; font-size:14px; }
+  th, td { border:1px solid #eadfca; padding:6px 8px; text-align:left; vertical-align:top; }
+  th { background:var(--soft); }
+  code { font-family: Consolas, monospace; font-size:13px; background:#f6f1e6; padding:0 3px; }
+  .flow { display:flex; flex-wrap:wrap; align-items:stretch; gap:8px; margin:10px 0 14px; }
+  .box { background:#fff; border:1.5px solid #222; border-radius:8px; padding:8px 10px; min-width:120px; max-width:220px; font-size:14px; }
+  .box b { display:block; margin-bottom:2px; }
+  .box small { color:var(--muted); }
+  .box.go { background:#fde8e8; border-color:var(--red); }
+  .box.ok { background:#e8f6ee; border-color:var(--ok); }
+  .box.wait { background:#fff6df; border-color:var(--warn); }
+  .box.stop { background:#f4f4f4; border-color:#666; }
+  .arr { align-self:center; color:var(--red); font-weight:700; font-size:18px; }
+  ol { margin:4px 0 10px; padding-left:20px; }
+  li { margin-bottom:4px; }
+  .note { background:var(--soft); border-left:3px solid var(--red); padding:8px 10px; margin:8px 0 12px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Booking, payments and integrations</h1>
+  <p>RED PRIME RENTALS. What the program does, read from the code. Checked on the live CRM on 26 November 2026. Nothing on Integrations is Connected yet.</p>
+</header>
+<main>
+
+<section>
+  <h2>Read this first</h2>
+  <p>Three jobs are separate. Booking saves a request. A payment link collects money later. Integrations is where the keys live. Pasting a key does not switch a job on. The card must be switched on, and <b>Test connection</b> must pass, before payments, lead ads and chat use it. Google Maps prices and the document reader start when the key is saved and the switch is on, even if the test has not passed.</p>
+  <div class="flow">
+    <div class="box go"><b>1. Website</b><small>Enquiry, or Book now. No card form.</small></div>
+    <div class="arr">→</div>
+    <div class="box wait"><b>2. CRM</b><small>Lead, and a booking only when Book now has a price.</small></div>
+    <div class="arr">→</div>
+    <div class="box"><b>3. Staff</b><small>Send a payment link. The link does not name a gateway.</small></div>
+    <div class="arr">→</div>
+    <div class="box ok"><b>4. Pay page</b><small>Customer picks a Connected gateway.</small></div>
+  </div>
+</section>
+
+<section>
+  <h2>1. Enquiry</h2>
+  <p>Contact forms and the quick-quote popup use an enquiry form. They post to <code>/api/v1/enquiries</code>.</p>
+  <div class="flow">
+    <div class="box">Name and phone</div>
+    <div class="arr">→</div>
+    <div class="box go">Lead only</div>
+    <div class="arr">→</div>
+    <div class="box stop">No booking<br>No price<br>No pay button</div>
+  </div>
+  <p>Staff send a quotation from that lead. The customer accepts the quotation. That acceptance is what becomes a booking. This path is not changed by payment keys.</p>
+</section>
+
+<section>
+  <h2>2. Book now — car, yacht, trip, package</h2>
+  <p>These pages post <code>request_type: booking</code> to <code>/api/v1/booking-requests</code>. The button is Book now. Under it: “Nothing is charged now. Our team sends you a payment link.”</p>
+  <div class="flow">
+    <div class="box">Pick dates</div>
+    <div class="arr">→</div>
+    <div class="box">Estimate</div>
+    <div class="arr">→</div>
+    <div class="box">Name, phone, email</div>
+    <div class="arr">→</div>
+    <div class="box go">Book now</div>
+  </div>
+  <div class="flow">
+    <div class="box go">Price exists</div>
+    <div class="arr">→</div>
+    <div class="box wait">Booking: Waiting for payment</div>
+    <div class="arr">→</div>
+    <div class="box">Car is held. Default 24 hours.</div>
+  </div>
+  <div class="flow">
+    <div class="box stop">No price</div>
+    <div class="arr">→</div>
+    <div class="box">Lead only. Screen says the request was received.</div>
+  </div>
+  <h3>What the estimate shows</h3>
+  <table>
+    <tr><th>Line</th><th>When it appears</th></tr>
+    <tr><td>Rental lines, extras, VAT</td><td>After dates are chosen and the price engine returns a price.</td></tr>
+    <tr><td>Estimated total</td><td>Rental + extras − discount, then VAT. The deposit is not inside this number.</td></tr>
+    <tr><td>Refundable deposit</td><td>Car or yacht only, and only when that vehicle’s Security deposit is above 0. Own line, under the total.</td></tr>
+    <tr><td>Price on request</td><td>The engine has no price. Book now does not create a booking.</td></tr>
+  </table>
+  <p>On a car page, before dates, the panel shows “Security deposit: AED …” or “Security deposit: —”. A trip and a package never show a deposit line. The deposit is the admin field on the car or yacht. There is no second field called extra security deposit. Ticked add-ons are inside the total.</p>
+  <div class="note">The email after Book now prints “Total: AED [booking total]” and “Our team will contact you shortly and send you the payment link.” It does not print the deposit and it does not name Stripe, Tabby or Tamara.</div>
+  <p>The booking’s security-deposit field is stored as 0. The same amount is kept inside the price calculation. Staff see it in Security deposit when they change the car on the booking, or when the price form fills a still-empty deposit.</p>
+  <h3>The lead after a car booking</h3>
+  <div class="flow">
+    <div class="box wait">Car pipeline: Payment Pending</div>
+    <div class="arr">→</div>
+    <div class="box stop">Create quotation hidden</div>
+    <div class="arr">→</div>
+    <div class="box">Stays open until the booking is Confirmed</div>
+  </div>
+  <p>A yacht, trip or package uses the yacht pipeline. Waiting for payment moves that lead to <b>Deposit Pending</b>, not Payment Pending. Create quotation is hidden while a live booking exists. A live booking is any booking that is not cancelled and not an inquiry.</p>
+  <p>A second Book now from the same phone and the same product within 10 minutes does not make a second lead. If that lead has no live booking, the booking is created on it. If a live booking already exists, the same booking is returned.</p>
+</section>
+
+<section>
+  <h2>3. Book now — limousine</h2>
+  <div class="flow">
+    <div class="box">Class, pickup, drop-off, date</div>
+    <div class="arr">→</div>
+    <div class="box">Road price if Maps is ready</div>
+    <div class="arr">→</div>
+    <div class="box go">Book now</div>
+  </div>
+  <table>
+    <tr><th>Condition</th><th>What is saved</th><th>What the customer reads</th></tr>
+    <tr><td>Maps server key missing</td><td>No distance price. Request stays a lead when the booking cannot be priced.</td><td>“Price on request. Our team will send you a quotation.”</td></tr>
+    <tr><td>Agent must confirm the price (the default)</td><td>Booking status Inquiry. Nothing is held. The lead stays on the open list.</td><td>“Ride request received.” Then accept and pay on the ride page after staff confirm the price.</td></tr>
+    <tr><td>Agent confirm is off and a price exists</td><td>Waiting for payment, same as a car.</td><td>Waiting for payment, and the hold sentence.</td></tr>
+  </table>
+  <p>The limousine quote does not send a security deposit, so no deposit line is drawn.</p>
+</section>
+
+<section>
+  <h2>4. Hold ends, not paid</h2>
+  <div class="flow">
+    <div class="box wait">Waiting for payment</div>
+    <div class="arr">→</div>
+    <div class="box">hold time passed and paid amount is 0</div>
+    <div class="arr">→</div>
+    <div class="box stop">Booking cancelled</div>
+  </div>
+  <p>The command is <code>crm:release-website-holds</code>. If that lead has no other live booking, the lead is not marked Lost. A car lead goes back to <b>Contacted</b>. A yacht, trip or package lead has no Contacted stage, so it goes back to <b>Requirements Confirmed</b>. A note is added: “Website hold ended, not paid.” Follow-up is set to now.</p>
+</section>
+
+<section>
+  <h2>5. Where payment methods appear</h2>
+  <div class="flow">
+    <div class="box stop">Website Book now</div>
+    <div class="arr">→</div>
+    <div class="box">No Stripe, Tabby, Tamara, Paymob or PayPal</div>
+  </div>
+  <div class="flow">
+    <div class="box">Staff: Payment link</div>
+    <div class="arr">→</div>
+    <div class="box go">redprimerentals.com/pay/…</div>
+    <div class="arr">→</div>
+    <div class="box ok">One text button per Connected gateway</div>
+  </div>
+  <table>
+    <tr><th>Gateway</th><th>Button text</th></tr>
+    <tr><td>Stripe</td><td>Pay by card / Apple Pay</td></tr>
+    <tr><td>Paymob</td><td>Pay by card (Paymob)</td></tr>
+    <tr><td>Tabby</td><td>Split in 4 with Tabby</td></tr>
+    <tr><td>Tamara</td><td>Pay later with Tamara</td></tr>
+    <tr><td>PayPal</td><td>Pay with PayPal</td></tr>
+  </table>
+  <p>There are no logos. WhatsApp text is: “Payment for [number]: AED [amount] · [the RED PRIME address]”. The gateway name is not in that sentence. Empty method ticks mean every Connected gateway. Ticked methods limit that one link.</p>
+  <p>In the customer account the buttons are “Pay the advance (AED …)” and “Pay the balance (AED …)”. They open the same pay page. They are absent while no gateway is Connected. An existing open link shows “Pay AED [amount] online · [purpose]”.</p>
+  <p>After the money is recorded, the customer row says method “Online / link” and a reference starting with <code>stripe</code>, <code>tabby</code>, <code>tamara</code>, <code>paymob</code> or <code>paypal</code>.</p>
+</section>
+
+<section>
+  <h2>6. Paying, then confirming</h2>
+  <div class="flow">
+    <div class="box">Customer presses a button</div>
+    <div class="arr">→</div>
+    <div class="box">Provider’s own page</div>
+    <div class="arr">→</div>
+    <div class="box go">Provider confirms the exact amount</div>
+    <div class="arr">→</div>
+    <div class="box ok">Money recorded once</div>
+  </div>
+  <p>Opening the thank-you page does not record money. A mismatched amount is not recorded. Status becomes Needs checking. The note starts “Paid [currency] [amount] but [asked] was asked”.</p>
+  <p>While the stored status is still Waiting for payment, and the payment status is Paid or the advance is reached, the booking label shown to staff is <b>Paid, documents pending</b>. The stored status does not change. A car is not confirmed by the payment. Staff confirm after the documents are approved. If the advance-confirm switch is on and the documents are already complete, the existing automatic confirm still runs.</p>
+  <p>The customer message after payment, when documents are still missing, asks them to upload documents in their account and says the booking is not confirmed yet.</p>
+  <h3>When a payment link is refused</h3>
+  <table>
+    <tr><th>Condition</th><th>Message</th></tr>
+    <tr><td>No gateway is Connected</td><td>No payment gateway is connected yet (Settings › Integrations).</td></tr>
+    <tr><td>Booking cancelled or no-show</td><td>This booking is [status].</td></tr>
+    <tr><td>Price waiting for a manager</td><td>The price is waiting for a manager's approval.</td></tr>
+    <tr><td>Quotation not accepted</td><td>The customer must accept the quotation first.</td></tr>
+    <tr><td>Amount above what is left</td><td>At most AED [n] can be asked for now. Or: Nothing is left to pay for this.</td></tr>
+    <tr><td>Pay page has no Connected method left</td><td>Online payment is not available right now.</td></tr>
+    <tr><td>Link cancelled or expired</td><td>This payment link is closed.</td></tr>
+    <tr><td>Tamara and the phone field is empty</td><td>Tamara needs the customer's mobile number. WhatsApp alone is not used.</td></tr>
+    <tr><td>Tabby declines that customer</td><td>Tabby is not available for this payment ([reason]).</td></tr>
+  </table>
+</section>
+
+<section>
+  <h2>7. Integrations — the rule</h2>
+  <div class="flow">
+    <div class="box">Set up and Save</div>
+    <div class="arr">→</div>
+    <div class="box wait">Details saved, not tested</div>
+    <div class="arr">→</div>
+    <div class="box">Test connection</div>
+    <div class="arr">→</div>
+    <div class="box ok">Connected</div>
+  </div>
+  <p>Admin only. Keys are not shown again. An empty box keeps the saved key. On 26 November 2026 every card was short of Connected. Google Maps last error: “Save the server key first.” Stripe, Paymob and Tamara were on, in Test, with keys missing. Tabby and PayPal were not set up. TikTok and Snapchat were switched on with the shared secret missing and no lead ever received. Facebook Lead Ads was switched on with its three secrets missing. Messages was off. At 11:43 Meta called the message address five times and each one was stored as “Verify token did not match”.</p>
+</section>
+
+<section>
+  <h2>8. Each integration</h2>
+  <h3>Google Maps</h3>
+  <div class="flow">
+    <div class="box">Server key</div>
+    <div class="arr">→</div>
+    <div class="box go">Routes, Places, Geocoding</div>
+    <div class="arr">→</div>
+    <div class="box">Kilometres and address search</div>
+  </div>
+  <div class="flow">
+    <div class="box">Browser key</div>
+    <div class="arr">→</div>
+    <div class="box">Maps Embed and Maps JavaScript</div>
+    <div class="arr">→</div>
+    <div class="box">Map on the site, in the CRM, and on track</div>
+  </div>
+  <p>The test only checks Routes, Dubai Mall to Dubai Airport Terminal 3. It does not check the browser key. Success text: “Routes API working ([n] km test route)”. No browser key adds “no browser key: map preview off”. A wrong browser key still passes. The server key is sent with no website address, so restrict it by the Hostinger IP. The browser key must allow <code>https://redprimerentals.com/*</code>, <code>https://www.redprimerentals.com/*</code> and <code>https://crm.redprimerentals.com/*</code>. The live CRM is on redprimerentals.com.</p>
+  <p>A failed route on the public site is shown as “We could not find a road route for these addresses. Please check them.” The Google sentence is kept on the card when Google answers 401 or 403.</p>
+
+  <h3>Stripe, Paymob, Tabby, Tamara, PayPal</h3>
+  <table>
+    <tr><th>Card</th><th>Test passes only when</th><th>Still blocks a payment after Connected</th></tr>
+    <tr><td>Stripe</td><td>Secret key matches Test or Live, and the webhook secret is saved. Address <code>/api/webhooks/payments/stripe</code>.</td><td>Webhook events must be the four checkout events named on the card. A bad signature is rejected. Coming back from Stripe can still record the payment if the secret key is valid.</td></tr>
+    <tr><td>Paymob</td><td>All four secrets, integration IDs, and the secret contains <code>sk_test</code> or <code>sk_live</code> for the mode.</td><td>Each Paymob integration’s callback must be <code>/api/webhooks/payments/paymob</code>. A bad HMAC is rejected.</td></tr>
+    <tr><td>Tabby</td><td>Keys, merchant code, and Tabby’s webhook list contains <code>/webhooks/payments/tabby</code>.</td><td>Tabby can refuse one customer. The button then shows that refusal.</td></tr>
+    <tr><td>Tamara</td><td>API token is accepted by sandbox or live, matching the Mode switch. Notification token only has to be non-empty.</td><td>A wrong notification token still shows Connected. Phone field must be filled. Checkout type sent is PAY_BY_INSTALMENTS.</td></tr>
+    <tr><td>PayPal</td><td>Client id, secret, a currency, and an AED rate above 0.</td><td>PayPal is offered in that currency, not AED. The rate is the one typed on the card.</td></tr>
+  </table>
+
+  <h3>Facebook and Instagram lead ads</h3>
+  <div class="flow">
+    <div class="box">Meta form</div>
+    <div class="arr">→</div>
+    <div class="box go">/api/webhooks/leads/meta</div>
+    <div class="arr">→</div>
+    <div class="box ok">Lead in the CRM</div>
+  </div>
+  <p>Needs app secret, long-lived Page token and a verify token. The test checks that the token can read the Page. It does not check that <code>leadgen</code> is subscribed. If the Page ID is filled and the token is for a different Page, the test says the token belongs to the other Page. Today the secrets are missing, so a call is rejected.</p>
+
+  <h3>TikTok and Snapchat</h3>
+  <div class="flow">
+    <div class="box wait">Shared secret saved and switched on</div>
+    <div class="arr">→</div>
+    <div class="box">Platform posts one signed lead</div>
+    <div class="arr">→</div>
+    <div class="box ok">Then Test connection can pass</div>
+  </div>
+  <p>The CRM does not call TikTok or Snapchat. Test connection only looks for a lead that already arrived and was accepted. Until then: “No signed test lead received yet.” Addresses: <code>/api/webhooks/leads/tiktok</code> and <code>/api/webhooks/leads/snapchat</code>. Signature is HMAC-SHA256 of the raw body. Headers: <code>X-TikTok-Signature</code> and <code>X-Snap-Signature</code>. The body needs a lead id. No secret, or the switch off, answers 404 and saves nothing. A bad signature answers 400 and the text “[header] does not match”. Today both cards are on, the secret is missing, and no lead has arrived.</p>
+
+  <h3>Instagram, Messenger, WhatsApp</h3>
+  <p>One card. Address <code>/api/webhooks/messages/meta</code>. Meta’s address check fails until the verify token saved in the CRM is the same text typed in Meta. That is the failure already stored today. The test also needs a Page token or a WhatsApp token. WhatsApp also needs the phone number ID. Replies use those tokens. A customer message becomes a lead. The agent continues it in Messages.</p>
+
+  <h3>Document reader</h3>
+  <p>One API key. The test sends a sentence and looks for the word “true” in the answer. Staff still check the reading before it is saved. The reader runs when the key is saved and the switch is on. It does not wait for Connected.</p>
+</section>
+
+<section>
+  <h2>9. Order that matches the code</h2>
+  <ol>
+    <li>Booking on the website never shows a payment method. Do not look for one there.</li>
+    <li>Car and yacht prices and the refundable deposit show on the estimate. The deposit is not inside the total. The saved booking field for the deposit stays 0 until staff set it.</li>
+    <li>Limousine with Maps off stays “price on request”. With the agent-confirm switch on, the ride is an inquiry.</li>
+    <li>Paste one integration’s keys. Save. Do that provider’s webhook step. Press Test connection. Read the sentence on the card.</li>
+    <li>Only a Connected payment card adds its text button on the pay link.</li>
+    <li>Send one test lead from TikTok or Snapchat before expecting Test connection to pass.</li>
+    <li>Confirm the booking by hand after documents are approved. Payment alone does not confirm a car.</li>
+  </ol>
+  <p class="muted">Source: the CRM program and the Integrations screen on 26 November 2026. No API key is written in this document.</p>
+</section>
+
+</main>
+</body>
+</html>

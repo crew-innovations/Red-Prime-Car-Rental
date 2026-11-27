@@ -413,6 +413,8 @@
         request_type: 'booking', name: name, phone: phone, email: email,
         message: msg || undefined, website: val(form, 'website'), idempotency_key: form._key
       });
+      var payWhen = form.elements.pay_when;
+      if (payWhen) req.pay_now = (payWhen.value || '') === 'now';
       if (b.delivery && val(form, 'address')) req.address = val(form, 'address');
       if (req.product_type === 'transfer') { req.guests = req.passengers; if (form._leadRef) req.lead_ref = form._leadRef; }
       btn.disabled = true; btn.textContent = T.sending; errEl.hidden = true;
@@ -425,7 +427,9 @@
           var ride = !!(booked && d.awaiting_price && d.ride_url), rd = $('[data-done-ride]', form);
           if (bk) bk.hidden = !booked || ride; if (rq) rq.hidden = booked;
           if (rd) { rd.hidden = !ride; if (ride) { var rt = $('[data-ride-text]', rd); rt.textContent = rt.dataset.tpl.replace(':ref', ref); $('[data-ride-link]', rd).href = d.ride_url; } }
-          var dt = $('[data-done-text]', form); if (dt) dt.textContent = dt.dataset.tpl.replace(':ref', ref);
+          var dt = $('[data-done-text]', form);
+          if (dt) dt.textContent = (d.pay_url && !d.pay_now && dt.dataset.tplLater ? dt.dataset.tplLater : dt.dataset.tpl).replace(':ref', ref);
+          if (d.pay_now && d.pay_url) { window.location = d.pay_url; return; }
           var dh = $('[data-done-hold]', form); if (dh) { dh.hidden = !d.hold_hours; dh.textContent = dh.dataset.tpl.replace(':hours', d.hold_hours || ''); }
           var wf = $('[data-wa-follow]', form);
           if (wf && RP.whatsapp) wf.href = RP.whatsapp + '?text=' + encodeURIComponent((RP.lang === 'ar' ? 'مرحباً، رقم طلبي ' : 'Hello, my request reference is ') + ref + ' (' + (form.dataset.item || '') + ')');

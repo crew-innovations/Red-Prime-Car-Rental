@@ -33,6 +33,7 @@ class WebsiteBookingReceived extends Notification
         public string $account, // new / existing / none
         public string $lang = 'en',
         public ?string $loginEmail = null,
+        public ?string $payUrl = null,
     ) {}
 
     public function via(object $notifiable): array
@@ -58,8 +59,13 @@ class WebsiteBookingReceived extends Notification
         if ($b->guests) {
             $mail->line($t('guests', ['n' => $b->guests]));
         }
-        $mail->line($t('total', ['amount' => 'AED '.number_format((float) $b->total, 2)]))
-            ->line($t('payment'));
+        $mail->line($t('total', ['amount' => 'AED '.number_format((float) $b->total, 2)]));
+        if ($this->payUrl) {
+            $mail->line($t('pay_link', ['url' => $this->payUrl]))
+                ->action($t('pay_action'), $this->payUrl);
+        } else {
+            $mail->line($t('payment'));
+        }
         if ($b->hold_until) {
             $mail->line($t('hold', ['hours' => WebsiteBooking::holdHours(), 'until' => $fmt($b->hold_until)]));
         }
