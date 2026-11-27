@@ -190,11 +190,6 @@ class Lead extends Model
         return $this->belongsTo(Customer::class);
     }
 
-    public function customStatus(): BelongsTo
-    {
-        return $this->belongsTo(CustomStatus::class);
-    }
-
     public function interestedIn(): MorphTo
     {
         return $this->morphTo();

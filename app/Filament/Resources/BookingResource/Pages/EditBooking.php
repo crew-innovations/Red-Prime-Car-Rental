@@ -35,7 +35,6 @@ class EditBooking extends EditRecord
         $b = $this->getRecord();
 
         return collect([$b->customer?->name, $b->bookable?->name, $b->drive_mode?->getLabel(), $b->statusLabel(),
-            $b->customStatus?->name,
             // 5 Nov (S3): an agent asked to cancel; Admin decides from the menu.
             $b->cancel_requested_at ? 'Cancellation asked by '.(\App\Models\User::find($b->cancel_requested_by)?->name ?? 'an agent').': '.$b->cancel_request_reason : null,
         ])->filter()->implode(' · ');
@@ -71,7 +70,6 @@ class EditBooking extends EditRecord
         $after = fn () => $this->redirect(BookingResource::getUrl('edit', ['record' => $this->getRecord()]));
 
         return [
-            \App\Filament\Support\CustomStatusAction::make(Actions\Action::class, 'booking'),
             // 11 Nov (limousine): the website price is an estimate; the agent adds extras and confirms it for the customer.
             Actions\Action::make('confirmRide')->label('Confirm price for customer')->icon('heroicon-o-check-badge')->color('primary')
                 ->visible(fn (): bool => \App\Support\Transfers\RideFlow::isRequest($this->getRecord()))
