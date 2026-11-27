@@ -356,6 +356,7 @@ class QuotationResource extends Resource
                 Tables\Columns\TextColumn::make('status')
                     ->badge()
                     ->description(fn (Quotation $record): ?string => $record->viewed_at && $record->status === QuotationStatus::Sent ? 'Opened '.$record->viewed_at->diffForHumans() : null),
+                \App\Filament\Support\CustomStatusAction::column(),
                 Tables\Columns\TextColumn::make('valid_until')
                     ->label('Valid until')
                     ->date('d M Y')
@@ -364,7 +365,7 @@ class QuotationResource extends Resource
                 Tables\Columns\TextColumn::make('creator.name')->label('By')->toggleable(isToggledHiddenByDefault: true),
                 Tables\Columns\TextColumn::make('created_at')->label('Created')->since()->sortable()->toggleable(),
             ])
-            ->modifyQueryUsing(fn (Builder $query) => $query->with(['customer', 'lead', 'bookable', 'creator']))
+            ->modifyQueryUsing(fn (Builder $query) => $query->with(['customer', 'lead', 'bookable', 'creator', 'customStatus']))
             ->defaultSort('created_at', 'desc')
             ->filters([
                 Tables\Filters\SelectFilter::make('status')->options(QuotationStatus::class)->multiple(),
@@ -375,6 +376,7 @@ class QuotationResource extends Resource
                 Tables\Actions\EditAction::make()->iconButton(),
                 Tables\Actions\ActionGroup::make([
                     ...self::workflowActions(Tables\Actions\Action::class),
+                    \App\Filament\Support\CustomStatusAction::make(Tables\Actions\Action::class, 'quotation'),
                     Tables\Actions\DeleteAction::make(),
                     Tables\Actions\RestoreAction::make(),
                 ]),

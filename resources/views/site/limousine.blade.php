@@ -115,7 +115,7 @@
                                                 <button type="button" class="btn btn-red btn-block btn-l" data-next>{{ \App\Support\Transfers\RideFlow::agentConfirms() ? __('site.limo.request_ride') : __('site.booking.book_now') }} <svg class="i flip"><use href="#i-arrow"/></svg></button>
                         @if ($wa)<a class="btn btn-ghost btn-block" href="{{ $wa }}" target="_blank" rel="noopener"><svg class="i" style="color:#25d366"><use href="#i-whatsapp"/></svg>{{ __('site.common.ask_whatsapp') }}</a>@endif
                     </div>
-                    @include('site.partials.request-steps', ['p' => 'lm'] + (\App\Support\Transfers\RideFlow::agentConfirms() ? ['sendLabel' => __('site.limo.request_ride'), 'sendNote' => __('site.limo.estimate_note')] : []))
+                    @include('site.partials.request-steps', ['p' => 'lm', 'offerPay' => ! \App\Support\Transfers\RideFlow::agentConfirms()] + (\App\Support\Transfers\RideFlow::agentConfirms() ? ['sendLabel' => __('site.limo.request_ride'), 'sendNote' => __('site.limo.estimate_note')] : []))
                 </div>
             </div>
         </aside>

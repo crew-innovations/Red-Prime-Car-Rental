@@ -78,6 +78,7 @@ class BookingRequestController extends Controller
             'utm_medium' => ['nullable', 'string', 'max:100'],
             'utm_campaign' => ['nullable', 'string', 'max:150'],
             'lead_ref' => ['nullable', 'string', 'max:40'], // 6 Nov (limousine L4): booking link sent from a lead
+            'pay_now' => ['sometimes', 'boolean'],
         ]);
 
         $key = $data['idempotency_key'] ?? $request->header('Idempotency-Key');
@@ -168,11 +169,12 @@ class BookingRequestController extends Controller
 
         [$lead, $item, $type, $guests, $date, $duplicate, $status, $estimate, $booking, $isNew] = $result;
         $account = null;
+        $payUrl = $booking ? $this->websitePayUrl($booking) : null;
         if ($booking && $isNew) {
-            $account = \App\Support\Site\WebsiteBooking::afterCreated($booking, (string) $data['email'], app()->getLocale() === 'ar' || $request->header('Accept-Language') === 'ar' ? 'ar' : 'en')['account'];
+            $account = \App\Support\Site\WebsiteBooking::afterCreated($booking, (string) $data['email'], app()->getLocale() === 'ar' || $request->header('Accept-Language') === 'ar' ? 'ar' : 'en', $payUrl)['account'];
         }
 
-        return $this->respond($lead, $item, $type, $guests, $date, $duplicate, $status, $estimate, $booking, $account);
+        return $this->respond($lead, $item, $type, $guests, $date, $duplicate, $status, $estimate, $booking, $account, $payUrl, $request->boolean('pay_now'));
     }
 
     /** The published product, looked up by slug. @return array{0: ServiceType, 1: \Illuminate\Database\Eloquent\Model} */
@@ -314,7 +316,22 @@ class BookingRequestController extends Controller
         return trim(implode("\n", array_filter($lines)));
     }
 
-    protected function respond(Lead $lead, $item, string $type, ?int $guests, $date, bool $duplicate, int $status, array $estimate = [], ?\App\Models\Booking $booking = null, ?string $account = null): JsonResponse
+    /** Pay link for a website booking that is still waiting for payment, once a gateway is connected. */
+    protected function websitePayUrl(\App\Models\Booking $booking): ?string
+    {
+        if ($booking->status !== \App\Enums\BookingStatus::PendingPayment || ! \App\Support\Payments\Payments::connected()) {
+            return null;
+        }
+        try {
+            return \App\Support\Payments\Payments::balanceLink($booking->fresh())->url();
+        } catch (\Throwable $e) {
+            report($e);
+
+            return null;
+        }
+    }
+
+    protected function respond(Lead $lead, $item, string $type, ?int $guests, $date, bool $duplicate, int $status, array $estimate = [], ?\App\Models\Booking $booking = null, ?string $account = null, ?string $payUrl = null, bool $payNow = false): JsonResponse
     {
         if ($booking) {
             return response()->json([
@@ -334,9 +351,13 @@ class BookingRequestController extends Controller
                     // 11 Nov (limousine): a ride request waits for the agent's price; the customer follows it on one page.
                     'awaiting_price' => $ride = \App\Support\Transfers\RideFlow::isRequest($booking),
                     'ride_url' => $booking->service_type === ServiceType::Transfer ? \App\Support\Transfers\Tracking::link($booking) : null,
+                    'pay_url' => $payUrl,
+                    'pay_now' => $payNow && $payUrl !== null,
                     'message' => $ride
                         ? 'Thank you. We have your ride request. Our team confirms the final price shortly; you then accept and pay on your ride page.'
-                        : 'Thank you. Your booking is saved and waiting for payment. Our team will send you the payment link.',
+                        : ($payUrl
+                            ? 'Thank you. Your booking is saved and waiting for payment. The payment link is in your email.'
+                            : 'Thank you. Your booking is saved and waiting for payment. Our team will send you the payment link.'),
                     'product' => ['type' => $item->getMorphClass() === 'trip' ? 'yacht_trip' : $item->getMorphClass(), 'slug' => $item->slug, 'name' => $item->name],
                 ],
             ], $status);

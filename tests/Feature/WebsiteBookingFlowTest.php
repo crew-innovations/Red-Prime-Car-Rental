@@ -66,6 +66,34 @@ class WebsiteBookingFlowTest extends TestCase
         $this->assertTrue($lead->hasLiveBooking());
     }
 
+    public function test_a_connected_gateway_offers_pay_now_or_a_link(): void
+    {
+        $i = \App\Models\Integration::for('stripe');
+        $i->fill(['enabled' => true, 'mode' => 'test', 'status' => 'connected', 'config' => []]);
+        $i->putSecrets(['secret_key' => 'sk_test_x', 'webhook_secret' => 'whsec_test'], 'test');
+        $i->save();
+
+        $car = $this->car(['is_published' => true, 'slug' => 'patrol-link']);
+        $later = $this->postJson('/api/v1/booking-requests', [
+            'product_type' => 'car', 'product_slug' => $car->slug, 'request_type' => 'booking',
+            'start_at' => '2026-11-10 10:00', 'end_at' => '2026-11-12 10:00', 'drive_mode' => 'self_drive',
+            'name' => 'Lina', 'phone' => '+971 55 410 5000', 'email' => 'lina@example.com', 'pay_now' => false,
+        ])->assertCreated();
+        $later->assertJsonPath('data.pay_now', false);
+        $this->assertStringContainsString('/pay/', (string) $later->json('data.pay_url'));
+        $this->assertSame(BookingStatus::PendingPayment, Booking::first()->status);
+        $this->assertSame(1, \App\Models\PaymentRequest::count());
+
+        $now = $this->postJson('/api/v1/booking-requests', [
+            'product_type' => 'car', 'product_slug' => $car->slug, 'request_type' => 'booking',
+            'start_at' => '2026-11-18 10:00', 'end_at' => '2026-11-20 10:00', 'drive_mode' => 'self_drive',
+            'name' => 'Hadi', 'phone' => '+971 55 410 5001', 'email' => 'hadi@example.com', 'pay_now' => true,
+        ])->assertCreated();
+        $now->assertJsonPath('data.pay_now', true);
+        $this->assertStringContainsString('/pay/', (string) $now->json('data.pay_url'));
+        $this->assertSame(BookingStatus::PendingPayment, Booking::orderByDesc('id')->first()->status);
+    }
+
     public function test_a_paid_booking_with_missing_documents_stays_unconfirmed(): void
     {
         $car = $this->car(['is_published' => true, 'slug' => 'patrol-pay']);
