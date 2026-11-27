@@ -451,7 +451,6 @@ class LeadResource extends Resource
                     ->formatStateUsing(fn (Lead $record): string => $record->stageLabel())
                     ->color(fn (Lead $record): string => $record->pipeline?->stageColor($record->stage) ?? 'gray')
                     ->description(fn (Lead $record): ?string => $record->pipeline?->getLabel()),
-                \App\Filament\Support\CustomStatusAction::column(),
                 Tables\Columns\TextColumn::make('assignee.name')
                     ->label('Salesperson')
                     ->placeholder('Unassigned')
@@ -479,7 +478,7 @@ class LeadResource extends Resource
                     ->dateTimeTooltip('d M Y, H:i')
                     ->sortable(),
             ])
-            ->modifyQueryUsing(fn (Builder $query) => $query->with(['leadSource', 'assignee', 'interestedIn', 'customStatus']))
+            ->modifyQueryUsing(fn (Builder $query) => $query->with(['leadSource', 'assignee', 'interestedIn']))
             ->defaultSort('created_at', 'desc')
             ->striped()
             ->filtersFormColumns(2)
@@ -548,7 +547,6 @@ class LeadResource extends Resource
                         ->visible(fn (Lead $record): bool => $record->pipeline !== Pipeline::B2b && $record->stage !== Pipeline::LOST && ! $record->trashed() && ! $record->hasLiveBooking()),
                     self::convertAction(),
                     self::markLostAction(),
-                    \App\Filament\Support\CustomStatusAction::make(Tables\Actions\Action::class, 'lead'),
                     Tables\Actions\DeleteAction::make(),
                     Tables\Actions\RestoreAction::make(),
                 ])->hidden(fn (Lead $record): bool => static::waitingForAgent($record)),

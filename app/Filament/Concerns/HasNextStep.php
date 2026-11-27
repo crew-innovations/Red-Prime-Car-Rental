@@ -17,7 +17,7 @@ use Illuminate\Support\HtmlString;
 trait HasNextStep
 {
     /** Buttons that stay next to the big one (phone and messages, used all day). */
-    protected array $keepBesideNextStep = ['whatsapp', 'call', 'customStatus'];
+    protected array $keepBesideNextStep = ['whatsapp', 'call'];
 
     protected function nextStep(): array
     {

@@ -161,7 +161,6 @@ class HelpGuides
                         'The status follows the pipeline stage: change "Stage" on the lead, or drag the card on the Pipeline board.',
                         'Won makes or links the customer profile (never a duplicate) and the lead counts as converted.',
                         'Lost needs a reason: use "Mark as lost".',
-                        'Custom status is an extra label. Press "Custom status", pick one, and save. Only an Admin can type a new status. The pipeline stage does not change.',
                     ],
                     'Make a quotation or booking from a lead' => [
                         'Open the lead and press "Create quotation" or "Create booking".',
@@ -241,7 +240,6 @@ class HelpGuides
                     'Send on WhatsApp' => 'Opens WhatsApp with the quote link.',
                     'Open customer / Open lead' => 'Jump to the linked records.',
                     'Customer details' => 'Next to the customer: opens the full customer form.',
-                    'Custom status' => 'An extra label on this quotation. Only an Admin can add a new one. Sent, accepted and the other quotation statuses stay as they are.',
                 ],
                 'after' => [
                     'The customer gets a link to view, accept or decline. You are told when they answer.',
@@ -318,7 +316,6 @@ class HelpGuides
                 'buttons' => [
                     'Tabs' => 'Today, Just added (last 7 days), Upcoming, With customer, Waiting for payment, Balance due, Deposits to settle, Late returns, Enquiries & quotes, Completed, Cancelled, All.',
                     'Big red button' => 'The next step for this booking (payment, hand over, receive back, settle).',
-                    'Custom status' => 'An extra label on this booking. Only an Admin can add a new one. Waiting for payment, Confirmed and the other booking statuses stay as they are.',
                     'Documents' => 'Confirmation, invoice, deposit statement, job report, borrow agreement PDFs.',
                     'Message the customer / driver' => 'WhatsApp or message from the booking.',
                 ],

@@ -1025,7 +1025,7 @@ class BookingResource extends Resource
     {
         return $table
             ->columns(self::tableColumns())
-            ->modifyQueryUsing(fn (Builder $query) => $query->with(['customer', 'bookable', 'driver', 'customStatus']))
+            ->modifyQueryUsing(fn (Builder $query) => $query->with(['customer', 'bookable', 'driver']))
             ->defaultSort('start_at')
             ->striped()
             ->filtersFormColumns(2)
@@ -1061,7 +1061,6 @@ class BookingResource extends Resource
                     BookingActions::refundDeposit(Tables\Actions\Action::class),
                     BookingActions::whatsapp(Tables\Actions\Action::class),
                     BookingActions::cancel(Tables\Actions\Action::class),
-                    \App\Filament\Support\CustomStatusAction::make(Tables\Actions\Action::class, 'booking'),
                     BookingActions::requestCancel(Tables\Actions\Action::class),
                     Tables\Actions\DeleteAction::make(),
                     Tables\Actions\RestoreAction::make(),
@@ -1107,7 +1106,6 @@ class BookingResource extends Resource
                     ? ($record->hold_until ? 'Website · pay by '.$record->hold_until->format('j M H:i') : 'Website')
                     : null)
                 ->sortable(),
-            \App\Filament\Support\CustomStatusAction::column(),
             Tables\Columns\TextColumn::make('total')
                 ->label('Total')
                 ->alignEnd()

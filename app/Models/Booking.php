@@ -493,11 +493,6 @@ class Booking extends Model implements HasMedia
         return $this->belongsTo(Customer::class)->withTrashed();
     }
 
-    public function customStatus(): BelongsTo
-    {
-        return $this->belongsTo(CustomStatus::class);
-    }
-
     public function lead(): BelongsTo
     {
         return $this->belongsTo(Lead::class);
