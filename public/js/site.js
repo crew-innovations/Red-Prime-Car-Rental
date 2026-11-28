@@ -819,34 +819,56 @@
   var log = root.querySelector('[data-assist-log]');
   var visitor = localStorage.getItem('rp-visitor');
   if (!visitor) { visitor = 'v' + Math.random().toString(36).slice(2) + Date.now().toString(36); localStorage.setItem('rp-visitor', visitor); }
-  function fill(box, text) {
-    var lines = String(text).split('\n');
-    var list = null;
-    function closeList() { if (list) { box.appendChild(list); list = null; } }
-    lines.forEach(function (line) {
-      var t = line.trim();
-      if (!t) { closeList(); return; }
-      if (t.slice(0, 2) === '- ') {
-        if (!list) list = document.createElement('ul');
-        var li = document.createElement('li');
-        li.textContent = t.slice(2);
-        list.appendChild(li);
-        return;
-      }
-      closeList();
-      var para = document.createElement('p');
-      para.textContent = t;
-      box.appendChild(para);
-    });
-    closeList();
-  }
-  function say(text, who) {
+  var typeToken = 0;
+  function say(text) {
     if (!text) return;
     var box = document.createElement('div');
-    box.className = 'msg ' + (who === 'me' ? 'me' : 'bot');
-    fill(box, text);
+    box.className = 'msg me';
+    var para = document.createElement('p');
+    para.textContent = text;
+    box.appendChild(para);
     log.appendChild(box);
     log.scrollTop = log.scrollHeight;
+  }
+  function typeReply(text) {
+    var token = ++typeToken;
+    return new Promise(function (resolve) {
+      if (!text) { resolve(); return; }
+      var box = document.createElement('div');
+      box.className = 'msg bot';
+      log.appendChild(box);
+      var lines = String(text).split('\n').map(function (line) { return line.trim(); }).filter(Boolean);
+      var index = 0;
+      var word = 0;
+      var words = [];
+      var node = null;
+      var list = null;
+      function tick() {
+        if (token !== typeToken) { resolve(); return; }
+        if (!node) {
+          if (index >= lines.length) { log.scrollTop = log.scrollHeight; resolve(); return; }
+          var line = lines[index];
+          var bullet = line.slice(0, 2) === '- ';
+          words = (bullet ? line.slice(2) : line).split(/\s+/).filter(Boolean);
+          word = 0;
+          if (bullet) {
+            if (!list) { list = document.createElement('ul'); box.appendChild(list); }
+            node = document.createElement('li');
+            list.appendChild(node);
+          } else {
+            list = null;
+            node = document.createElement('p');
+            box.appendChild(node);
+          }
+        }
+        node.textContent += (node.textContent ? ' ' : '') + words[word];
+        word++;
+        log.scrollTop = log.scrollHeight;
+        if (word >= words.length) { node = null; index++; }
+        setTimeout(tick, 36);
+      }
+      tick();
+    });
   }
   function typing() {
     var box = document.createElement('div');
@@ -857,7 +879,7 @@
     log.scrollTop = log.scrollHeight;
     return box;
   }
-  function greet() { say(root.getAttribute('data-greet') || '', 'bot'); }
+  function greet() { typeReply(root.getAttribute('data-greet') || ''); }
   root.querySelector('[data-assist-open]').addEventListener('click', function () {
     panel.hidden = false;
     if (!log.childElementCount) greet();
@@ -879,25 +901,25 @@
       .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
       .then(function (res) {
         if (wait.parentNode) wait.remove();
-        say((res.j.data && res.j.data.reply) || (res.j.message) || root.getAttribute('data-unavailable') || '', 'bot');
+        typeReply((res.j.data && res.j.data.reply) || (res.j.message) || root.getAttribute('data-unavailable') || '');
         if (res.j.data && res.j.data.pay_url) { window.location.href = res.j.data.pay_url; }
       })
       .catch(function () {
         if (wait.parentNode) wait.remove();
-        say(root.getAttribute('data-unavailable') || '', 'bot');
+        typeReply(root.getAttribute('data-unavailable') || '');
       });
   }
   root.querySelector('[data-assist-form]').addEventListener('submit', function (e) {
     e.preventDefault();
     var msg = root.querySelector('[data-assist-message]');
     if (!msg.value.trim()) return;
-    say(msg.value.trim(), 'me');
+    say(msg.value.trim());
     send().then(function () { msg.value = ''; });
   });
   root.querySelectorAll('[data-assist-chip]').forEach(function (chip) {
     chip.addEventListener('click', function () {
       var kind = chip.getAttribute('data-assist-chip');
-      say(chip.textContent.trim(), 'me');
+      say(chip.textContent.trim());
       if (kind === 'team') {
         var box = root.querySelector('[data-assist-contact]');
         if (box) box.hidden = false;
@@ -918,7 +940,7 @@
   if (contact) {
     contact.addEventListener('submit', function (e) {
       e.preventDefault();
-      say(contact.querySelector('button').textContent.trim(), 'me');
+      say(contact.querySelector('button').textContent.trim());
       send({
         action: 'enquiry',
         message: 'Please contact the team',
@@ -931,7 +953,7 @@
   if (bookbox) bookbox.addEventListener('submit', function (e) { e.preventDefault(); });
   root.querySelectorAll('[data-assist-book]').forEach(function (book) {
     book.addEventListener('click', function () {
-      say(book.textContent.trim(), 'me');
+      say(book.textContent.trim());
       send({
         action: 'book',
         message: 'book',
