@@ -174,4 +174,5 @@
         <a class="btn btn-red" href="#book">{{ __('site.common.book_now') }}</a>
     </div>
 </div>
+@include('site.partials.assistant', ['slug' => $car['slug'] ?? null])
 @endsection

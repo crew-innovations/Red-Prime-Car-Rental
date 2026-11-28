@@ -811,3 +811,53 @@
     render();
   });
 })();
+
+(function () {
+  var root = document.querySelector('[data-assist]');
+  if (!root) return;
+  var panel = root.querySelector('[data-assist-panel]');
+  var log = root.querySelector('[data-assist-log]');
+  var visitor = localStorage.getItem('rp-visitor');
+  if (!visitor) { visitor = 'v' + Math.random().toString(36).slice(2) + Date.now().toString(36); localStorage.setItem('rp-visitor', visitor); }
+  root.querySelector('[data-assist-open]').addEventListener('click', function () { panel.hidden = false; });
+  root.querySelector('[data-assist-close]').addEventListener('click', function () { panel.hidden = true; });
+  function say(text) { var p = document.createElement('p'); p.textContent = text; log.appendChild(p); log.scrollTop = log.scrollHeight; }
+  function send(extra) {
+    var msg = root.querySelector('[data-assist-message]');
+    var body = Object.assign({
+      visitor_id: visitor,
+      message: (extra && extra.message) || msg.value,
+      locale: root.getAttribute('data-locale') || 'en',
+      product_slug: root.getAttribute('data-slug') || null,
+      website: (root.querySelector('.assist-hp') || {}).value || ''
+    }, extra || {});
+    return fetch('/api/v1/chat', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' }, body: JSON.stringify(body) })
+      .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+      .then(function (res) {
+        say((res.j.data && res.j.data.reply) || (res.j.message) || '');
+        if (res.j.data && res.j.data.pay_url) { window.location.href = res.j.data.pay_url; }
+      })
+      .catch(function () { say(''); });
+  }
+  root.querySelector('[data-assist-form]').addEventListener('submit', function (e) {
+    e.preventDefault();
+    var msg = root.querySelector('[data-assist-message]');
+    if (!msg.value.trim()) return;
+    say(msg.value.trim());
+    send().then(function () { msg.value = ''; });
+  });
+  root.querySelectorAll('[data-assist-book]').forEach(function (book) {
+    book.addEventListener('click', function () {
+      send({
+        action: 'book',
+        message: 'book',
+        name: root.querySelector('[data-assist-name]').value,
+        phone: root.querySelector('[data-assist-phone]').value,
+        email: root.querySelector('[data-assist-email]').value,
+        start_at: root.querySelector('[data-assist-start]').value,
+        end_at: root.querySelector('[data-assist-end]').value,
+        pay_now: book.getAttribute('data-pay') === '1'
+      });
+    });
+  });
+})();

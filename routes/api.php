@@ -51,6 +51,10 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
     Route::post('enquiries', [\App\Http\Controllers\Api\V1\EnquiryController::class, 'store'])
         ->middleware('throttle:api-booking-requests')
         ->name('enquiries.store');
+
+    Route::post('chat', [\App\Http\Controllers\Api\V1\ChatController::class, 'store'])
+        ->middleware('throttle:api-chat')
+        ->name('chat.store');
 });
 
 // Payment provider webhooks (28 Oct-2, Phase 13): signature / token checked per provider, idempotent.

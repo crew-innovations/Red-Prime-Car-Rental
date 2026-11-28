@@ -133,6 +133,10 @@ class AppServiceProvider extends ServiceProvider
             \Illuminate\Cache\RateLimiting\Limit::perMinute(5)->by($request->ip()),
             \Illuminate\Cache\RateLimiting\Limit::perDay(50)->by($request->ip()),
         ]);
+        \Illuminate\Support\Facades\RateLimiter::for('api-chat', fn (\Illuminate\Http\Request $request) => [
+            \Illuminate\Cache\RateLimiting\Limit::perMinute(5)->by($request->ip().'|'.substr((string) $request->input('visitor_id'), 0, 64)),
+            \Illuminate\Cache\RateLimiting\Limit::perDay(50)->by($request->ip().'|'.substr((string) $request->input('visitor_id'), 0, 64)),
+        ]);
 
         // Websites allowed to call the API from a browser: .env plus Business settings.
         try {

@@ -441,4 +441,5 @@
 </section>
 
 @include('site.partials.cta')
+@include('site.partials.assistant')
 @endsection
