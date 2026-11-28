@@ -819,13 +819,43 @@
   var log = root.querySelector('[data-assist-log]');
   var visitor = localStorage.getItem('rp-visitor');
   if (!visitor) { visitor = 'v' + Math.random().toString(36).slice(2) + Date.now().toString(36); localStorage.setItem('rp-visitor', visitor); }
+  function fill(box, text) {
+    var lines = String(text).split('\n');
+    var list = null;
+    function closeList() { if (list) { box.appendChild(list); list = null; } }
+    lines.forEach(function (line) {
+      var t = line.trim();
+      if (!t) { closeList(); return; }
+      if (t.slice(0, 2) === '- ') {
+        if (!list) list = document.createElement('ul');
+        var li = document.createElement('li');
+        li.textContent = t.slice(2);
+        list.appendChild(li);
+        return;
+      }
+      closeList();
+      var para = document.createElement('p');
+      para.textContent = t;
+      box.appendChild(para);
+    });
+    closeList();
+  }
   function say(text, who) {
     if (!text) return;
-    var p = document.createElement('p');
-    p.className = who === 'me' ? 'me' : 'bot';
-    p.textContent = text;
-    log.appendChild(p);
+    var box = document.createElement('div');
+    box.className = 'msg ' + (who === 'me' ? 'me' : 'bot');
+    fill(box, text);
+    log.appendChild(box);
     log.scrollTop = log.scrollHeight;
+  }
+  function typing() {
+    var box = document.createElement('div');
+    box.className = 'msg bot typing';
+    box.setAttribute('aria-hidden', 'true');
+    box.innerHTML = '<i></i><i></i><i></i>';
+    log.appendChild(box);
+    log.scrollTop = log.scrollHeight;
+    return box;
   }
   function greet() { say(root.getAttribute('data-greet') || '', 'bot'); }
   root.querySelector('[data-assist-open]').addEventListener('click', function () {
@@ -844,13 +874,18 @@
       product_slug: root.getAttribute('data-slug') || null,
       website: (root.querySelector('.assist-hp') || {}).value || ''
     }, extra || {});
+    var wait = typing();
     return fetch('/api/v1/chat', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' }, body: JSON.stringify(body) })
       .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
       .then(function (res) {
+        if (wait.parentNode) wait.remove();
         say((res.j.data && res.j.data.reply) || (res.j.message) || root.getAttribute('data-unavailable') || '', 'bot');
         if (res.j.data && res.j.data.pay_url) { window.location.href = res.j.data.pay_url; }
       })
-      .catch(function () { say(root.getAttribute('data-unavailable') || '', 'bot'); });
+      .catch(function () {
+        if (wait.parentNode) wait.remove();
+        say(root.getAttribute('data-unavailable') || '', 'bot');
+      });
   }
   root.querySelector('[data-assist-form]').addEventListener('submit', function (e) {
     e.preventDefault();
