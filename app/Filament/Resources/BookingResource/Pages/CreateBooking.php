@@ -201,6 +201,7 @@ class CreateBooking extends CreateRecord
 
     protected function mutateFormDataBeforeCreate(array $data): array
     {
+        $data = \App\Support\CustomStatuses::take($data, 'booking', 'status', \App\Enums\BookingStatus::PendingPayment->value);
         // 18 Nov (meeting item 5): without "change status", a new booking starts as at most Waiting for payment.
         $allowed = array_map(fn ($s) => $s->value, BookingResource::statusChoices(null));
         if (! in_array($data['status'] ?? null, $allowed, true)) {

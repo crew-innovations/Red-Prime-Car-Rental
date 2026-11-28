@@ -34,8 +34,7 @@ class EditBooking extends EditRecord
         /** @var Booking $b */
         $b = $this->getRecord();
 
-        return collect([$b->customer?->name, $b->bookable?->name, $b->drive_mode?->getLabel(), $b->statusLabel(),
-            $b->customStatus?->name,
+        return collect([$b->customer?->name, $b->bookable?->name, $b->drive_mode?->getLabel(), $b->customStatus?->name ?: $b->statusLabel(),
             // 5 Nov (S3): an agent asked to cancel; Admin decides from the menu.
             $b->cancel_requested_at ? 'Cancellation asked by '.(\App\Models\User::find($b->cancel_requested_by)?->name ?? 'an agent').': '.$b->cancel_request_reason : null,
         ])->filter()->implode(' · ');
@@ -44,6 +43,7 @@ class EditBooking extends EditRecord
     /** 18 Nov (meeting item 5): the status is changed by hand only by Admin (the form field is locked for others too). */
     protected function mutateFormDataBeforeSave(array $data): array
     {
+        $data = \App\Support\CustomStatuses::take($data, 'booking', 'status', $this->getRecord()->status->value, \App\Support\Access::allows('change-booking-status'), $this->getRecord());
         if (! \App\Support\Access::allows('change-booking-status')) {
             unset($data['status'], $data['cancel_reason']);
         }
@@ -71,7 +71,6 @@ class EditBooking extends EditRecord
         $after = fn () => $this->redirect(BookingResource::getUrl('edit', ['record' => $this->getRecord()]));
 
         return [
-            \App\Filament\Support\CustomStatusAction::make(Actions\Action::class, 'booking'),
             // 11 Nov (limousine): the website price is an estimate; the agent adds extras and confirms it for the customer.
             Actions\Action::make('confirmRide')->label('Confirm price for customer')->icon('heroicon-o-check-badge')->color('primary')
                 ->visible(fn (): bool => \App\Support\Transfers\RideFlow::isRequest($this->getRecord()))

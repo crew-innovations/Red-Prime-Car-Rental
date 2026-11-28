@@ -3,8 +3,10 @@
 namespace Tests\Feature;
 
 use App\Enums\BookingStatus;
+use App\Enums\Pipeline;
 use App\Enums\QuotationStatus;
 use App\Enums\ServiceType;
+use App\Filament\Resources\QuotationResource\Pages\CreateQuotation;
 use App\Filament\Resources\BookingResource\Pages\EditBooking;
 use App\Filament\Resources\BookingResource\Pages\ListBookings;
 use App\Filament\Resources\LeadResource\Pages\EditLead;
@@ -16,6 +18,7 @@ use App\Models\Lead;
 use App\Models\Quotation;
 use App\Support\CustomStatuses;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Validation\ValidationException;
 use Livewire\Livewire;
 use Symfony\Component\HttpKernel\Exception\HttpException;
 use Tests\Support\CrmFixtures;
@@ -31,23 +34,28 @@ class CustomStatusTest extends TestCase
         $this->seedRoles();
     }
 
-    public function test_an_admin_adds_a_custom_status_without_changing_the_real_one(): void
+    public function test_an_admin_adds_a_status_to_the_list_without_changing_the_fixed_one(): void
     {
         $this->actingAs($this->user('Admin'));
-        $lead = Lead::create(['name' => 'Omar', 'service_type' => 'car', 'assigned_to' => auth()->id()]);
+        $source = \App\Models\LeadSource::create(['name' => 'Phone', 'slug' => 'phone', 'is_active' => true]);
+        $lead = Lead::create(['name' => 'Omar', 'phone' => '0501112233', 'service_type' => 'car', 'lead_source_id' => $source->id, 'assigned_to' => auth()->id()]);
         $stage = $lead->stage;
         $status = $lead->status;
 
         Livewire::test(EditLead::class, ['record' => $lead->id])
-            ->callAction('customStatus', ['new_name' => 'VIP follow-up', 'color' => 'warning'])
-            ->assertHasNoActionErrors();
+            ->fillForm(['new_status' => 'VIP follow-up'])
+            ->call('save')
+            ->assertHasNoFormErrors();
 
         $lead->refresh();
         $this->assertSame($stage, $lead->stage);
         $this->assertSame($status, $lead->status);
         $this->assertSame('VIP follow-up', $lead->customStatus->name);
         $this->assertSame('lead', $lead->customStatus->record_type);
-        $this->assertSame('warning', $lead->customStatus->color);
+
+        Livewire::test(ListLeads::class, ['activeTab' => 'all'])->assertOk()->assertSee('VIP follow-up');
+        Livewire::test(EditLead::class, ['record' => $lead->id])
+            ->assertFormSet(['stage' => CustomStatuses::key($lead->custom_status_id)]);
     }
 
     public function test_staff_can_pick_a_status_but_cannot_add_one(): void
@@ -60,19 +68,19 @@ class CustomStatusTest extends TestCase
 
         $this->actingAs($sales);
         Livewire::test(EditBooking::class, ['record' => $booking->id])
-            ->callAction('customStatus', ['custom_status_id' => $made->id])
-            ->assertHasNoActionErrors();
+            ->fillForm(['status' => CustomStatuses::key($made->id)])
+            ->call('save')
+            ->assertHasNoFormErrors();
         $this->assertSame($made->id, $booking->fresh()->custom_status_id);
         $this->assertSame(BookingStatus::Confirmed, $booking->fresh()->status);
+        Livewire::test(ListBookings::class, ['activeTab' => 'all'])->assertSee('Airport run');
 
         try {
-            CustomStatuses::apply($booking, 'booking', ['new_name' => 'Not allowed']);
+            CustomStatuses::take(['new_status' => 'Not allowed', 'status' => BookingStatus::Confirmed->value], 'booking', 'status');
             $this->fail('A salesperson added a status.');
         } catch (HttpException $e) {
             $this->assertSame(403, $e->getStatusCode());
         }
-        Livewire::test(EditBooking::class, ['record' => $booking->id])
-            ->callAction('customStatus', ['new_name' => 'Not allowed']);
         $this->assertNull(CustomStatus::query()->where('name', 'Not allowed')->first());
         $this->assertSame($made->id, $booking->fresh()->custom_status_id);
     }
@@ -81,19 +89,37 @@ class CustomStatusTest extends TestCase
     {
         $this->actingAs($this->user('Admin'));
         $bookingStatus = CustomStatus::create(['record_type' => 'booking', 'name' => 'Hold', 'color' => 'gray']);
-        $quote = Quotation::create(['service_type' => ServiceType::Car, 'status' => QuotationStatus::Draft]);
+        $car = $this->car();
+        $start = now()->addDays(10)->toDateString();
+        $end = now()->addDays(12)->toDateString();
+        $lead = Lead::create(['name' => 'Rashid Omar', 'phone' => '0502223344', 'pipeline' => Pipeline::Car, 'service_type' => ServiceType::Car,
+            'interested_in_type' => 'car', 'interested_in_id' => $car->id, 'preferred_date' => $start, 'end_date' => $end]);
+        Livewire::test(CreateQuotation::class, ['lead' => (string) $lead->id])
+            ->fillForm(['valid_until' => now()->addDays(20)->toDateString(), 'terms' => 'Our terms'])
+            ->call('create')
+            ->assertHasNoFormErrors();
+        $quote = Quotation::latest('id')->first();
 
+        try {
+            CustomStatuses::take(['status_choice' => CustomStatuses::key($bookingStatus->id)], 'quotation', 'status_choice', $quote->status->value, false, $quote);
+            $this->fail('A booking status was accepted on a quotation.');
+        } catch (ValidationException $e) {
+            $this->assertArrayHasKey('status_choice', $e->errors());
+        }
         Livewire::test(EditQuotation::class, ['record' => $quote->id])
-            ->callAction('customStatus', ['custom_status_id' => $bookingStatus->id])
-            ->assertHasActionErrors(['custom_status_id']);
+            ->fillForm(['status_choice' => CustomStatuses::key($bookingStatus->id)])
+            ->call('save');
         $this->assertNull($quote->fresh()->custom_status_id);
+        $this->assertSame(QuotationStatus::Draft, $quote->fresh()->status);
 
         Livewire::test(EditQuotation::class, ['record' => $quote->id])
-            ->callAction('customStatus', ['new_name' => 'Sent by hand', 'color' => 'info'])
-            ->assertHasNoActionErrors();
+            ->fillForm(['new_status' => 'Sent by hand'])
+            ->call('save')
+            ->assertHasNoFormErrors();
         $quote->refresh();
         $this->assertSame(QuotationStatus::Draft, $quote->status);
         $this->assertSame('quotation', $quote->customStatus->record_type);
+        Livewire::test(ListQuotations::class)->assertOk()->assertSee('Sent by hand');
     }
 
     public function test_the_lead_booking_and_quotation_lists_open(): void

@@ -13,6 +13,7 @@ use App\Models\Customer;
 use App\Models\Lead;
 use App\Models\Trip;
 use App\Models\User;
+use App\Support\CustomStatuses;
 use App\Models\Yacht;
 use App\Support\Phone;
 use App\Filament\Concerns\GuardedResource;
@@ -260,21 +261,27 @@ class LeadResource extends Resource
                                         }
                                     }),
                                 Forms\Components\Select::make('stage')
-                                    ->options(fn (Get $get): array => Pipeline::tryFrom((string) $get('pipeline'))?->stageOptions() ?? [])
+                                    ->options(fn (Get $get): array => CustomStatuses::withExtras('lead', Pipeline::tryFrom((string) $get('pipeline'))?->stageOptions() ?? []))
                                     ->default('new')
                                     ->native(false)
                                     ->required()
                                     ->live()
-                                    ->selectablePlaceholder(false),
+                                    ->selectablePlaceholder(false)
+                                    ->afterStateHydrated(function (Forms\Components\Select $component, ?Lead $record): void {
+                                        if ($record?->custom_status_id) {
+                                            $component->state(CustomStatuses::key($record->custom_status_id));
+                                        }
+                                    }),
+                                CustomStatuses::nameField(),
                                 Forms\Components\Placeholder::make('stage_progress')
                                     ->hiddenLabel()
-                                    ->content(fn (Get $get): HtmlString => self::stageProgress(Pipeline::tryFrom((string) $get('pipeline')), $get('stage'))),
+                                    ->content(fn (Get $get, ?Lead $record): HtmlString => self::stageProgress(Pipeline::tryFrom((string) $get('pipeline')), CustomStatuses::asFixed($get('stage'), $record?->stage))),
                                 Forms\Components\TextInput::make('lost_reason')
                                     ->validationMessages(['required' => 'Please add why this lead was lost.'])
                                     ->label('Why was it lost?')
                                     ->datalist(fn (): array => \App\Support\Options::list('lost_reasons'))
-                                    ->required(fn (Get $get): bool => $get('stage') === Pipeline::LOST)
-                                    ->visible(fn (Get $get): bool => $get('stage') === Pipeline::LOST),
+                                    ->required(fn (Get $get, ?Lead $record): bool => CustomStatuses::asFixed($get('stage'), $record?->stage) === Pipeline::LOST)
+                                    ->visible(fn (Get $get, ?Lead $record): bool => CustomStatuses::asFixed($get('stage'), $record?->stage) === Pipeline::LOST),
                                 Forms\Components\ToggleButtons::make('priority')
                                     ->options(LeadPriority::class)
                                     ->default(LeadPriority::Warm->value)
@@ -448,10 +455,9 @@ class LeadResource extends Resource
                 Tables\Columns\TextColumn::make('stage')
                     ->badge()
                     ->sortable()
-                    ->formatStateUsing(fn (Lead $record): string => $record->stageLabel())
-                    ->color(fn (Lead $record): string => $record->pipeline?->stageColor($record->stage) ?? 'gray')
+                    ->formatStateUsing(fn (Lead $record): string => $record->customStatus?->name ?: $record->stageLabel())
+                    ->color(fn (Lead $record): string => $record->customStatus?->color ?: ($record->pipeline?->stageColor($record->stage) ?? 'gray'))
                     ->description(fn (Lead $record): ?string => $record->pipeline?->getLabel()),
-                \App\Filament\Support\CustomStatusAction::column(),
                 Tables\Columns\TextColumn::make('assignee.name')
                     ->label('Salesperson')
                     ->placeholder('Unassigned')
@@ -548,7 +554,6 @@ class LeadResource extends Resource
                         ->visible(fn (Lead $record): bool => $record->pipeline !== Pipeline::B2b && $record->stage !== Pipeline::LOST && ! $record->trashed() && ! $record->hasLiveBooking()),
                     self::convertAction(),
                     self::markLostAction(),
-                    \App\Filament\Support\CustomStatusAction::make(Tables\Actions\Action::class, 'lead'),
                     Tables\Actions\DeleteAction::make(),
                     Tables\Actions\RestoreAction::make(),
                 ])->hidden(fn (Lead $record): bool => static::waitingForAgent($record)),

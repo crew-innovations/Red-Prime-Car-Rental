@@ -36,7 +36,12 @@ class EditQuotation extends EditRecord
         /** @var Quotation $q */
         $q = $this->getRecord();
 
-        return collect([$q->customerName(), $q->bookable?->name, $q->status?->getLabel(), $q->customStatus?->name])->filter()->implode(' · ');
+        return collect([$q->customerName(), $q->bookable?->name, $q->customStatus?->name ?: $q->status?->getLabel()])->filter()->implode(' · ');
+    }
+
+    protected function mutateFormDataBeforeSave(array $data): array
+    {
+        return \App\Support\CustomStatuses::take($data, 'quotation', 'status_choice', $this->getRecord()->status->value, false, $this->getRecord());
     }
 
     /** A sent / accepted quote cannot be changed from the form. */
@@ -73,7 +78,6 @@ class EditQuotation extends EditRecord
         $menu = array_values(array_filter($workflow, fn ($a) => ! in_array($a->getName(), ['approvePrice', 'rejectPrice', 'send', 'accept', 'convert'], true)));
 
         return [
-            \App\Filament\Support\CustomStatusAction::make(Actions\Action::class, 'quotation'),
             ...$buttons,
             Actions\ActionGroup::make([
                 ...$menu,

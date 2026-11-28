@@ -117,6 +117,7 @@ class CreateQuotation extends CreateRecord
     /** 20 Nov (item 13): a quote from a lead is saved against that lead's customer (made from the lead if needed). */
     protected function mutateFormDataBeforeCreate(array $data): array
     {
+        $data = \App\Support\CustomStatuses::take($data, 'quotation', 'status_choice', \App\Enums\QuotationStatus::Draft->value, false);
         if (blank($data['customer_id'] ?? null) && ($lead = Lead::find($data['lead_id'] ?? null))) {
             $data['customer_id'] = $lead->ensureCustomer()->id;
         } elseif (filled($data['customer_id'] ?? null) && ($lead = Lead::find($data['lead_id'] ?? null)) && ! $lead->customer_id) {
