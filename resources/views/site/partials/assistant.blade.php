@@ -1,5 +1,5 @@
 @if (\App\Support\Site\WebsiteAssistant::ready())
-<aside class="assist" data-assist data-slug="{{ $slug ?? '' }}" data-locale="{{ app()->getLocale() === 'ar' ? 'ar' : 'en' }}">
+<aside class="assist" data-assist data-slug="{{ $slug ?? '' }}" data-locale="{{ app()->getLocale() === 'ar' ? 'ar' : 'en' }}" data-greet="{{ __('site.assistant.greeting') }}">
     <button type="button" class="btn btn-red assist-open" data-assist-open>{{ __('site.assistant.open') }}</button>
     <div class="assist-panel" hidden data-assist-panel>
         <div class="assist-head">

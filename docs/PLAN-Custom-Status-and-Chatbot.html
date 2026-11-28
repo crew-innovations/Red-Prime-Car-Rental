@@ -109,9 +109,9 @@
   </ul>
   <h3>How a message is handled</h3>
   <ol>
-    <li>The browser sends the message to <code>POST /api/v1/chat</code>. The AI key never goes to the browser.</li>
-    <li>The server checks a short-lived visitor token (a random id in the browser, not a customer password). One visitor is limited, the same style of limit as the booking form, so the AI bill cannot run away.</li>
-    <li>The server decides which tool to use, then calls only that tool:
+    <li>The browser sends the message to <code>POST /api/v1/chat</code>. The reply is written in the program. No AI key is used.</li>
+    <li>The server checks a short-lived visitor token (a random id in the browser, not a customer password). One visitor is limited, the same style of limit as the booking form.</li>
+    <li>The server decides which answer to use, then reads only that source:
       <ul>
         <li>Fleet search: published cars (and yachts, trips, packages) matching the question.</li>
         <li>Price estimate: when the visitor names a car and dates.</li>
@@ -119,12 +119,12 @@
         <li>Create enquiry: when they want a person to call, or the bot cannot answer. This calls the existing enquiry route. A lead appears in Leads. No booking is created.</li>
       </ul>
     </li>
-    <li>The model writes the reply from the tool result only. The server stores the question, the reply, and which tool was used. Staff can open that log later. It is not a CRM Message thread.</li>
+    <li>The sentence is already written in the program. Car facts are filled from the published catalogue. The server stores the question, the reply, and which answer was used. Staff can open that log later. It is not a CRM Message thread.</li>
   </ol>
   <h3>Where it appears</h3>
   <p>First: home page and car pages, English and Arabic. A button opens the box. The car page already knows which car is open, so the first message can include that car. Yacht, trip, package, and limousine pages are the next slice, after the car path is tested. The box uses the site font and the red button. No new visual system.</p>
-  <h3>AI account</h3>
-  <p>Use the same kind of key as Settings › Integrations › Document reader: Anthropic or OpenAI, key stored as a secret, switched on by an Admin, Test connection before it is used. A separate card named <b>Website assistant</b> is clearer than reusing the document-reader key, because the document reader sends ID images and this assistant must not. Billing on that AI account is required. RED PRIME chooses the provider before this part starts.</p>
+  <h3>Where the answers live</h3>
+  <p>Greetings, how to book, and the “our team will confirm” line are written in the program. A car question reads the published car from the database (name, daily price, seats, deposit, and the other fields already shown on the car page). The office phone and address are read from Business settings when those boxes are filled. There is no Anthropic or OpenAI key, and no Integrations card for the chat. The button is on the home page and the car page as soon as the site is deployed.</p>
   <h3>Build in four slices</h3>
   <table>
     <tr><th>Slice</th><th>Visitor can</th><th>Stops when</th></tr>
@@ -144,17 +144,17 @@
     <li>The request refuses to load another customer’s phone or booking, even if the question asks for it.</li>
   </ol>
   <h3>Done when</h3>
-  <p>B1–B4 are checked on the car pages in a browser, in English and Arabic. The help guide for the website and for Leads says a chat booking is the same as Book now. The AI key is in Integrations and is not written into the page or into git.</p>
+  <p>B1–B4 are checked on the car pages in a browser, in English and Arabic. The help guide for the website and for Leads says a chat booking is the same as Book now. The answers stay in the program. No AI key is stored.</p>
 </section>
 
 <section>
   <h2>Decisions needed before building</h2>
   <ol>
     <li>Approve Part A, Part B, both, or neither. A request to plan is not approval to build.</li>
-    <li>For Part B, which AI account: Anthropic or OpenAI. The key is entered by an Admin in Integrations. It is not typed into chat.</li>
+    <li>Part B does not use an outside AI account. Answers are in the program. Car facts come from the published catalogue.</li>
     <li>Part B starts on cars only. Yachts, trips, packages, and limousine follow after the car tests pass, unless you want them in the first slice.</li>
   </ol>
-  <div class="ok">Suggested approval line: “Part A approved” and, separately, “Part B approved, cars first, provider Anthropic” (or OpenAI).</div>
+  <div class="ok">Suggested approval line: “Part A approved” and, separately, “Part B approved, cars first, answers in the program”.</div>
 </section>
 
 </main>
