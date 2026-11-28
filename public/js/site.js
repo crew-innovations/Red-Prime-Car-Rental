@@ -819,13 +819,22 @@
   var log = root.querySelector('[data-assist-log]');
   var visitor = localStorage.getItem('rp-visitor');
   if (!visitor) { visitor = 'v' + Math.random().toString(36).slice(2) + Date.now().toString(36); localStorage.setItem('rp-visitor', visitor); }
-  var greeted = false;
+  function say(text, who) {
+    if (!text) return;
+    var p = document.createElement('p');
+    p.className = who === 'me' ? 'me' : 'bot';
+    p.textContent = text;
+    log.appendChild(p);
+    log.scrollTop = log.scrollHeight;
+  }
+  function greet() { say(root.getAttribute('data-greet') || '', 'bot'); }
   root.querySelector('[data-assist-open]').addEventListener('click', function () {
     panel.hidden = false;
-    if (!greeted) { say(root.getAttribute('data-greet') || ''); greeted = true; }
+    if (!log.childElementCount) greet();
   });
   root.querySelector('[data-assist-close]').addEventListener('click', function () { panel.hidden = true; });
-  function say(text) { var p = document.createElement('p'); p.textContent = text; log.appendChild(p); log.scrollTop = log.scrollHeight; }
+  root.querySelector('[data-assist-restart]').addEventListener('click', function () { log.innerHTML = ''; greet(); });
+  function field(name) { var el = root.querySelector(name); return el ? el.value : ''; }
   function send(extra) {
     var msg = root.querySelector('[data-assist-message]');
     var body = Object.assign({
@@ -838,28 +847,64 @@
     return fetch('/api/v1/chat', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' }, body: JSON.stringify(body) })
       .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
       .then(function (res) {
-        say((res.j.data && res.j.data.reply) || (res.j.message) || '');
+        say((res.j.data && res.j.data.reply) || (res.j.message) || root.getAttribute('data-unavailable') || '', 'bot');
         if (res.j.data && res.j.data.pay_url) { window.location.href = res.j.data.pay_url; }
       })
-      .catch(function () { say(''); });
+      .catch(function () { say(root.getAttribute('data-unavailable') || '', 'bot'); });
   }
   root.querySelector('[data-assist-form]').addEventListener('submit', function (e) {
     e.preventDefault();
     var msg = root.querySelector('[data-assist-message]');
     if (!msg.value.trim()) return;
-    say(msg.value.trim());
+    say(msg.value.trim(), 'me');
     send().then(function () { msg.value = ''; });
   });
+  root.querySelectorAll('[data-assist-chip]').forEach(function (chip) {
+    chip.addEventListener('click', function () {
+      var kind = chip.getAttribute('data-assist-chip');
+      say(chip.textContent.trim(), 'me');
+      if (kind === 'team') {
+        var box = root.querySelector('[data-assist-contact]');
+        if (box) box.hidden = false;
+        send({ message: 'Please contact the team', action: 'enquiry' });
+        return;
+      }
+      if (kind === 'book') {
+        var book = root.querySelector('[data-assist-bookbox]');
+        if (book) book.hidden = false;
+        send({ message: 'How do I book?' });
+        return;
+      }
+      var text = chip.getAttribute('data-assist-text') || chip.textContent.trim();
+      send({ message: text });
+    });
+  });
+  var contact = root.querySelector('[data-assist-contact]');
+  if (contact) {
+    contact.addEventListener('submit', function (e) {
+      e.preventDefault();
+      say(contact.querySelector('button').textContent.trim(), 'me');
+      send({
+        action: 'enquiry',
+        message: 'Please contact the team',
+        name: field('[data-assist-name]'),
+        phone: field('[data-assist-phone]')
+      });
+    });
+  }
+  var bookbox = root.querySelector('[data-assist-bookbox]');
+  if (bookbox) bookbox.addEventListener('submit', function (e) { e.preventDefault(); });
   root.querySelectorAll('[data-assist-book]').forEach(function (book) {
     book.addEventListener('click', function () {
+      say(book.textContent.trim(), 'me');
       send({
         action: 'book',
         message: 'book',
-        name: root.querySelector('[data-assist-name]').value,
-        phone: root.querySelector('[data-assist-phone]').value,
-        email: root.querySelector('[data-assist-email]').value,
-        start_at: root.querySelector('[data-assist-start]').value,
-        end_at: root.querySelector('[data-assist-end]').value,
+        name: field('[data-assist-book-name]'),
+        phone: field('[data-assist-book-phone]'),
+        email: field('[data-assist-book-email]'),
+        start_at: field('[data-assist-start]'),
+        end_at: field('[data-assist-end]'),
         pay_now: book.getAttribute('data-pay') === '1'
       });
     });
