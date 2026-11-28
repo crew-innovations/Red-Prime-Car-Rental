@@ -797,4 +797,19 @@ return [
         'pay_link' => 'Pay online here: :url',
         'pay_action' => 'Pay now',
     ],
+
+    'assistant' => [
+        'title' => 'Ask about a car',
+        'open' => 'Chat',
+        'close' => 'Close',
+        'placeholder' => 'Ask about a published car',
+        'send' => 'Send',
+        'book' => 'Book these dates',
+        'name' => 'Your name',
+        'phone' => 'Phone',
+        'email' => 'Email',
+        'start' => 'Start',
+        'end' => 'End',
+        'unavailable' => 'The assistant is not available right now.',
+    ],
 ];

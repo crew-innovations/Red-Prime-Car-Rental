@@ -161,6 +161,7 @@ class HelpGuides
                         'The status follows the pipeline stage: change "Stage" on the lead, or drag the card on the Pipeline board.',
                         'Won makes or links the customer profile (never a duplicate) and the lead counts as converted.',
                         'Lost needs a reason: use "Mark as lost".',
+                        'Custom status is an extra label. Press "Custom status", pick one, and save. Only an Admin can type a new status. The pipeline stage does not change.',
                     ],
                     'Make a quotation or booking from a lead' => [
                         'Open the lead and press "Create quotation" or "Create booking".',
@@ -240,6 +241,7 @@ class HelpGuides
                     'Send on WhatsApp' => 'Opens WhatsApp with the quote link.',
                     'Open customer / Open lead' => 'Jump to the linked records.',
                     'Customer details' => 'Next to the customer: opens the full customer form.',
+                    'Custom status' => 'An extra label on this quotation. Only an Admin can add a new one. Sent, accepted and the other quotation statuses stay as they are.',
                 ],
                 'after' => [
                     'The customer gets a link to view, accept or decline. You are told when they answer.',
@@ -316,12 +318,13 @@ class HelpGuides
                 'buttons' => [
                     'Tabs' => 'Today, Just added (last 7 days), Upcoming, With customer, Waiting for payment, Balance due, Deposits to settle, Late returns, Enquiries & quotes, Completed, Cancelled, All.',
                     'Big red button' => 'The next step for this booking (payment, hand over, receive back, settle).',
+                    'Custom status' => 'An extra label on this booking. Only an Admin can add a new one. Waiting for payment, Confirmed and the other booking statuses stay as they are.',
                     'Documents' => 'Confirmation, invoice, deposit statement, job report, borrow agreement PDFs.',
                     'Message the customer / driver' => 'WhatsApp or message from the booking.',
                 ],
                 'after' => [
                     'A new car booking for a customer with missing details is saved as "Waiting for payment" with a message saying what is missing to confirm it. Making the booking is never blocked.',
-                    'A website "Book now" is a booking waiting for payment, not a lead waiting for a quotation. When a payment gateway is connected, the customer chooses Pay now or Pay later. Pay now opens the payment page. Pay later emails the payment link. Once it is paid and the documents are still missing, the status reads "Paid, documents pending". It is confirmed only after the documents are approved.',
+                    'A website "Book now" is a booking waiting for payment, not a lead waiting for a quotation. A booking made in the website chat is the same Book now booking. When a payment gateway is connected, the customer chooses Pay now or Pay later. Pay now opens the payment page. Pay later emails the payment link. Once it is paid and the documents are still missing, the status reads "Paid, documents pending". It is confirmed only after the documents are approved.',
                     'If a website booking is not paid in time, it is cancelled and the lead comes back to Contacted with a follow-up for today.',
                     'A second click on Create never makes a second booking.',
                     'Drivers get their delivery / collection jobs on their phone automatically.',

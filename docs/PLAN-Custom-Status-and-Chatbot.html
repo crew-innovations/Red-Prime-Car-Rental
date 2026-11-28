@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>RED PRIME — Plan: custom status and website chatbot</title>
+<style>
+  :root { --red:#d7141a; --ink:#1c1c1c; --muted:#5c5c5c; --line:#eadfca; --paper:#fff; --soft:#faf6ee; }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family:"Segoe UI", Calibri, sans-serif; color:var(--ink); background:#f3f0ea; line-height:1.5; }
+  header { background:#1c1c1c; color:#fff; padding:28px 8vw 22px; }
+  header h1 { margin:0 0 6px; font-size:28px; }
+  header p { margin:0; color:#e6d3a2; max-width:820px; }
+  main { max-width:920px; margin:0 auto; padding:22px 18px 70px; }
+  section { background:var(--paper); border:1px solid var(--line); border-radius:12px; padding:16px 18px 8px; margin:0 0 14px; }
+  h2 { margin:0 0 8px; font-size:20px; color:var(--red); }
+  h3 { margin:16px 0 6px; font-size:16px; }
+  p, li { margin:0 0 8px; }
+  ol, ul { margin:0 0 10px; padding-left:22px; }
+  table { width:100%; border-collapse:collapse; margin:8px 0 12px; font-size:14px; }
+  th, td { border:1px solid var(--line); padding:6px 8px; text-align:left; vertical-align:top; }
+  th { background:var(--soft); }
+  code { font-family:Consolas, monospace; font-size:13px; background:#f6f1e6; padding:1px 4px; }
+  .warn { background:#fff6df; border:1px solid #e2c56a; border-radius:8px; padding:8px 10px; margin:0 0 10px; }
+  .ok { background:#e8f6ee; border:1px solid #8dccaa; border-radius:8px; padding:8px 10px; margin:0 0 10px; }
+  .flow { display:flex; flex-wrap:wrap; gap:8px; margin:10px 0 14px; }
+  .box { background:#fff; border:1.5px solid #222; border-radius:8px; padding:8px 10px; min-width:140px; max-width:210px; font-size:14px; }
+  .box b { display:block; }
+  .box.go { background:#fde8e8; border-color:var(--red); }
+  .box.wait { background:#fff6df; border-color:#8a5a00; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Plan: custom status, then a website chatbot</h1>
+  <p>RED PRIME RENTALS CRM. Two separate pieces of work. Nothing in this document is built until that part is approved in writing. Contract: both are a change request. They are not in Schedule A3–A8 as written.</p>
+</header>
+<main>
+
+<section>
+  <h2>Order</h2>
+  <ol>
+    <li><b>Part A. Custom status.</b> An extra label on a lead, booking, or quotation. The real status does not change.</li>
+    <li><b>Part B. Website chatbot.</b> A text chat on the public site. It answers from published fleet data and the booking flow that already exists. It starts only after Part A is finished or explicitly skipped.</li>
+  </ol>
+  <div class="warn">MySQL on this computer is not running (localhost port 3306 refused the connection). Part A cannot be tested here until MySQL is started. The live site is a separate machine. Do not point this project at the live database to test.</div>
+</section>
+
+<section>
+  <h2>Part A — Custom status</h2>
+  <h3>What it is</h3>
+  <p>Staff need a label of their own, such as “VIP follow-up” or “Airport run”, on a lead, a booking, or a quotation. The pipeline stage, the booking status, and the quotation status stay exactly as they are. The label does not confirm a car, collect money, or move a lead to Won or Lost.</p>
+  <h3>Who can do what</h3>
+  <table>
+    <tr><th>Person</th><th>Can</th></tr>
+    <tr><td>Admin</td><td>Add a new label, pick one, or clear it.</td></tr>
+    <tr><td>Anyone who can open the record</td><td>Pick a label that already exists for that record type, or clear it.</td></tr>
+    <tr><td>Sales and other staff</td><td>Cannot type a new label. The box is hidden, and the server rejects it if it is sent anyway.</td></tr>
+  </table>
+  <p>A label saved on a lead is offered only on leads. A booking label is offered only on bookings. A quotation label is offered only on quotations.</p>
+  <h3>Data</h3>
+  <p>One new table, <code>custom_statuses</code>: name (max 80 characters), colour (grey, blue, green, amber, red, brand), record type (<code>lead</code>, <code>booking</code>, or <code>quotation</code>), active flag, who created it. Unique on record type plus name.</p>
+  <p>One new nullable column, <code>custom_status_id</code>, on <code>leads</code>, <code>bookings</code>, and <code>quotations</code>. Existing rows stay empty. The migration only adds these. <code>down()</code> drops only these. No old status column is changed or removed.</p>
+  <h3>Screens</h3>
+  <ul>
+    <li>Lead, booking, and quotation edit pages: a <b>Custom status</b> button beside the main action (with WhatsApp and Call, not buried only under More).</li>
+    <li>The same action inside the row menu on each list.</li>
+    <li>A <b>Custom status</b> column on each list. Empty until a label is chosen.</li>
+    <li>The page heading line shows the label after the real status.</li>
+    <li>Help text on Leads, Quotations, and Bookings: one sentence that this label does not change the stage or the booking status.</li>
+  </ul>
+  <p>Cars, yachts, payments, documents, contracts, and driver jobs are out of this part. Their statuses drive availability, money, and handover.</p>
+  <h3>Files</h3>
+  <ul>
+    <li>New: <code>database/migrations/2026_11_27_000001_custom_statuses.php</code>, <code>app/Models/CustomStatus.php</code>, <code>app/Support/CustomStatuses.php</code>, <code>app/Filament/Support/CustomStatusAction.php</code>, <code>tests/Feature/CustomStatusTest.php</code>.</li>
+    <li>Edit: Lead, Booking, and Quotation models and resources, their edit pages, <code>HasNextStep</code>, and <code>HelpGuides</code>.</li>
+  </ul>
+  <h3>Tests that must pass</h3>
+  <ol>
+    <li>Admin adds “VIP follow-up” on a lead. The pipeline stage and lead status stay the same. The label is stored.</li>
+    <li>A salesperson picks that style of label on a booking. The booking status stays Confirmed (or whatever it was). The salesperson cannot create a new name: the server returns 403.</li>
+    <li>A booking label cannot be saved on a quotation.</li>
+  </ol>
+  <h3>Done when</h3>
+  <p>The three tests pass. Leads, Bookings, and Quotations open. A record with no label looks as it does today. Pay now / Pay later on the website is left as it is.</p>
+</section>
+
+<section>
+  <h2>Part B — Website chatbot</h2>
+  <h3>What it is</h3>
+  <p>A chat box on the public website. The visitor asks about the fleet and how to book. The server answers from data the website is already allowed to show, in the language the visitor is using (English or Arabic).</p>
+  <p>CRM Messages stays as it is. That screen is for staff, customers, and drivers inside an account. The website bot is a new public conversation. It does not write into staff chat threads.</p>
+  <h3>What the bot is allowed to know</h3>
+  <p>Only the public catalogue, through the code that already builds it (<code>FleetResource</code> and the catalogue routes). For a car that means name, brand, model, year, body, transmission, fuel, seats, doors, luggage, colour, horsepower, self-drive or with driver, the public prices, the deposit shown on the site, rental rules, features, and description. The same idea applies to published yachts, trips, and packages.</p>
+  <p>For a date question, the server calls the existing price estimate (<code>POST /api/v1/price-estimate</code>). That uses the same price engine as the CRM and does not book or hold anything. The reply the customer sees is the estimate total and whether the dates can be requested. The security deposit stays a separate line, as it does on Book now. It is not added into the total.</p>
+  <p>The bot may explain the flow that is already built:</p>
+  <div class="flow">
+    <div class="box"><b>Question</b>Price, car, dates, how booking works.</div>
+    <div class="box"><b>Enquiry</b>Name and phone only. A lead. Nothing is booked.</div>
+    <div class="box go"><b>Book now</b>Creates a booking waiting for payment.</div>
+    <div class="box wait"><b>Pay now or later</b>Only if a payment gateway is connected. The link is the booking total.</div>
+    <div class="box"><b>After payment</b>The screen reads Paid, documents pending until staff confirm.</div>
+  </div>
+  <h3>What the bot must not see or do</h3>
+  <ul>
+    <li>Other customers’ names, phones, documents, bookings, or staff notes.</li>
+    <li>Registration, VIN, insurance files, partner rates, commission, supplier cost, or internal car status notes. Those are already excluded from <code>FleetResource</code>.</li>
+    <li>It must not confirm a booking, mark a payment, change a deposit, or invent a price, a fee, a document rule, or a cancellation rule. If the database does not contain the answer, it says the team will confirm and offers the enquiry.</li>
+    <li>A limousine whose price the agent must still confirm is explained as a request. The bot does not offer Pay now on it.</li>
+  </ul>
+  <h3>How a message is handled</h3>
+  <ol>
+    <li>The browser sends the message to <code>POST /api/v1/chat</code>. The AI key never goes to the browser.</li>
+    <li>The server checks a short-lived visitor token (a random id in the browser, not a customer password). One visitor is limited, the same style of limit as the booking form, so the AI bill cannot run away.</li>
+    <li>The server decides which tool to use, then calls only that tool:
+      <ul>
+        <li>Fleet search: published cars (and yachts, trips, packages) matching the question.</li>
+        <li>Price estimate: when the visitor names a car and dates.</li>
+        <li>Create booking: only when the visitor has agreed, and the same fields Book now already requires are present (car, dates, drive mode, name, phone, email). This calls the existing <code>BookingRequestController</code>. Pay now redirects to the pay link when they choose it and a gateway is connected. Pay later emails the link.</li>
+        <li>Create enquiry: when they want a person to call, or the bot cannot answer. This calls the existing enquiry route. A lead appears in Leads. No booking is created.</li>
+      </ul>
+    </li>
+    <li>The model writes the reply from the tool result only. The server stores the question, the reply, and which tool was used. Staff can open that log later. It is not a CRM Message thread.</li>
+  </ol>
+  <h3>Where it appears</h3>
+  <p>First: home page and car pages, English and Arabic. A button opens the box. The car page already knows which car is open, so the first message can include that car. Yacht, trip, package, and limousine pages are the next slice, after the car path is tested. The box uses the site font and the red button. No new visual system.</p>
+  <h3>AI account</h3>
+  <p>Use the same kind of key as Settings › Integrations › Document reader: Anthropic or OpenAI, key stored as a secret, switched on by an Admin, Test connection before it is used. A separate card named <b>Website assistant</b> is clearer than reusing the document-reader key, because the document reader sends ID images and this assistant must not. Billing on that AI account is required. RED PRIME chooses the provider before this part starts.</p>
+  <h3>Build in four slices</h3>
+  <table>
+    <tr><th>Slice</th><th>Visitor can</th><th>Stops when</th></tr>
+    <tr><td>B1. Answers</td><td>Ask about published cars and get a price for dates.</td><td>A wrong or invented price is caught by a test that compares the reply with <code>PriceEngine</code>.</td></tr>
+    <tr><td>B2. Book</td><td>Finish Book now inside the chat, including Pay now or Pay later when a gateway is connected.</td><td>The booking in CRM matches a booking made from the car page. One conversation cannot create two bookings for the same request.</td></tr>
+    <tr><td>B3. Person</td><td>Leave a name and phone. A lead is created. The bot says the team will reply.</td><td>The lead is a normal website enquiry. No booking exists.</td></tr>
+    <tr><td>B4. Arabic</td><td>Use the chat on the Arabic site. Answers follow the Arabic pages.</td><td>The same three tests pass in Arabic. Numbers and the car name stay as stored.</td></tr>
+  </table>
+  <p>Spoken GCC accent is not in these slices. That needs a separate speech service. Text comes first, and only after B1–B4 are accepted.</p>
+  <h3>Tests that must pass</h3>
+  <ol>
+    <li>Ask the daily price of a published car. The answer matches the catalogue price.</li>
+    <li>Ask for dates that are already blocked. The answer does not claim the car is free.</li>
+    <li>Ask something the database does not contain (a made-up fee). The answer does not invent a number and offers an enquiry.</li>
+    <li>Complete Book now from the chat. One booking, status Waiting for payment, lead on Payment Pending, no second “send a quotation” alert.</li>
+    <li>With no payment gateway connected, the chat does not offer Pay now.</li>
+    <li>The request refuses to load another customer’s phone or booking, even if the question asks for it.</li>
+  </ol>
+  <h3>Done when</h3>
+  <p>B1–B4 are checked on the car pages in a browser, in English and Arabic. The help guide for the website and for Leads says a chat booking is the same as Book now. The AI key is in Integrations and is not written into the page or into git.</p>
+</section>
+
+<section>
+  <h2>Decisions needed before building</h2>
+  <ol>
+    <li>Approve Part A, Part B, both, or neither. A request to plan is not approval to build.</li>
+    <li>For Part B, which AI account: Anthropic or OpenAI. The key is entered by an Admin in Integrations. It is not typed into chat.</li>
+    <li>Part B starts on cars only. Yachts, trips, packages, and limousine follow after the car tests pass, unless you want them in the first slice.</li>
+  </ol>
+  <div class="ok">Suggested approval line: “Part A approved” and, separately, “Part B approved, cars first, provider Anthropic” (or OpenAI).</div>
+</section>
+
+</main>
+</body>
+</html>

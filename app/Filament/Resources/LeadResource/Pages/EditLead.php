@@ -39,7 +39,11 @@ class EditLead extends EditRecord
 
     protected function detailsLine(): ?string
     {
-        return LeadResource::waitingForAgent($this->getRecord()) ? 'Waiting for an agent. The first to accept owns it.' : null;
+        $lead = $this->getRecord();
+
+        return LeadResource::waitingForAgent($lead)
+            ? 'Waiting for an agent. The first to accept owns it.'
+            : ($lead->customStatus?->name);
     }
 
     protected function getFormActions(): array
@@ -171,6 +175,7 @@ class EditLead extends EditRecord
         }
 
         return [
+            \App\Filament\Support\CustomStatusAction::make(Actions\Action::class, 'lead'),
             $this->limoPriceAction(), // 6 Nov (limousine L4)
             // 12 Nov: the lead came from an Instagram / Messenger / WhatsApp message: carry on that chat.
             Actions\Action::make('openChat')->label(fn (): string => 'Chat on '.($this->socialThread()?->channelLabel() ?? 'social'))->icon('heroicon-o-chat-bubble-left-right')->color('gray')
