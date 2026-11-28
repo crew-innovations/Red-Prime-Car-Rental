@@ -7,16 +7,13 @@ use App\Support\Site\WebsiteAssistant;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
-/** Public website assistant. The AI key stays on the server. */
+/** Public website chat. Replies are written in the app. Car facts come from the catalogue. */
 class ChatController extends Controller
 {
     public function store(Request $request, WebsiteAssistant $assistant): JsonResponse
     {
         if (filled($request->input('website'))) {
             return response()->json(['data' => ['reply' => '']], 202);
-        }
-        if (! $assistant->ready()) {
-            return response()->json(['message' => 'The assistant is not set up.'], 503);
         }
 
         $data = $request->validate([

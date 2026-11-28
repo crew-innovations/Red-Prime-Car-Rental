@@ -25,6 +25,8 @@ class CreateLead extends CreateRecord
 
     protected function mutateFormDataBeforeCreate(array $data): array
     {
+        $pipeline = \App\Enums\Pipeline::tryFrom((string) ($data['pipeline'] ?? ''));
+        $data = \App\Support\CustomStatuses::take($data, 'lead', 'stage', $pipeline?->firstStage() ?? 'new');
         $data = LeadResource::withCustomer($data);
         // 5 Nov (S3): only Admin gives leads to someone else; an agent's new lead is their own.
         if (! \App\Support\Access::allows('assign-leads')) {

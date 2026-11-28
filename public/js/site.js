@@ -819,7 +819,11 @@
   var log = root.querySelector('[data-assist-log]');
   var visitor = localStorage.getItem('rp-visitor');
   if (!visitor) { visitor = 'v' + Math.random().toString(36).slice(2) + Date.now().toString(36); localStorage.setItem('rp-visitor', visitor); }
-  root.querySelector('[data-assist-open]').addEventListener('click', function () { panel.hidden = false; });
+  var greeted = false;
+  root.querySelector('[data-assist-open]').addEventListener('click', function () {
+    panel.hidden = false;
+    if (!greeted) { say(root.getAttribute('data-greet') || ''); greeted = true; }
+  });
   root.querySelector('[data-assist-close]').addEventListener('click', function () { panel.hidden = true; });
   function say(text) { var p = document.createElement('p'); p.textContent = text; log.appendChild(p); log.scrollTop = log.scrollHeight; }
   function send(extra) {

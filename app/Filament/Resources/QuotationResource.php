@@ -17,6 +17,7 @@ use App\Models\Setting;
 use App\Models\TripDate;
 use App\Models\Yacht;
 use App\Support\Access;
+use App\Support\CustomStatuses;
 use App\Support\Phone;
 use App\Support\Tax;
 use Filament\Forms;
@@ -271,6 +272,22 @@ class QuotationResource extends Resource
                     Forms\Components\Section::make('Status')
                         ->icon('heroicon-o-signal')
                         ->schema([
+                            Forms\Components\Select::make('status_choice')
+                                ->label('Status')
+                                ->options(fn (?Quotation $record): array => CustomStatuses::withExtras('quotation', $record
+                                    ? [$record->status->value => $record->status->getLabel()]
+                                    : [QuotationStatus::Draft->value => QuotationStatus::Draft->getLabel()]))
+                                ->default(QuotationStatus::Draft->value)
+                                ->native(false)
+                                ->selectablePlaceholder(false)
+                                ->afterStateHydrated(function (Forms\Components\Select $component, ?Quotation $record): void {
+                                    if ($record?->custom_status_id) {
+                                        $component->state(CustomStatuses::key($record->custom_status_id));
+                                    } elseif ($record?->status) {
+                                        $component->state($record->status->value);
+                                    }
+                                }),
+                            CustomStatuses::nameField(),
                             Forms\Components\Placeholder::make('status_view')
                                 ->hiddenLabel()
                                 ->content(fn (?Quotation $record): HtmlString => new HtmlString(self::statusHtml($record))),
@@ -355,8 +372,9 @@ class QuotationResource extends Resource
                     ->sortable(),
                 Tables\Columns\TextColumn::make('status')
                     ->badge()
+                    ->formatStateUsing(fn (Quotation $record): string => $record->customStatus?->name ?: $record->status->getLabel())
+                    ->color(fn (Quotation $record): string => $record->customStatus?->color ?: $record->status->getColor())
                     ->description(fn (Quotation $record): ?string => $record->viewed_at && $record->status === QuotationStatus::Sent ? 'Opened '.$record->viewed_at->diffForHumans() : null),
-                \App\Filament\Support\CustomStatusAction::column(),
                 Tables\Columns\TextColumn::make('valid_until')
                     ->label('Valid until')
                     ->date('d M Y')
@@ -376,7 +394,6 @@ class QuotationResource extends Resource
                 Tables\Actions\EditAction::make()->iconButton(),
                 Tables\Actions\ActionGroup::make([
                     ...self::workflowActions(Tables\Actions\Action::class),
-                    \App\Filament\Support\CustomStatusAction::make(Tables\Actions\Action::class, 'quotation'),
                     Tables\Actions\DeleteAction::make(),
                     Tables\Actions\RestoreAction::make(),
                 ]),

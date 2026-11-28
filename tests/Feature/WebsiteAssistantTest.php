@@ -5,11 +5,10 @@ namespace Tests\Feature;
 use App\Enums\BookingStatus;
 use App\Models\Booking;
 use App\Models\ChatThread;
-use App\Models\Integration;
 use App\Models\Lead;
 use App\Models\Quotation;
+use App\Models\Setting;
 use App\Models\WebsiteChat;
-use App\Support\Site\WebsiteAssistant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Http;
@@ -26,14 +25,7 @@ class WebsiteAssistantTest extends TestCase
         parent::setUp();
         Carbon::setTestNow('2026-11-01 09:00:00');
         Mail::fake();
-        Http::fake([
-            'api.anthropic.com/*' => Http::response(['content' => [['type' => 'text', 'text' => 'The late fee is AED 99999. Call +971509998877.']]]),
-            'api.openai.com/*' => Http::response(['choices' => [['message' => ['content' => 'AED 99999']]]]),
-        ]);
-        $i = Integration::for(WebsiteAssistant::PROVIDER);
-        $i->fill(['enabled' => true, 'mode' => 'test', 'status' => 'connected', 'config' => ['provider' => 'anthropic']]);
-        $i->putSecrets(['api_key' => 'test-key'], 'test');
-        $i->save();
+        Http::preventStrayRequests();
     }
 
     protected function tearDown(): void
@@ -207,5 +199,57 @@ class WebsiteAssistantTest extends TestCase
         ])->assertOk();
         $this->assertStringContainsString('سيتواصل معك الفريق', $ar->json('data.reply'));
         $this->assertSame($before, Booking::count());
+    }
+
+    public function test_a_greeting_does_not_invent_a_price(): void
+    {
+        $this->car(['is_published' => true, 'name' => 'Hello Patrol']);
+
+        $en = $this->postJson('/api/v1/chat', [
+            'visitor_id' => 'visitor-hi',
+            'message' => 'Hello',
+        ])->assertOk();
+        $this->assertSame('greet', $en->json('data.tool'));
+        $this->assertStringContainsString('Hello', $en->json('data.reply'));
+        $this->assertStringNotContainsString('AED', $en->json('data.reply'));
+        $this->assertStringNotContainsString('99999', $en->json('data.reply'));
+
+        $ar = $this->postJson('/api/v1/chat', [
+            'visitor_id' => 'visitor-hi',
+            'message' => 'مرحبا',
+            'locale' => 'ar',
+        ])->assertOk();
+        $this->assertSame('greet', $ar->json('data.tool'));
+        $this->assertStringContainsString('أهلاً', $ar->json('data.reply'));
+        $this->assertStringNotContainsString('AED', $ar->json('data.reply'));
+    }
+
+    public function test_car_facts_and_the_office_number_come_from_saved_data(): void
+    {
+        $car = $this->car(['is_published' => true, 'seats' => 7]);
+        Setting::write(['website_phone' => '+97140001122']);
+
+        $seats = $this->postJson('/api/v1/chat', [
+            'visitor_id' => 'visitor-facts',
+            'message' => 'How many seats?',
+            'product_slug' => $car->slug,
+        ])->assertOk();
+        $this->assertStringContainsString('7 seats', $seats->json('data.reply'));
+        $this->assertStringNotContainsString('SECRET', $seats->json('data.reply'));
+
+        $book = $this->postJson('/api/v1/chat', [
+            'visitor_id' => 'visitor-facts',
+            'message' => 'How do I book?',
+        ])->assertOk();
+        $this->assertSame('guide', $book->json('data.tool'));
+        $this->assertStringContainsString('name, phone, email', $book->json('data.reply'));
+        $this->assertStringNotContainsString('AED', $book->json('data.reply'));
+
+        $phone = $this->postJson('/api/v1/chat', [
+            'visitor_id' => 'visitor-facts',
+            'message' => 'What is your phone?',
+        ])->assertOk();
+        $this->assertStringContainsString('+97140001122', $phone->json('data.reply'));
+        $this->assertSame(0, ChatThread::count());
     }
 }

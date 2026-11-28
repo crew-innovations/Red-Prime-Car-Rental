@@ -44,7 +44,6 @@ class Registry
             ...\App\Support\Leads\LeadWebhooks::registryEntries(),
             ...\App\Support\Chat\Social::registryEntries(), // 12 Nov: Instagram / Messenger / WhatsApp messages
             ...\App\Support\Ocr\DocumentReader::registryEntries(), // 18 Nov: reads ID documents and receipts
-            ...\App\Support\Site\WebsiteAssistant::registryEntries(),
         ];
     }
 

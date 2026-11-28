@@ -43,7 +43,7 @@ class EditLead extends EditRecord
 
         return LeadResource::waitingForAgent($lead)
             ? 'Waiting for an agent. The first to accept owns it.'
-            : ($lead->customStatus?->name);
+            : null;
     }
 
     protected function getFormActions(): array
@@ -54,6 +54,8 @@ class EditLead extends EditRecord
     /** 20 Nov (item 11): a lead with a customer keeps the customer's contact details. */
     protected function mutateFormDataBeforeSave(array $data): array
     {
+        $data = \App\Support\CustomStatuses::take($data, 'lead', 'stage', $this->getRecord()->stage, true, $this->getRecord());
+
         return filled($data['customer_id'] ?? null) ? LeadResource::withCustomer($data) : $data;
     }
 
@@ -175,7 +177,6 @@ class EditLead extends EditRecord
         }
 
         return [
-            \App\Filament\Support\CustomStatusAction::make(Actions\Action::class, 'lead'),
             $this->limoPriceAction(), // 6 Nov (limousine L4)
             // 12 Nov: the lead came from an Instagram / Messenger / WhatsApp message: carry on that chat.
             Actions\Action::make('openChat')->label(fn (): string => 'Chat on '.($this->socialThread()?->channelLabel() ?? 'social'))->icon('heroicon-o-chat-bubble-left-right')->color('gray')

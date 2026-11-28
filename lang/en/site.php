@@ -803,6 +803,7 @@ return [
         'open' => 'Chat',
         'close' => 'Close',
         'placeholder' => 'Ask about a published car',
+        'greeting' => 'Hello. I can help with our published cars, a price for your dates, a booking, or a call from the team. What would you like?',
         'send' => 'Send',
         'book' => 'Book these dates',
         'name' => 'Your name',

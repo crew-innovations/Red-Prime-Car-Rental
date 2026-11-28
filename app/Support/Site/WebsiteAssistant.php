@@ -8,72 +8,21 @@ use App\Http\Controllers\Api\V1\PriceEstimateController;
 use App\Http\Resources\Api\FleetResource;
 use App\Models\Booking;
 use App\Models\Car;
-use App\Models\Integration;
 use App\Models\Lead;
 use App\Models\WebsiteChat;
 use App\Support\Payments\Payments;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Http;
 use Illuminate\Validation\ValidationException;
 
 /**
- * Public website assistant. Answers only from the published catalogue, the price
- * estimate, Book now, and the enquiry form. It never reads other customers.
+ * Public website chat. Every sentence is written here. Car facts come from the
+ * published catalogue. There is no outside AI service and no API key.
  */
 class WebsiteAssistant
 {
-    public const PROVIDER = 'website_assistant';
-
-    public static function registryEntries(): array
-    {
-        return [self::PROVIDER => [
-            'label' => 'Website assistant',
-            'group' => 'Website',
-            'description' => 'Answers questions on the public website from published cars, and can book or take an enquiry. It does not read customer records.',
-            'docs' => 'https://docs.claude.com/en/docs/build-with-claude/vision',
-            'config' => [
-                'provider' => ['label' => 'Service', 'help' => 'Which AI service writes the reply. The facts still come from the CRM.', 'default' => 'anthropic', 'options' => \App\Support\Ocr\DocumentReader::PROVIDERS],
-                'model' => ['label' => 'Model', 'help' => 'Empty = the default (Anthropic: claude-haiku-5-5, OpenAI: gpt-4o-mini).', 'default' => null],
-            ],
-            'secrets' => [
-                'api_key' => ['label' => 'API key', 'help' => 'From the service console. Used only by the CRM server. Not the document reader key.'],
-            ],
-            'required' => ['api_key'],
-            'requirements' => [
-                'An account with billing switched on.',
-                'The assistant is shown on the website only after Test connection succeeds.',
-            ],
-            'tester' => self::class,
-        ]];
-    }
-
-    public static function integration(): Integration
-    {
-        return Integration::for(self::PROVIDER);
-    }
-
     public static function ready(): bool
     {
-        $i = self::integration();
-
-        return $i->exists && $i->isConnected();
-    }
-
-    /** @return array{0: bool, 1: ?string, 2: ?string} */
-    public static function test(Integration $i): array
-    {
-        if (! $i->hasSecret('api_key')) {
-            return [false, 'Save the API key first.', null];
-        }
-        try {
-            $text = self::complete($i, 'Reply with the word ready and nothing else.');
-
-            return str_contains(strtolower($text), 'ready')
-                ? [true, null, 'The website assistant answered']
-                : [false, 'Unexpected answer: '.mb_substr($text, 0, 120), null];
-        } catch (\Throwable $e) {
-            return [false, $e->getMessage(), null];
-        }
+        return true;
     }
 
     /** @param  array<string, mixed>  $in
@@ -85,20 +34,19 @@ class WebsiteAssistant
         $slug = filled($in['product_slug'] ?? null) ? (string) $in['product_slug'] : null;
         $message = trim((string) $in['message']);
         [$tool, $facts, $draft, $bookingId, $leadId, $payUrl, $reference] = $this->run($in, $message, $slug, $locale);
-        $reply = $this->polish($draft, $facts, $locale) ?? $draft;
 
         WebsiteChat::create([
             'visitor_id' => $in['visitor_id'],
             'locale' => $locale,
             'product_slug' => $slug,
             'question' => $message,
-            'reply' => $reply,
+            'reply' => $draft,
             'tool' => $tool,
             'booking_id' => $bookingId,
             'lead_id' => $leadId,
         ]);
 
-        return ['reply' => $reply, 'tool' => $tool, 'pay_url' => $payUrl, 'reference' => $reference];
+        return ['reply' => $draft, 'tool' => $tool, 'pay_url' => $payUrl, 'reference' => $reference];
     }
 
     /** @return array{0: string, 1: string, 2: string, 3: ?int, 4: ?int, 5: ?string, 6: ?string} */
@@ -111,8 +59,21 @@ class WebsiteAssistant
         if ($action === 'enquiry' || preg_match('/call me|speak to|تحدث|اتصل/iu', $message)) {
             return $this->enquiry($in, $slug, $locale, $message);
         }
-        if (preg_match('/phone number|mobile number|other customer|رقم هاتف|عميل آخر/iu', $message)) {
+        if ($this->isGreeting($message)) {
+            return ['greet', '', $this->greet($locale), null, null, null, null];
+        }
+        if (preg_match('/how (do|can) i book|how to book|كيف أحجز|كيف احجز/iu', $message)) {
+            $text = $locale === 'ar'
+                ? 'للحجز افتح السيارة وأرسل الاسم والهاتف والبريد وتاريخ البداية والنهاية. أحفظ الحجز بانتظار الدفع.'
+                : 'To book, open a car and send your name, phone, email, and the start and end. I save the booking waiting for payment.';
+
+            return ['guide', '', $text, null, null, null, null];
+        }
+        if (preg_match('/other customer|customer\'s phone|رقم العميل|عميل آخر/iu', $message)) {
             return ['handoff', '', $this->handoff($locale), null, null, null, null];
+        }
+        if (preg_match('/where are you|your address|your phone|phone number|office number|whatsapp|العنوان|وين|رقمكم|رقم الهاتف/iu', $message)) {
+            return ['contact', '', $this->contact($locale), null, null, null, null];
         }
         if (preg_match('/\b(fee|penalty|cancellation charge|رسوم)\b/iu', $message) && ! preg_match('/daily|price|how much|سعر|يوم/iu', $message)) {
             return ['handoff', '', $this->handoff($locale), null, null, null, null];
@@ -127,6 +88,33 @@ class WebsiteAssistant
         }
 
         return $this->search($message, $slug, $locale);
+    }
+
+    protected function isGreeting(string $message): bool
+    {
+        return preg_match('/^(hi|hello|hey|good morning|good afternoon|good evening|salam|salaam|assalamu?\s*alaikum|thanks|thank you|مرحبا|مرحباً|السلام عليكم|أهلا|اهلا|شكرا|شكراً)[\s!.?]*$/iu', $message) === 1;
+    }
+
+    protected function greet(string $locale): string
+    {
+        return $locale === 'ar'
+            ? 'أهلاً بك في ريد برايم. أستطيع المساعدة في السيارات المنشورة، والسعر لتواريخك، والحجز، أو أن يتصل بك الفريق. ماذا تريد؟'
+            : 'Hello. I can help with our published cars, a price for your dates, a booking, or a call from the team. What would you like?';
+    }
+
+    protected function contact(string $locale): string
+    {
+        $phone = Site::phone();
+        $address = Site::address();
+        if (blank($phone) && blank($address)) {
+            return $this->handoff($locale);
+        }
+        $parts = array_filter([
+            $phone ? ($locale === 'ar' ? 'الهاتف '.$phone : 'Phone '.$phone) : null,
+            $address ? ($locale === 'ar' ? 'العنوان '.$address : 'Address '.$address) : null,
+        ]);
+
+        return implode('. ', $parts).'.';
     }
 
     /** @return array{0: string, 1: string, 2: string, 3: ?int, 4: ?int, 5: ?string, 6: ?string} */
@@ -146,12 +134,7 @@ class WebsiteAssistant
                 $cars = $matched;
             }
         }
-        $lines = $cars->take(5)->map(function (Car $car) {
-            $public = (new FleetResource($car))->additional(['detail' => true])->resolve(request());
-            $daily = $public['prices']['daily'] ?? null;
-
-            return $car->name.($daily !== null ? ' — AED '.self::money($daily).' '.__('site.common.per_day', [], 'en') : '');
-        });
+        $lines = $cars->take(5)->map(fn (Car $car) => $this->carLine($car, $message, $locale));
         $facts = $lines->implode("\n");
         if ($facts === '') {
             return ['search', '', $this->handoff($locale), null, null, null, null];
@@ -159,6 +142,52 @@ class WebsiteAssistant
         $intro = $locale === 'ar' ? 'هذه سيارات منشورة:' : 'These are published cars:';
 
         return ['search', $facts, $intro."\n".$facts, null, null, null, null];
+    }
+
+    /** One published car, using only the fields the website already shows. */
+    protected function carLine(Car $car, string $message, string $locale): string
+    {
+        $public = (new FleetResource($car))->additional(['detail' => true])->resolve(request());
+        $prices = $public['prices'] ?? [];
+        $rules = $public['rules'] ?? [];
+        $ask = mb_strtolower($message);
+        $wants = fn (string ...$words): bool => collect($words)->contains(fn (string $w) => str_contains($ask, $w));
+        $bits = [$public['name'] ?? $car->name];
+        $daily = $prices['daily'] ?? null;
+        if ($daily !== null && ($wants('price', 'how much', 'cost', 'daily', 'سعر', 'يوم') || ! $wants('seat', 'door', 'deposit', 'gear', 'transmission', 'fuel', 'driver', 'مقعد', 'عربون', 'وديعة'))) {
+            $bits[] = ($locale === 'ar' ? 'اليومي AED ' : 'daily AED ').self::money($daily);
+        }
+        if (isset($prices['weekly']) && $wants('week', 'أسبوع')) {
+            $bits[] = ($locale === 'ar' ? 'الأسبوعي AED ' : 'weekly AED ').self::money($prices['weekly']);
+        }
+        if (isset($prices['monthly']) && $wants('month', 'شهر')) {
+            $bits[] = ($locale === 'ar' ? 'الشهري AED ' : 'monthly AED ').self::money($prices['monthly']);
+        }
+        if (isset($public['deposit']) && $wants('deposit', 'عربون', 'وديعة')) {
+            $bits[] = ($locale === 'ar' ? 'العربون المسترد AED ' : 'refundable deposit AED ').self::money($public['deposit']);
+        }
+        if (isset($public['seats']) && $wants('seat', 'مقعد', 'people', 'passenger')) {
+            $bits[] = $public['seats'].($locale === 'ar' ? ' مقاعد' : ' seats');
+        }
+        if (isset($public['doors']) && $wants('door', 'باب')) {
+            $bits[] = $public['doors'].($locale === 'ar' ? ' أبواب' : ' doors');
+        }
+        if (! empty($public['transmission']) && $wants('gear', 'transmission', 'automatic', 'manual', 'قير')) {
+            $bits[] = (string) $public['transmission'];
+        }
+        if (! empty($public['fuel']) && $wants('fuel', 'petrol', 'diesel', 'وقود')) {
+            $bits[] = (string) $public['fuel'];
+        }
+        if (array_key_exists('with_driver', $public) && $wants('driver', 'chauffeur', 'سائق')) {
+            $bits[] = ! empty($public['with_driver'])
+                ? ($locale === 'ar' ? 'السائق متاح' : 'a driver is available')
+                : ($locale === 'ar' ? 'بدون سائق فقط' : 'self-drive only');
+        }
+        if (isset($rules['daily_km_limit']) && $wants('km', 'kilomet', 'كيلو')) {
+            $bits[] = $rules['daily_km_limit'].($locale === 'ar' ? ' كم في اليوم' : ' km a day');
+        }
+
+        return implode(', ', $bits);
     }
 
     /** @return array{0: string, 1: string, 2: string, 3: ?int, 4: ?int, 5: ?string, 6: ?string} */
@@ -266,74 +295,6 @@ class WebsiteAssistant
         return $locale === 'ar'
             ? 'سيؤكد الفريق ذلك. اترك اسمك ورقم هاتفك وسنتصل بك.'
             : 'Our team will confirm that. Leave your name and phone and we will call you.';
-    }
-
-    protected function polish(string $draft, string $facts, string $locale): ?string
-    {
-        $i = self::integration();
-        if (! $i->exists || ! $i->isConnected()) {
-            return null;
-        }
-        try {
-            $text = trim(self::complete($i, "Rewrite the reply in ".($locale === 'ar' ? 'Arabic' : 'English').". Use only these facts. Do not add prices, fees, phone numbers, or customers.\nFACTS:\n".$facts."\nREPLY:\n".$draft));
-        } catch (\Throwable) {
-            return null;
-        }
-        if ($text === '' || ! $this->safe($text, $facts."\n".$draft)) {
-            return null;
-        }
-
-        return $text;
-    }
-
-    /** A polished reply may not introduce an amount or a phone that was not in the facts. */
-    protected function safe(string $text, string $facts): bool
-    {
-        preg_match_all('/\d[\d,]*(?:\.\d+)?/', $text, $found);
-        foreach ($found[0] as $n) {
-            $plain = str_replace(',', '', $n);
-            if ((float) $plain >= 10 && ! str_contains(str_replace(',', '', $facts), $plain)) {
-                return false;
-            }
-        }
-        preg_match_all('/\+?\d[\d\s\-()]{7,}/', $text, $phones);
-        foreach ($phones[0] as $phone) {
-            $digits = preg_replace('/\D+/', '', $phone);
-            if (strlen($digits) >= 8 && ! str_contains(preg_replace('/\D+/', '', $facts), $digits)) {
-                return false;
-            }
-        }
-
-        return true;
-    }
-
-    protected static function complete(Integration $i, string $prompt): string
-    {
-        $provider = (string) ($i->config('provider') ?: 'anthropic');
-        $model = filled($i->config('model')) ? (string) $i->config('model') : null;
-        $key = (string) $i->secret('api_key');
-        if ($provider === 'openai') {
-            $r = Http::withToken($key)->timeout(20)->acceptJson()->post('https://api.openai.com/v1/chat/completions', [
-                'model' => $model ?: 'gpt-4o-mini',
-                'messages' => [['role' => 'user', 'content' => $prompt]],
-            ]);
-            if (! $r->successful()) {
-                throw new \RuntimeException('OpenAI: '.($r->json('error.message') ?: 'HTTP '.$r->status()));
-            }
-
-            return (string) $r->json('choices.0.message.content', '');
-        }
-        $r = Http::withHeaders(['x-api-key' => $key, 'anthropic-version' => '2023-06-01'])->timeout(20)->acceptJson()
-            ->post('https://api.anthropic.com/v1/messages', [
-                'model' => $model ?: 'claude-haiku-5-5',
-                'max_tokens' => 600,
-                'messages' => [['role' => 'user', 'content' => $prompt]],
-            ]);
-        if (! $r->successful()) {
-            throw new \RuntimeException('Anthropic: '.($r->json('error.message') ?: 'HTTP '.$r->status()));
-        }
-
-        return (string) collect((array) $r->json('content', []))->where('type', 'text')->pluck('text')->implode("\n");
     }
 
     protected static function money(float|int|string $amount): string

@@ -17,6 +17,7 @@ use App\Models\Trip;
 use App\Models\TripDate;
 use App\Models\Yacht;
 use App\Support\Availability;
+use App\Support\CustomStatuses;
 use Closure;
 use App\Filament\Concerns\GuardedResource;
 use App\Support\Access;
@@ -304,7 +305,7 @@ class BookingResource extends Resource
                             : 'Delivers the car at the start and collects it at the end. Leave empty if the customer picks up and returns it at the office.')).' '.self::driverHint($get)
                         : 'Add drivers under Operations › Drivers.')
                     ->rules([fn (Get $get, ?Booking $record): Closure => function (string $attribute, $value, Closure $fail) use ($get, $record) {
-                        if (! $value || ! $get('start_at') || ! $get('end_at') || ! in_array($get('status'), array_map(fn ($s) => $s->value, BookingStatus::blocking()), true)) {
+                        if (! $value || ! $get('start_at') || ! $get('end_at') || ! in_array(CustomStatuses::asFixed($get('status'), $record?->status?->value), array_map(fn ($s) => $s->value, BookingStatus::blocking()), true)) {
                             return;
                         }
                         $clash = Availability::personConflict((int) $value, $get('start_at'), $get('end_at'), $record?->getKey(), $get('service_type') === ServiceType::Transfer->value ? DriveMode::WithDriver->value : $get('drive_mode'));
@@ -480,7 +481,7 @@ class BookingResource extends Resource
                     ->rules([fn (Get $get, ?Booking $record): Closure => function (string $attribute, $value, Closure $fail) use ($get, $record) {
                         $type = $get('service_type') === ServiceType::Transfer->value ? ServiceType::Car->value : $get('service_type');
                         if (! in_array($type, [ServiceType::Car->value, ServiceType::Yacht->value], true) || ! $get('bookable_id') || ! $get('start_at')
-                            || ! in_array($get('status'), array_map(fn ($s) => $s->value, BookingStatus::blocking()), true)) {
+                            || ! in_array(CustomStatuses::asFixed($get('status'), $record?->status?->value), array_map(fn ($s) => $s->value, BookingStatus::blocking()), true)) {
                             return;
                         }
                         // Runs inside the save transaction with the car / yacht row locked.
@@ -685,15 +686,20 @@ class BookingResource extends Resource
             ->schema([
                 Forms\Components\ToggleButtons::make('status')
                     ->hiddenLabel()
-                    ->options(fn (?Booking $record): array => collect(self::statusChoices($record))->mapWithKeys(fn (BookingStatus $s) => [$s->value => $s->getLabel()])->all())
-                    ->colors(collect(BookingStatus::cases())->mapWithKeys(fn (BookingStatus $s) => [$s->value => $s->getColor()])->all())
-                    ->icons(collect(BookingStatus::cases())->mapWithKeys(fn (BookingStatus $s) => [$s->value => $s->getIcon()])->all())
-                    // 18 Nov (meeting item 5): only Admin changes the status by hand; others start a booking as Waiting for payment.
+                    ->options(fn (?Booking $record): array => CustomStatuses::withExtras('booking', collect(self::statusChoices($record))->mapWithKeys(fn (BookingStatus $s) => [$s->value => $s->getLabel()])->all()))
+                    ->colors(fn (): array => collect(BookingStatus::cases())->mapWithKeys(fn (BookingStatus $s) => [$s->value => $s->getColor()])->all() + CustomStatuses::colors('booking'))
+                    ->icons(fn (): array => collect(BookingStatus::cases())->mapWithKeys(fn (BookingStatus $s) => [$s->value => $s->getIcon()])->all() + collect(CustomStatuses::colors('booking'))->map(fn () => 'heroicon-m-tag')->all())
+                    // 18 Nov (meeting item 5): only Admin changes a fixed status by hand. An added status can be picked by anyone who can open the booking.
                     ->default(fn (): string => Access::allows('change-booking-status') ? BookingStatus::Confirmed->value : BookingStatus::PendingPayment->value)
-                    ->disabled(fn (?Booking $record): bool => $record !== null && ! Access::allows('change-booking-status'))
+                    ->afterStateHydrated(function (Forms\Components\ToggleButtons $component, ?Booking $record): void {
+                        if ($record?->custom_status_id) {
+                            $component->state(CustomStatuses::key($record->custom_status_id));
+                        }
+                    })
                     ->required()
                     ->live()
                     ->columns(2),
+                CustomStatuses::nameField(),
                 Forms\Components\Placeholder::make('status_lock')
                     ->hiddenLabel()
                     ->visible(fn (): bool => ! Access::allows('change-booking-status'))
@@ -708,7 +714,7 @@ class BookingResource extends Resource
                         : 'Website booking: waiting for payment until '.$record->hold_until->timezone(config('app.timezone'))->format('j M, H:i').'. Send the payment link (Payment section); after that time it is cancelled.').'</span>')),
                 Forms\Components\Placeholder::make('status_hint')
                     ->hiddenLabel()
-                    ->content(fn (Get $get): string => match ($get('status')) {
+                    ->content(fn (Get $get, ?Booking $record): string => match (CustomStatuses::asFixed($get('status'), $record?->status?->value)) {
                         BookingStatus::Confirmed->value, BookingStatus::PendingPayment->value => 'The car / yacht is held for these dates.',
                         BookingStatus::InProgress->value => 'Out with the customer. Use "Receive" when it comes back.',
                         BookingStatus::Completed->value => 'Returned and closed.',
@@ -716,8 +722,8 @@ class BookingResource extends Resource
                     }),
                 Forms\Components\TextInput::make('cancel_reason')
                     ->label('Reason')
-                    ->visible(fn (Get $get): bool => in_array($get('status'), [BookingStatus::Cancelled->value, BookingStatus::NoShow->value], true))
-                    ->required(fn (Get $get): bool => in_array($get('status'), [BookingStatus::Cancelled->value, BookingStatus::NoShow->value], true)),
+                    ->visible(fn (Get $get, ?Booking $record): bool => in_array(CustomStatuses::asFixed($get('status'), $record?->status?->value), [BookingStatus::Cancelled->value, BookingStatus::NoShow->value], true))
+                    ->required(fn (Get $get, ?Booking $record): bool => in_array(CustomStatuses::asFixed($get('status'), $record?->status?->value), [BookingStatus::Cancelled->value, BookingStatus::NoShow->value], true)),
             ]);
     }
 
@@ -1061,7 +1067,6 @@ class BookingResource extends Resource
                     BookingActions::refundDeposit(Tables\Actions\Action::class),
                     BookingActions::whatsapp(Tables\Actions\Action::class),
                     BookingActions::cancel(Tables\Actions\Action::class),
-                    \App\Filament\Support\CustomStatusAction::make(Tables\Actions\Action::class, 'booking'),
                     BookingActions::requestCancel(Tables\Actions\Action::class),
                     Tables\Actions\DeleteAction::make(),
                     Tables\Actions\RestoreAction::make(),
@@ -1102,12 +1107,12 @@ class BookingResource extends Resource
                 ->color(fn (Booking $record): ?string => $record->status === BookingStatus::InProgress && $record->end_at->isPast() ? 'danger' : null),
             Tables\Columns\TextColumn::make('status')
                 ->badge()
-                ->formatStateUsing(fn (Booking $record): string => $record->statusLabel())
+                ->formatStateUsing(fn (Booking $record): string => $record->customStatus?->name ?: $record->statusLabel())
+                ->color(fn (Booking $record): string => $record->customStatus?->color ?: $record->status->getColor())
                 ->description(fn (Booking $record): ?string => $record->source === 'website'
                     ? ($record->hold_until ? 'Website · pay by '.$record->hold_until->format('j M H:i') : 'Website')
                     : null)
                 ->sortable(),
-            \App\Filament\Support\CustomStatusAction::column(),
             Tables\Columns\TextColumn::make('total')
                 ->label('Total')
                 ->alignEnd()
