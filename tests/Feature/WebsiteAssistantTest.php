@@ -252,4 +252,33 @@ class WebsiteAssistantTest extends TestCase
         $this->assertStringContainsString('+97140001122', $phone->json('data.reply'));
         $this->assertSame(0, ChatThread::count());
     }
+
+    public function test_it_answers_yachts_transfers_and_services_without_inventing_a_price(): void
+    {
+        $this->car(['is_published' => true]);
+
+        $offer = $this->postJson('/api/v1/chat', [
+            'visitor_id' => 'visitor-offer',
+            'message' => 'What do you offer?',
+        ])->assertOk();
+        $this->assertSame('services', $offer->json('data.tool'));
+        $this->assertStringContainsString('yacht', strtolower($offer->json('data.reply')));
+        $this->assertStringContainsString('Limousine', $offer->json('data.reply'));
+        $this->assertStringNotContainsString('AED', $offer->json('data.reply'));
+
+        $yacht = $this->postJson('/api/v1/chat', [
+            'visitor_id' => 'visitor-offer',
+            'message' => 'What yachts do you have?',
+        ])->assertOk();
+        $this->assertSame('yacht', $yacht->json('data.tool'));
+        $this->assertStringNotContainsString('AED', $yacht->json('data.reply'));
+
+        $ride = $this->postJson('/api/v1/chat', [
+            'visitor_id' => 'visitor-offer',
+            'message' => 'How do airport transfers work?',
+        ])->assertOk();
+        $this->assertSame('limo', $ride->json('data.tool'));
+        $this->assertStringContainsString('road distance', $ride->json('data.reply'));
+        $this->assertStringNotContainsString('AED', $ride->json('data.reply'));
+    }
 }

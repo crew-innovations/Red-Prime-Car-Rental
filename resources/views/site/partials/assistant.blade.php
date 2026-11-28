@@ -20,7 +20,8 @@
         <div class="assist-log" data-assist-log></div>
         <div class="assist-chips">
             <button type="button" class="assist-chip" data-assist-chip data-assist-text="{{ __('site.assistant.ask_cars') }}">{{ __('site.assistant.cars') }}</button>
-            <button type="button" class="assist-chip" data-assist-chip data-assist-text="{{ __('site.assistant.ask_price') }}">{{ __('site.assistant.price') }}</button>
+            <button type="button" class="assist-chip" data-assist-chip data-assist-text="{{ __('site.assistant.ask_yachts') }}">{{ __('site.assistant.yachts') }}</button>
+            <button type="button" class="assist-chip" data-assist-chip data-assist-text="{{ __('site.assistant.ask_transfer') }}">{{ __('site.assistant.transfer') }}</button>
             <button type="button" class="assist-chip" data-assist-chip data-assist-text="{{ __('site.assistant.ask_book') }}">{{ __('site.assistant.book_steps') }}</button>
             <button type="button" class="assist-chip assist-chip-team" data-assist-chip="team">{{ __('site.assistant.team') }}</button>
             @if (! empty($slug))
