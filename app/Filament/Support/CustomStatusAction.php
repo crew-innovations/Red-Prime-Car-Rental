@@ -12,7 +12,7 @@ use Illuminate\Database\Eloquent\Model;
 /** The Custom status button on a lead, booking or quotation. */
 class CustomStatusAction
 {
-    public static function make(string $action, string $type): \Filament\Actions\Action
+    public static function make(string $action, string $type): \Filament\Actions\MountableAction
     {
         return $action::make('customStatus')
             ->label('Custom status')
