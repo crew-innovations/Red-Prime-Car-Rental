@@ -6,8 +6,11 @@ use App\Enums\BookingStatus;
 use App\Enums\QuotationStatus;
 use App\Enums\ServiceType;
 use App\Filament\Resources\BookingResource\Pages\EditBooking;
+use App\Filament\Resources\BookingResource\Pages\ListBookings;
 use App\Filament\Resources\LeadResource\Pages\EditLead;
+use App\Filament\Resources\LeadResource\Pages\ListLeads;
 use App\Filament\Resources\QuotationResource\Pages\EditQuotation;
+use App\Filament\Resources\QuotationResource\Pages\ListQuotations;
 use App\Models\CustomStatus;
 use App\Models\Lead;
 use App\Models\Quotation;
@@ -91,5 +94,18 @@ class CustomStatusTest extends TestCase
         $quote->refresh();
         $this->assertSame(QuotationStatus::Draft, $quote->status);
         $this->assertSame('quotation', $quote->customStatus->record_type);
+    }
+
+    public function test_the_lead_booking_and_quotation_lists_open(): void
+    {
+        $this->actingAs($this->user('Admin'));
+        $lead = Lead::create(['name' => 'Omar', 'service_type' => 'car', 'assigned_to' => auth()->id()]);
+        $car = $this->car();
+        $booking = $this->booking($car, '2026-12-01 10:00', '2026-12-03 10:00');
+        $quote = Quotation::create(['service_type' => ServiceType::Car, 'status' => QuotationStatus::Draft]);
+
+        Livewire::test(ListLeads::class, ['activeTab' => 'all'])->assertOk()->assertSee($lead->name);
+        Livewire::test(ListBookings::class, ['activeTab' => 'all'])->assertOk()->assertSee($booking->reference);
+        Livewire::test(ListQuotations::class)->assertOk()->assertSee($quote->number);
     }
 }
