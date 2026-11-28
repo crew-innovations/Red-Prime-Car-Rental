@@ -101,8 +101,8 @@ class WebsiteAssistant
     protected function guide(string $locale): string
     {
         return $locale === 'ar'
-            ? 'يسير الحجز بهذه الخطوات. افتح السيارة التي تريدها وتأكد من السعر المنشور. ثم أرسل الاسم والهاتف والبريد وتاريخ البداية والنهاية. أحفظ الحجز بانتظار الدفع، ولا يُؤكد إلا بعد أن يراجع الفريق مستنداتك. ترفع المستندات في حسابك، لا في هذه المحادثة. عندما يكون الدفع الإلكتروني متاحاً، الرابط يخص مجموع الحجز، والعربون المسترد منفصل عنه. وإذا فضلت التحدث مع شخص أولاً، اترك اسمك ورقم هاتفك وسيتواصل معك الفريق. ذلك طلب اتصال وليس حجزاً.'
-            : 'A booking follows these steps. Open the car you want and check the published price. Then send your name, phone, email, and the start and end. I save the booking waiting for payment. It is not confirmed until our team has checked your documents. You upload those in your account, not in this chat. When online payment is available, the link is for the booking total. The refundable deposit is separate. If you would rather speak to someone first, leave your name and phone and our team will call you. That is a call request, not a booking.';
+            ? "يسير الحجز بهذه الخطوات.\n- افتح السيارة وتأكد من السعر المنشور.\n- أرسل الاسم والهاتف والبريد وتاريخ البداية والنهاية.\n- يُحفظ الحجز بانتظار الدفع إلى أن يراجع الفريق المستندات.\n- ارفع المستندات في حسابك، لا في هذه المحادثة.\n- عندما يتوفر الدفع الإلكتروني، الرابط لمجموع الحجز والعربون المسترد منفصل.\n- للحديث مع شخص أولاً، اترك اسمك ورقم هاتفك وسيتواصل معك الفريق. ذلك طلب اتصال وليس حجزاً."
+            : "A booking follows these steps.\n- Open the car and check the published price.\n- Send your name, phone, email, and the start and end.\n- The booking is saved waiting for payment until our team has checked your documents.\n- Upload the documents in your account, not in this chat.\n- When online payment is available, the link is the booking total. The refundable deposit is separate.\n- To speak to someone first, leave your name and phone. Our team will call you. That is a call request, not a booking.";
     }
 
     protected function contact(string $locale): string
@@ -112,15 +112,16 @@ class WebsiteAssistant
         if (blank($phone) && blank($address)) {
             return $this->handoff($locale);
         }
-        $parts = array_filter([
-            $phone ? ($locale === 'ar' ? 'يمكنكم الاتصال بنا على '.$phone : 'You can call us on '.$phone) : null,
-            $address ? ($locale === 'ar' ? 'مكتبنا في '.$address : 'Our office is at '.$address) : null,
+        $lines = array_filter([
+            $phone ? ($locale === 'ar' ? '- يمكنكم الاتصال بنا على '.$phone : '- You can call us on '.$phone) : null,
+            $address ? ($locale === 'ar' ? '- مكتبنا في '.$address : '- Our office is at '.$address) : null,
+            $locale === 'ar'
+                ? '- أو اترك اسمك ورقم هاتفك هنا وسيتواصل معك الفريق.'
+                : '- Or leave your name and phone here and our team will call you.',
         ]);
-        $close = $locale === 'ar'
-            ? 'أو اترك اسمك ورقم هاتفك هنا وسيتواصل معك الفريق.'
-            : 'Or leave your name and phone here and our team will call you.';
+        $intro = $locale === 'ar' ? 'يمكنكم التواصل معنا.' : 'You can reach us.';
 
-        return implode('. ', $parts).'. '.$close;
+        return $intro."\n".implode("\n", $lines);
     }
 
     /** @return array{0: string, 1: string, 2: string, 3: ?int, 4: ?int, 5: ?string, 6: ?string} */
@@ -140,7 +141,7 @@ class WebsiteAssistant
                 $cars = $matched;
             }
         }
-        $lines = $cars->take(5)->map(fn (Car $car) => $this->carLine($car, $message, $locale));
+        $lines = $cars->take(5)->map(fn (Car $car) => '- '.$this->carLine($car, $message, $locale));
         $facts = $lines->implode("\n");
         if ($facts === '') {
             return ['search', '', $this->handoff($locale), null, null, null, null];
@@ -214,8 +215,8 @@ class WebsiteAssistant
         if (($data['available'] ?? null) === false) {
             $facts = $name.' not available';
             $text = $locale === 'ar'
-                ? $name.' غير متاحة في هذه التواريخ. يستطيع الفريق اقتراح سيارة أخرى إذا تركت اسمك ورقم هاتفك.'
-                : $name.' is not available for these dates. Our team can suggest another published car if you leave your name and phone.';
+                ? $name." غير متاحة في هذه التواريخ.\n- يستطيع الفريق اقتراح سيارة أخرى إذا تركت اسمك ورقم هاتفك."
+                : $name." is not available for these dates.\n- Our team can suggest another published car if you leave your name and phone.";
 
             return ['estimate', $facts, $text, null, null, null, null];
         }
@@ -225,9 +226,21 @@ class WebsiteAssistant
         if ($total === null) {
             return ['estimate', $facts, $this->handoff($locale), null, null, null, null];
         }
-        $text = $locale === 'ar'
-            ? 'التقدير المنشور لـ '.$name.' هو AED '.self::money($total).'.'.($deposit ? ' العربون المسترد AED '.self::money($deposit).' منفصل عن المجموع.' : '').' هذا ليس حجزاً مؤكداً. أرسل الاسم والهاتف والبريد مع هذه التواريخ إذا أردت أن يستلم الفريق الطلب.'
-            : 'The published estimate for '.$name.' is AED '.self::money($total).'.'.($deposit ? ' The refundable deposit is AED '.self::money($deposit).', separate from the total.' : '').' This is not a confirmed booking. Send your name, phone and email with these dates if you would like the team to take the request.';
+        $lines = [$locale === 'ar'
+            ? 'التقدير المنشور لـ '.$name.' هو AED '.self::money($total).'.'
+            : 'The published estimate for '.$name.' is AED '.self::money($total).'.'];
+        if ($deposit) {
+            $lines[] = $locale === 'ar'
+                ? '- العربون المسترد AED '.self::money($deposit).' منفصل عن المجموع.'
+                : '- The refundable deposit is AED '.self::money($deposit).', separate from the total.';
+        }
+        $lines[] = $locale === 'ar'
+            ? '- هذا ليس حجزاً مؤكداً.'
+            : '- This is not a confirmed booking.';
+        $lines[] = $locale === 'ar'
+            ? '- أرسل الاسم والهاتف والبريد مع هذه التواريخ إذا أردت أن يستلم الفريق الطلب.'
+            : '- Send your name, phone and email with these dates if you would like the team to take the request.';
+        $text = implode("\n", $lines);
 
         return ['estimate', $facts, $text, null, null, null, null];
     }
@@ -239,8 +252,8 @@ class WebsiteAssistant
             ->filter(fn ($v) => blank($v))->keys();
         if ($missing->isNotEmpty() || ! $slug) {
             $text = $locale === 'ar'
-                ? 'لإتمام الحجز أحتاج الاسم والهاتف والبريد وتاريخ البداية والنهاية. الحجز يُحفظ بانتظار الدفع إلى أن يراجعه الفريق.'
-                : 'To complete the booking I need your name, phone, email, and the start and end. The booking is saved waiting for payment until our team has checked it.';
+                ? "لإتمام الحجز أحتاج:\n- الاسم والهاتف والبريد وتاريخ البداية والنهاية.\n- يُحفظ الحجز بانتظار الدفع إلى أن يراجعه الفريق."
+                : "To complete the booking I need:\n- Your name, phone, email, and the start and end.\n- The booking is saved waiting for payment until our team has checked it.";
 
             return ['book', '', $text, null, null, null, null];
         }
@@ -264,8 +277,8 @@ class WebsiteAssistant
         $payUrl = (! empty($data['pay_url']) && Payments::connected() !== []) ? $data['pay_url'] : null;
         $facts = trim($reference.' '.($data['total'] ?? '').($payUrl ? ' '.$payUrl : ''));
         $text = $locale === 'ar'
-            ? 'تم حفظ الحجز '.$reference.' وهو بانتظار الدفع. يراجعه الفريق، وترفع المستندات في حسابك.'
-            : 'Your booking '.$reference.' is saved and waiting for payment. Our team will check it, and you upload your documents in your account.';
+            ? "تم حفظ الحجز {$reference} وهو بانتظار الدفع.\n- يراجعه الفريق.\n- ارفع المستندات في حسابك."
+            : "Your booking {$reference} is saved and waiting for payment.\n- Our team will check it.\n- Upload your documents in your account.";
         if ($payUrl && ! empty($in['pay_now'])) {
             $text .= $locale === 'ar' ? ' ادفع من هنا: '.$payUrl : ' Pay here: '.$payUrl;
         } elseif ($payUrl) {
@@ -279,7 +292,9 @@ class WebsiteAssistant
     protected function enquiry(array $in, ?string $slug, string $locale, string $message): array
     {
         if (blank($in['name'] ?? null) || blank($in['phone'] ?? null)) {
-            $text = $locale === 'ar' ? 'اترك اسمك ورقم هاتفك هنا. سيتواصل معك الفريق، ولن يُنشأ حجز من هذه الرسالة.' : 'Leave your name and phone here. Our team will call you. This message does not create a booking.';
+            $text = $locale === 'ar'
+                ? "اترك بياناتك هنا. سيتواصل معك الفريق، ولن يُنشأ حجز من هذه الرسالة.\n- الاسم\n- رقم الهاتف"
+                : "Leave your details here. Our team will call you. This message does not create a booking.\n- Your name\n- Your phone";
 
             return ['enquiry', '', $text, null, null, null, null];
         }
@@ -293,8 +308,8 @@ class WebsiteAssistant
             $lead = Lead::query()->find((int) $m[1]);
         }
         $text = $locale === 'ar'
-            ? 'شكراً لك. سيتواصل معك الفريق. المرجع '.$ref.'.'
-            : 'Thank you. Our team will contact you. Your reference is '.$ref.'.';
+            ? "شكراً لك. سيتواصل معك الفريق.\n- المرجع {$ref}"
+            : "Thank you. Our team will contact you.\n- Your reference is {$ref}";
 
         return ['enquiry', (string) $ref, $text, null, $lead?->id, null, $ref];
     }
@@ -302,8 +317,8 @@ class WebsiteAssistant
     protected function handoff(string $locale): string
     {
         return $locale === 'ar'
-            ? 'سيؤكد الفريق ذلك. اترك اسمك ورقم هاتفك وسنتصل بك.'
-            : 'Our team will confirm that. Leave your name and phone and we will call you.';
+            ? "سيؤكد الفريق ذلك.\n- اترك اسمك ورقم هاتفك وسنتصل بك."
+            : "Our team will confirm that.\n- Leave your name and phone and we will call you.";
     }
 
     protected static function money(float|int|string $amount): string

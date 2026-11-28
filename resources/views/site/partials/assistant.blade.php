@@ -1,20 +1,21 @@
 @if (\App\Support\Site\WebsiteAssistant::ready())
 <aside class="assist" data-assist data-slug="{{ $slug ?? '' }}" data-locale="{{ app()->getLocale() === 'ar' ? 'ar' : 'en' }}" data-greet="{{ __('site.assistant.greeting') }}" data-unavailable="{{ __('site.assistant.unavailable') }}">
     <div class="assist-panel" hidden data-assist-panel>
+        <button type="button" class="assist-x" data-assist-close aria-label="{{ __('site.assistant.close') }}">
+            <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" d="M6 6l12 12M18 6L6 18"/></svg>
+        </button>
         <div class="assist-head">
-            <img class="assist-mark" src="{{ asset('images/brand/icon-192.png') }}" alt="" width="36" height="36">
+            <span class="brand-logo assist-word">
+                <img class="logo-on-dark" src="{{ asset('images/brand/logo-dark-s.webp') }}" alt="{{ \App\Support\Site\Site::company() }}" width="346" height="196">
+                <img class="logo-on-light" src="{{ asset('images/brand/logo-light-s.webp') }}" alt="" aria-hidden="true" width="346" height="196">
+            </span>
             <div class="assist-id">
                 <strong>{{ __('site.assistant.title') }}</strong>
                 <span class="assist-online"><i></i>{{ __('site.assistant.online') }}</span>
             </div>
-            <div class="assist-tools">
-                <button type="button" class="assist-icon" data-assist-restart aria-label="{{ __('site.assistant.restart') }}">
-                    <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M20 12a8 8 0 1 1-2.3-5.7M20 4v5h-5"/></svg>
-                </button>
-                <button type="button" class="assist-icon" data-assist-close aria-label="{{ __('site.assistant.close') }}">
-                    <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" d="M6 6l12 12M18 6L6 18"/></svg>
-                </button>
-            </div>
+            <button type="button" class="assist-icon" data-assist-restart aria-label="{{ __('site.assistant.restart') }}">
+                <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M20 12a8 8 0 1 1-2.3-5.7M20 4v5h-5"/></svg>
+            </button>
         </div>
         <div class="assist-log" data-assist-log></div>
         <div class="assist-chips">
@@ -56,7 +57,7 @@
         <p class="assist-note">{{ __('site.assistant.note') }}</p>
     </div>
     <button type="button" class="assist-launch" data-assist-open aria-label="{{ __('site.assistant.open') }}">
-        <svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true"><path fill="currentColor" d="M4 4h16a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H9l-5 4v-4H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z"/></svg>
+        <svg viewBox="0 0 24 24" width="28" height="28" aria-hidden="true"><path fill="currentColor" d="M12 3a9 9 0 0 0-9 9c0 1.7.5 3.3 1.3 4.7L3 21l4.5-1.2A9 9 0 1 0 12 3zm-3.2 10.2a1.2 1.2 0 1 1 0-2.4 1.2 1.2 0 0 1 0 2.4zm3.2 0a1.2 1.2 0 1 1 0-2.4 1.2 1.2 0 0 1 0 2.4zm3.2 0a1.2 1.2 0 1 1 0-2.4 1.2 1.2 0 0 1 0 2.4z"/></svg>
     </button>
 </aside>
 @endif
